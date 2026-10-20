@@ -96,7 +96,7 @@
 }
 
 /* A compact analytical instrument (guidelines section 7), square and ruled
-   like a family grid cell (decision 0020). */
+   like a family grid cell (decision 0021). */
 .legend {
   position: absolute;
   right: var(--space-2);

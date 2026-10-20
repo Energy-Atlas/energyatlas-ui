@@ -26,7 +26,7 @@
 }
 
 /* A tab strip like the docked ones: mono labels, the selected tab an
-   inverted block in an accent outline with a gap (decision 0020). */
+   inverted block in an accent outline with a gap (decision 0021). */
 .tabList {
   display: flex;
   align-items: center;
@@ -123,7 +123,7 @@
   font-weight: 600;
 }
 
-/* AG Grid header labels in the family's data-sheet style (decision 0020);
+/* AG Grid header labels in the family's data-sheet style (decision 0021);
    the grid's theme parameters cannot set case or tracking. */
 .grid :global(.ag-header-cell-text) {
   letter-spacing: var(--label-tracking);

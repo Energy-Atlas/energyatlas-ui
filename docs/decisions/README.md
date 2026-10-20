@@ -21,4 +21,4 @@ Keep short dated records of accepted decisions: status, context, decision, ratio
 - [0017: Publish the prototype to GitHub Pages through GitHub Actions](0017-github-pages-deployment.md)
 - [0018: Contextual lighting for the 3D map scene](0018-map-scene-lighting.md)
 - [0019: A globe with one solar state, and no area night lights](0019-globe-projection-and-solar-state.md)
-- [0020: UI alignment with the EnergyAtlas family, the family look winning](0020-energyatlas-family-ui-alignment.md)
+- [0021: UI alignment with the EnergyAtlas family, the family look winning](0021-energyatlas-family-ui-alignment.md)

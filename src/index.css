@@ -1,4 +1,4 @@
-/* Geist Mono (decision 0020), vendored with its licence in src/assets/fonts and
+/* Geist Mono (decision 0021), vendored with its licence in src/assets/fonts and
    bundled by Vite, so no font host is contacted. */
 @font-face {
   font-display: swap;
@@ -26,7 +26,7 @@
 
 /* Fallback tokens for the first frame and for package spikes. They match the
    Light appearance in src/app/appearance/appearances.ts (the EnergyAtlas
-   family light palette, decision 0020); the dark blocks below match Dark.
+   family light palette, decision 0021); the dark blocks below match Dark.
    The workbench writes the active appearance's tokens onto the root element,
    which overrides these. */
 :root {
@@ -64,14 +64,14 @@
   --space-6: 1.5rem;
 
   /* Geist (decision 0010), then CJK and system fallbacks. Geist Mono for
-     labels, code, and identifiers (decision 0020). */
+     labels, code, and identifiers (decision 0021). */
   --font-sans:
     'Geist Variable', 'Microsoft YaHei', 'PingFang SC', 'Noto Sans CJK SC',
     system-ui, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
   --font-mono: 'Geist Mono', ui-monospace, 'Cascadia Code', Consolas, monospace;
 
   /* Three sizes (guidelines section 2) and one mono label size (decision
-     0020): labels, metadata, content and controls, titles. */
+     0021): labels, metadata, content and controls, titles. */
   --font-size-label: 0.6875rem;
   --font-size-small: 0.75rem;
   --font-size-base: 0.8125rem;

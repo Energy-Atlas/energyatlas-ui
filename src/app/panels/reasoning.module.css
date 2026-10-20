@@ -359,7 +359,7 @@
   margin-left: auto;
 }
 
-/* Send follows the control grammar (decision 0020, section 13) as a split
+/* Send follows the control grammar (decision 0021, section 13) as a split
    button: the send part and the chevron part are two boxes of one height, the
    chevron part a full-height cell behind a rule, like the pickers. Ready to
    send, both parts are the inverted primary block; the accent on hover, and an

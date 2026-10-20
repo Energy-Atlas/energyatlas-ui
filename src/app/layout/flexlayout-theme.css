@@ -12,7 +12,7 @@
   --flexlayout-color-icon: var(--color-text-muted);
 
   --flexlayout-color-tab-content: var(--color-surface);
-  /* The selected tab is an inverted block (decision 0020); its outline and
+  /* The selected tab is an inverted block (decision 0021); its outline and
      gap are drawn by the class overrides below. */
   --flexlayout-color-tab-selected: var(--color-surface);
   --flexlayout-color-tab-selected-background: var(--color-text);
@@ -80,7 +80,7 @@
   --flexlayout-color-overflow: var(--color-text-muted);
 }
 
-/* Tab strips (decision 0020): mono uppercase tracked labels, muted until
+/* Tab strips (decision 0021): mono uppercase tracked labels, muted until
    hovered; the selected tab is an inverted block inside a 1px accent outline
    with a 2px gap of the strip's colour, drawn inset because the tab bar clips
    overflow. The outline sits on the strip, never on the fill, where it would

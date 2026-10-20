@@ -9,7 +9,7 @@ ModuleRegistry.registerModules([AllCommunityModule])
 
 /**
  * Quartz with its parameters mapped to workbench tokens, so every appearance
- * follows the app. A data sheet in the EnergyAtlas family (decision 0020):
+ * follows the app. A data sheet in the EnergyAtlas family (decision 0021):
  * label-style headers, row and column rules, no zebra stripes, an accent tint
  * on hover, and square corners. Numeric parameters do not take CSS variables,
  * so the header size repeats --label-size (--font-size-small, 0.75rem, 12px)
@@ -45,7 +45,7 @@ export const workbenchGridTheme = themeQuartz.withParams({
 /**
  * Column defaults shared by the workbench grids. Long header labels wrap onto
  * a second line instead of being cut off at the app's column widths, whatever
- * the label style (decision 0020).
+ * the label style (decision 0021).
  */
 export const workbenchColumnDefaults = {
   wrapHeaderText: true,

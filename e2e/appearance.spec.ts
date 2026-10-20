@@ -47,7 +47,7 @@ test('loads the Geist typeface for workbench text', async ({ page }) => {
   expect(font.loaded).toBe(true)
 })
 
-// Decision 0020: tab strips take the label style (Geist, as written), and
+// Decision 0021: tab strips take the label style (Geist, as written), and
 // Geist Mono, for shortcuts and code, comes from the app's own bundle.
 test('labels tab strips in Geist and loads Geist Mono from the app bundle', async ({
   page,

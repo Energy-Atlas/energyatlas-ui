@@ -1,6 +1,6 @@
 # Vendored fonts
 
-Geist Mono, the label, code, and identifier face of [decision 0020](../../../docs/decisions/0020-energyatlas-family-ui-alignment.md), is vendored here rather than installed from npm, so no package is added.
+Geist Mono, the label, code, and identifier face of [decision 0021](../../../docs/decisions/0021-energyatlas-family-ui-alignment.md), is vendored here rather than installed from npm, so no package is added.
 
 | File | Content |
 | --- | --- |

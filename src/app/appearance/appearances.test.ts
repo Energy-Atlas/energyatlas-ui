@@ -42,7 +42,7 @@ describe.each(APPEARANCE_LIST)('$label appearance', (appearance) => {
     )
   })
 
-  // Decision 0020: control edges, the accent outline of the active tab (drawn
+  // Decision 0021: control edges, the accent outline of the active tab (drawn
   // on the surface behind a gap, never on the inverted fill), and the label
   // of inverted blocks (active tabs, primary actions).
   it('keeps controls, focus, and inverted blocks distinguishable', () => {

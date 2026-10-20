@@ -1,4 +1,4 @@
-/* A form is a ruled cell of the page grid (decision 0020). */
+/* A form is a ruled cell of the page grid (decision 0021). */
 .form {
   display: grid;
   gap: var(--space-3);

@@ -1,7 +1,7 @@
 /* Workbench tokens that do not vary by appearance. Colors come from the active
    appearance (src/app/appearance/appearances.ts), applied on the root element.
    Status badges always carry an icon and text so color is never the only signal.
-   Shapes follow the EnergyAtlas family (decision 0020): square corners, one
+   Shapes follow the EnergyAtlas family (decision 0021): square corners, one
    rule width, and short colour transitions. */
 :root {
   --radius-sm: 0;
@@ -20,7 +20,7 @@
   --label-tracking: 0;
   --label-weight: 600;
 
-  /* Control grammar (decision 0020, section 13): a field is a well on the
+  /* Control grammar (decision 0021, section 13): a field is a well on the
      pane colour with a heavier bottom edge; a button is a raised block with
      an even edge. Every pair differs in fill, edge, and content. */
   --field-bg: var(--color-surface);

@@ -171,7 +171,7 @@ const DARK_TONES: ToneTokens = {
   shadowPopover: '0 8px 24px rgb(0 0 0 / 55%)',
 }
 
-// The EnergyAtlas family state colours (decision 0020) for Light and Dark. The
+// The EnergyAtlas family state colours (decision 0021) for Light and Dark. The
 // family has no tints: each is its tone mixed over the base, 8 % in light and
 // 16 % in dark. Light warning text is darkened from #9a6700 to pass 4.5:1 on
 // its tint.
@@ -216,7 +216,7 @@ export const APPEARANCES: Record<AppearanceId, Appearance> = {
     description:
       'The default light workbench: neutral chrome with blue, orange, and green data colors.',
     scheme: 'light',
-    // The EnergyAtlas family light palette (decision 0020): panes on the
+    // The EnergyAtlas family light palette (decision 0021): panes on the
     // base, surface-1 for strips and overlays, one rule colour.
     chrome: {
       bg: '#ffffff',
@@ -268,7 +268,7 @@ export const APPEARANCES: Record<AppearanceId, Appearance> = {
     description:
       'The default dark workbench with the same data colors adjusted for a dark surface.',
     scheme: 'dark',
-    // The EnergyAtlas family dark palette (decision 0020).
+    // The EnergyAtlas family dark palette (decision 0021).
     chrome: {
       bg: '#000000',
       surface: '#000000',

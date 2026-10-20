@@ -44,7 +44,7 @@ test('the built bundle serves its assets and renders the map', async ({
   expect(failed).toEqual([])
 })
 
-// Decision 0020, section 14: the EnergyAtlas favicons and mark come from the
+// Decision 0021, section 14: the EnergyAtlas favicons and mark come from the
 // app's own origin under the base path. Preview answers a missing file with
 // index.html, so the check reads the content type.
 test('serves the EnergyAtlas favicons and mark under the base path', async ({

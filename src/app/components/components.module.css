@@ -10,7 +10,7 @@
 
 /* Stage states and capability disclosure (guidelines section 8): routine
    states are quiet text with an icon; attention states add tone and a tint. */
-/* Small metadata in the family's mono label style (decision 0020). */
+/* Small metadata in the family's mono label style (decision 0021). */
 .state {
   display: inline-flex;
   align-items: center;
@@ -38,7 +38,7 @@
   font-weight: 600;
 }
 
-/* Buttons (decision 0020): square, with an interactive edge of at least 3:1.
+/* Buttons (decision 0021): square, with an interactive edge of at least 3:1.
    In toolbars and panels the label is a mono uppercase label; inside forms
    and dialogs it stays sentence case in the sans for scanning. */
 .button {

@@ -26,7 +26,7 @@
   white-space: nowrap;
 }
 
-/* The EnergyAtlas mark before the product name (decision 0020, section 14):
+/* The EnergyAtlas mark before the product name (decision 0021, section 14):
    about 1.3 times the name's size, centred on it, never recoloured. */
 .brandMark {
   align-self: center;
@@ -70,7 +70,7 @@
     border-color var(--transition);
 }
 
-/* Menu names are the ribbon's nav labels (decision 0020): mono uppercase,
+/* Menu names are the ribbon's nav labels (decision 0021): mono uppercase,
    tracked; the open menu is the inverted block of the family's active item. */
 .menuButton {
   min-height: 1.5rem;
@@ -341,7 +341,7 @@
   background: var(--color-surface-raised);
   white-space: nowrap;
   overflow: hidden;
-  /* The family's meta line, in the label style (decision 0020). */
+  /* The family's meta line, in the label style (decision 0021). */
   font-family: var(--label-font);
   font-size: var(--label-size);
   letter-spacing: var(--label-tracking);

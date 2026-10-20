@@ -2,7 +2,7 @@
 
 Date: 2026-10-20
 
-Aligns the build with the EnergyAtlas family, the visual language of the dev-skills and BEMGen documentation sites, under [decision 0020](decisions/0020-energyatlas-family-ui-alignment.md). In this variant the family look wins every conflict with the [UI design guidelines](20260915_energyatlas_ui_design_guidelines.md); the decision record lists the conflicts and the guideline amendments they would need. The earlier pass against the guidelines alone is in [design alignment](design-alignment.md).
+Aligns the build with the EnergyAtlas family, the visual language of the dev-skills and BEMGen documentation sites, under [decision 0021](decisions/0021-energyatlas-family-ui-alignment.md). In this variant the family look wins every conflict with the [UI design guidelines](20260915_energyatlas_ui_design_guidelines.md); the decision record lists the conflicts and the guideline amendments they would need. The earlier pass against the guidelines alone is in [design alignment](design-alignment.md).
 
 ## Observed facts
 
@@ -29,7 +29,7 @@ Baseline screenshots of every appearance at 1280x800 and 1920x1080 are kept outs
 
 ## Translation
 
-The reference column is the family as built on the dev-skills site; the decision column applies decision 0020 (family wins).
+The reference column is the family as built on the dev-skills site; the decision column applies decision 0021 (family wins).
 
 | Reference element | App equivalent | Decision |
 | --- | --- | --- |
@@ -55,7 +55,7 @@ Only the app has: selection (one `selectedBg` and the accent outline), focus ins
 
 ## Contrast evidence
 
-`scripts/contrast.py check --suggest` of the `app-ui-alignment` skill, run on the proposed Light and Dark tokens and on the curated appearances' control borders before implementation. The [decision record](decisions/0020-energyatlas-family-ui-alignment.md#6-colour-roles-and-contrast) has the values used.
+`scripts/contrast.py check --suggest` of the `app-ui-alignment` skill, run on the proposed Light and Dark tokens and on the curated appearances' control borders before implementation. The [decision record](decisions/0021-energyatlas-family-ui-alignment.md#6-colour-roles-and-contrast) has the values used.
 
 - 78 of 84 pairs passed with the family values as given. The failures: the accent outline on the inverted active-tab fill (2.08:1 Dark, 2.50:1 Light; 1.00:1 in Technical monochrome), the Light success text on a 10 % tint (4.38:1), and the Light warning text on a 10 % tint (4.29:1).
 - Fixes: the outline sits on the surface behind a 2 px gap, not on the fill; Light tints at 8 %; Light warning text `#946300`.
@@ -69,11 +69,11 @@ Only the app has: selection (one `selectedBg` and the accent outline), focus ins
 - **Status bar.** Its items are mono uppercase at the label size; the last-operation notice at the right stays a sentence in the sans, because it is a message.
 - **First frame.** `index.html` gained an inline script that applies the stored appearance's scheme before the bundle runs, and `src/index.css` the family dark tokens for it and for `prefers-color-scheme: dark`. Before this pass a stored dark appearance painted light first.
 - **The dialog scrim** `rgb(0 0 0 / 35%)` in `src/app/shell/shell.module.css` stays a literal: a translucent black, the same in every appearance.
-- **Labels in Geist (2026-10-20).** The owner replaced the mono uppercase labels with Geist as written ([decision 0020, section 12](decisions/0020-energyatlas-family-ui-alignment.md#12-label-style-2026-10-20)); every label rule now reads the label tokens. Grid headers keep `wrapHeaderText`, now rarely needed.
+- **Labels in Geist (2026-10-20).** The owner replaced the mono uppercase labels with Geist as written ([decision 0021, section 12](decisions/0021-energyatlas-family-ui-alignment.md#12-label-style-2026-10-20)); every label rule now reads the label tokens. Grid headers keep `wrapHeaderText`, now rarely needed.
 - **Titles keep their earlier design (2026-10-20).** The first build turned page and panel titles into raised header strips with muted labels; the owner asked for the earlier titles back. Titles inside a panel's content have no backdrop and use the title style; strips remain only on docked tab strips and side handles.
 - **Tab hover (2026-10-20).** FlexLayout's hover rule set an unselected tab's label to the selected-tab colour, the strip's own colour after the inversion. Unselected tabs and side handles now show the text colour, the pane surface, and an interactive edge on hover.
-- **Control grammar (2026-10-20).** Inputs, selects, and secondary buttons shared one look. Fields are now wells with a heavier bottom edge, selects add a chevron cell, buttons are raised blocks, and quiet ribbon buttons show an edge and a fill on hover, whose old raised-surface hover was one step from the ribbon ([decision 0020, section 13](decisions/0020-energyatlas-family-ui-alignment.md#13-control-grammar-2026-10-20)).
-- **EnergyAtlas mark (2026-10-20).** The favicon and the ribbon carry the EnergyAtlas mark, copied in with the owner's agreement ([decision 0020, section 14](decisions/0020-energyatlas-family-ui-alignment.md#14-the-energyatlas-mark-2026-10-20)).
+- **Control grammar (2026-10-20).** Inputs, selects, and secondary buttons shared one look. Fields are now wells with a heavier bottom edge, selects add a chevron cell, buttons are raised blocks, and quiet ribbon buttons show an edge and a fill on hover, whose old raised-surface hover was one step from the ribbon ([decision 0021, section 13](decisions/0021-energyatlas-family-ui-alignment.md#13-control-grammar-2026-10-20)).
+- **EnergyAtlas mark (2026-10-20).** The favicon and the ribbon carry the EnergyAtlas mark, copied in with the owner's agreement ([decision 0021, section 14](decisions/0021-energyatlas-family-ui-alignment.md#14-the-energyatlas-mark-2026-10-20)).
 - **Basemap roads.** The basemap takes its road colour from the pane surface and its land from the background; with both at the family base, roads matched the land. Where the two are equal, roads now take the raised surface (`src/app/pages/basemapStyle.ts`). The trial screenshots did not show this, because the browser tests stub the basemap tiles.
 - **Licence text.** `src/assets/fonts/OFL-GeistMono.txt` is kept byte for byte as distributed, including trailing spaces on some lines, so `git diff --check` reports them for that file only.
 
@@ -83,7 +83,7 @@ Built on the `trial/app-ui-alignment-family-wins` branch, 2026-10-20.
 
 | Layer | Commit | What changed |
 | --- | --- | --- |
-| Record | `31d2430` | [Decision 0020](decisions/0020-energyatlas-family-ui-alignment.md), this record, the `AGENTS.md` rule, decision 0010 marked superseded in part |
+| Record | `31d2430` | [Decision 0021](decisions/0021-energyatlas-family-ui-alignment.md), this record, the `AGENTS.md` rule, decision 0010 marked superseded in part |
 | Tokens and contrast test | `9aeab36` | Family palette for Light and Dark; `borderInteractive` in every appearance; Light and Dark chart scaffolding; first-frame tokens and script; `appearances.test.ts` extended |
 | Fonts | `3dfff41` | Geist Mono vendored in `src/assets/fonts/` with its licence and a provenance note; `--font-mono` and `--font-size-label` |
 | Shell | `757811a` | Ruled ribbon and status bar; mono menu names with the inverted open menu; the inverted Run ▾; square, ruled menus, palette, and dialogs with header strips |
@@ -116,5 +116,5 @@ Node.js 24 and Microsoft Edge on Windows. The trial branch runs its browser test
 
 - **Map basemap labels** keep OpenFreeMap's Noto Sans glyphs (decision 0012); MapLibre cannot use Geist without generated glyphs.
 - **Canvas text** in charts stays Geist (guidelines section 2); axis labels are not mono labels.
-- **Guidelines:** decision 0020, section 11, lists the amendments the user would need to make to the guidelines for this variant.
-- **Package policy:** Geist Mono is vendored rather than installed from `@fontsource-variable/geist-mono`; the choice is open (decision 0020, section 4).
+- **Guidelines:** decision 0021, section 11, lists the amendments the user would need to make to the guidelines for this variant.
+- **Package policy:** Geist Mono is vendored rather than installed from `@fontsource-variable/geist-mono`; the choice is open (decision 0021, section 4).

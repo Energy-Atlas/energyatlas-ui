@@ -4,7 +4,7 @@ Date: 2026-09-15
 
 Aligns the build with the [UI design guidelines](20260915_energyatlas_ui_design_guidelines.md) ([decision 0009](decisions/0009-ui-design-guidelines.md)) and the Geist typeface ([decision 0010](decisions/0010-geist-typeface.md)). The user accepted the plan through their answers on 2026-09-15. The pass is built in commits `9127604`, `3d66ea5`, `5b408b6`, and `38e08a3`; see [implementation status](#implementation-status). The observed gaps describe the build before alignment.
 
-On 2026-10-20 [decision 0020](decisions/0020-energyatlas-family-ui-alignment.md) aligned the build with the EnergyAtlas family, which wins where it conflicts with the decisions below (borders, monospace, labels, corners, and the Light and Dark palettes); see [family alignment](design-alignment-family.md).
+On 2026-10-20 [decision 0021](decisions/0021-energyatlas-family-ui-alignment.md) aligned the build with the EnergyAtlas family, which wins where it conflicts with the decisions below (borders, monospace, labels, corners, and the Light and Dark palettes); see [family alignment](design-alignment-family.md).
 
 ## Observed gaps
 
