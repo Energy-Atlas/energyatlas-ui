@@ -27,6 +27,8 @@ export type ChromeTokens = {
   textMuted: string
   border: string
   borderSubtle: string
+  /** Edges of controls (inputs, buttons, checkboxes): at least 3:1. */
+  borderInteractive: string
   accent: string
   accentText: string
   onAccent: string
@@ -53,6 +55,7 @@ export const CHROME_VARIABLES: Record<keyof ChromeTokens, string> = {
   textMuted: '--color-text-muted',
   border: '--color-border',
   borderSubtle: '--color-border-subtle',
+  borderInteractive: '--color-border-interactive',
   accent: '--color-accent',
   accentText: '--color-accent-text',
   onAccent: '--color-on-accent',
@@ -168,6 +171,38 @@ const DARK_TONES: ToneTokens = {
   shadowPopover: '0 8px 24px rgb(0 0 0 / 55%)',
 }
 
+// The EnergyAtlas family state colours (decision 0020) for Light and Dark. The
+// family has no tints: each is its tone mixed over the base, 8 % in light and
+// 16 % in dark. Light warning text is darkened from #9a6700 to pass 4.5:1 on
+// its tint.
+const FAMILY_LIGHT_TONES: ToneTokens = {
+  toneSuccessText: '#188038',
+  toneSuccessBg: '#edf5ef',
+  toneInfoText: '#125dae',
+  toneInfoBg: '#ecf2f9',
+  toneWarningText: '#946300',
+  toneWarningBg: '#f7f3eb',
+  toneDangerText: '#c5221f',
+  toneDangerBg: '#faeded',
+  toneNeutralText: '#3f4b5b',
+  toneNeutralBg: '#f8fafc',
+  shadowPopover: '0 6px 16px rgb(0 0 0 / 14%)',
+}
+
+const FAMILY_DARK_TONES: ToneTokens = {
+  toneSuccessText: '#28a745',
+  toneSuccessBg: '#061b0b',
+  toneInfoText: '#4da3ff',
+  toneInfoBg: '#0c1a29',
+  toneWarningText: '#ffc107',
+  toneWarningBg: '#291f01',
+  toneDangerText: '#f44336',
+  toneDangerBg: '#270b09',
+  toneNeutralText: '#b0b0b0',
+  toneNeutralBg: '#1a1a1a',
+  shadowPopover: '0 6px 16px rgb(0 0 0 / 60%)',
+}
+
 const STATUS: DataPalette['status'] = {
   good: '#0ca30c',
   warning: '#fab219',
@@ -181,35 +216,38 @@ export const APPEARANCES: Record<AppearanceId, Appearance> = {
     description:
       'The default light workbench: neutral chrome with blue, orange, and green data colors.',
     scheme: 'light',
+    // The EnergyAtlas family light palette (decision 0020): panes on the
+    // base, surface-1 for strips and overlays, one rule colour.
     chrome: {
-      bg: '#f5f6f8',
+      bg: '#ffffff',
       surface: '#ffffff',
-      surfaceRaised: '#eef1f4',
-      text: '#1b1f24',
-      textMuted: '#5b6573',
-      border: '#d5dae1',
-      borderSubtle: '#e6e9ed',
-      accent: '#1f6fd1',
-      accentText: '#1d5fb8',
+      surfaceRaised: '#f8fafc',
+      text: '#18202c',
+      textMuted: '#5f6b7a',
+      border: '#cfd8e5',
+      borderSubtle: '#cfd8e5',
+      borderInteractive: '#768599',
+      accent: '#125dae',
+      accentText: '#125dae',
       onAccent: '#ffffff',
-      focus: '#1f6fd1',
-      selectedBg: '#e3ecf8',
-      ...LIGHT_TONES,
+      focus: '#125dae',
+      selectedBg: '#e7eff7',
+      ...FAMILY_LIGHT_TONES,
     },
     data: {
       categorical: ['#2a78d6', '#eb6834', '#15986a'],
       deemphasis: '#898781',
       sequential: ['#cde2fb', '#86b6ef', '#3987e5', '#1c5cab', '#0d366b'],
       noData: '#d5dae1',
-      selection: '#1b1f24',
+      selection: '#18202c',
       networkLine: '#52514e',
       networkPoint: '#eb6834',
       ink: {
-        primary: '#1b1f24',
-        secondary: '#52514e',
-        muted: '#5b6573',
-        grid: '#e1e0d9',
-        axis: '#c3c2b7',
+        primary: '#18202c',
+        secondary: '#3f4b5b',
+        muted: '#5f6b7a',
+        grid: '#e7edf5',
+        axis: '#cfd8e5',
         surface: '#ffffff',
       },
       sky: {
@@ -230,20 +268,22 @@ export const APPEARANCES: Record<AppearanceId, Appearance> = {
     description:
       'The default dark workbench with the same data colors adjusted for a dark surface.',
     scheme: 'dark',
+    // The EnergyAtlas family dark palette (decision 0020).
     chrome: {
-      bg: '#15181c',
-      surface: '#1d2126',
-      surfaceRaised: '#262b32',
-      text: '#e6e9ed',
-      textMuted: '#9aa4b1',
-      border: '#343a42',
-      borderSubtle: '#2a2f36',
-      accent: '#5aa2ff',
-      accentText: '#8cbcff',
-      onAccent: '#0b1a2e',
-      focus: '#5aa2ff',
-      selectedBg: '#1c3350',
-      ...DARK_TONES,
+      bg: '#000000',
+      surface: '#000000',
+      surfaceRaised: '#1a1a1a',
+      text: '#e5e5e5',
+      textMuted: '#999999',
+      border: '#404040',
+      borderSubtle: '#404040',
+      borderInteractive: '#6b6b6b',
+      accent: '#4da3ff',
+      accentText: '#4da3ff',
+      onAccent: '#000000',
+      focus: '#4da3ff',
+      selectedBg: '#0c1a29',
+      ...FAMILY_DARK_TONES,
     },
     data: {
       categorical: ['#3987e5', '#d95926', '#199e70'],
@@ -251,16 +291,16 @@ export const APPEARANCES: Record<AppearanceId, Appearance> = {
       // The anchor flips so values near zero recede toward the dark surface.
       sequential: ['#104281', '#1c5cab', '#2a78d6', '#6da7ec', '#cde2fb'],
       noData: '#3a3f47',
-      selection: '#e6e9ed',
+      selection: '#e5e5e5',
       networkLine: '#c3c2b7',
       networkPoint: '#d95926',
       ink: {
-        primary: '#e6e9ed',
-        secondary: '#c3c2b7',
-        muted: '#9aa4b1',
-        grid: '#2c2c2a',
-        axis: '#383835',
-        surface: '#1d2126',
+        primary: '#e5e5e5',
+        secondary: '#b0b0b0',
+        muted: '#999999',
+        grid: '#262626',
+        axis: '#404040',
+        surface: '#000000',
       },
       sky: {
         day: '#3a6ea5',
@@ -288,6 +328,7 @@ export const APPEARANCES: Record<AppearanceId, Appearance> = {
       textMuted: '#5f5f5b',
       border: '#d6d6d2',
       borderSubtle: '#e8e8e5',
+      borderInteractive: '#878784',
       accent: '#1c1c1b',
       accentText: '#1c1c1b',
       onAccent: '#ffffff',
@@ -341,6 +382,7 @@ export const APPEARANCES: Record<AppearanceId, Appearance> = {
       textMuted: '#5c6370',
       border: '#dcd4c7',
       borderSubtle: '#ebe5da',
+      borderInteractive: '#88837b',
       accent: '#1f3a5f',
       accentText: '#1f3a5f',
       onAccent: '#fffdf9',
@@ -394,6 +436,7 @@ export const APPEARANCES: Record<AppearanceId, Appearance> = {
       textMuted: '#56626e',
       border: '#d6dde4',
       borderSubtle: '#e6ebf0',
+      borderInteractive: '#85898d',
       accent: '#0b67c2',
       accentText: '#0a5aa8',
       onAccent: '#ffffff',
@@ -445,6 +488,7 @@ export const APPEARANCES: Record<AppearanceId, Appearance> = {
       textMuted: '#9aa3ad',
       border: '#30353c',
       borderSubtle: '#262a30',
+      borderInteractive: '#6c7075',
       accent: '#6aa3e0',
       accentText: '#8fb8e6',
       onAccent: '#0d1620',

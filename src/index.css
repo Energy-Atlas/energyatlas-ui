@@ -1,32 +1,35 @@
 /* Fallback tokens for the first frame and for package spikes. They match the
-   Light appearance in src/app/appearance/appearances.ts; the workbench writes
-   the active appearance's tokens onto the root element, which overrides these. */
+   Light appearance in src/app/appearance/appearances.ts (the EnergyAtlas
+   family light palette, decision 0020); the dark blocks below match Dark.
+   The workbench writes the active appearance's tokens onto the root element,
+   which overrides these. */
 :root {
   color-scheme: light;
-  --color-bg: #f5f6f8;
+  --color-bg: #ffffff;
   --color-surface: #ffffff;
-  --color-surface-raised: #eef1f4;
-  --color-text: #1b1f24;
-  --color-text-muted: #5b6573;
-  --color-border: #d5dae1;
-  --color-border-subtle: #e6e9ed;
-  --color-accent: #1f6fd1;
-  --color-accent-text: #1d5fb8;
+  --color-surface-raised: #f8fafc;
+  --color-text: #18202c;
+  --color-text-muted: #5f6b7a;
+  --color-border: #cfd8e5;
+  --color-border-subtle: #cfd8e5;
+  --color-border-interactive: #768599;
+  --color-accent: #125dae;
+  --color-accent-text: #125dae;
   --color-on-accent: #ffffff;
-  --color-focus: #1f6fd1;
-  --color-selected-bg: #e3ecf8;
+  --color-focus: #125dae;
+  --color-selected-bg: #e7eff7;
 
-  --tone-success-text: #1e6b37;
-  --tone-success-bg: #e6f4ea;
-  --tone-info-text: #1d5fb8;
-  --tone-info-bg: #e7f0fb;
-  --tone-warning-text: #7a4d00;
-  --tone-warning-bg: #fdf1dc;
-  --tone-danger-text: #a8231b;
-  --tone-danger-bg: #fbe9e7;
-  --tone-neutral-text: #3d4652;
-  --tone-neutral-bg: #eef1f4;
-  --shadow-popover: 0 8px 24px rgb(0 0 0 / 18%);
+  --tone-success-text: #188038;
+  --tone-success-bg: #edf5ef;
+  --tone-info-text: #125dae;
+  --tone-info-bg: #ecf2f9;
+  --tone-warning-text: #946300;
+  --tone-warning-bg: #f7f3eb;
+  --tone-danger-text: #c5221f;
+  --tone-danger-bg: #faeded;
+  --tone-neutral-text: #3f4b5b;
+  --tone-neutral-bg: #f8fafc;
+  --shadow-popover: 0 6px 16px rgb(0 0 0 / 14%);
 
   --space-1: 0.25rem;
   --space-2: 0.5rem;
@@ -40,10 +43,51 @@
     system-ui, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
   --font-mono: 'Cascadia Code', Consolas, ui-monospace, monospace;
 
-  /* Three sizes (guidelines section 2): metadata, content and controls, titles. */
+  /* Three sizes (guidelines section 2) and one mono label size (decision
+     0020): labels, metadata, content and controls, titles. */
+  --font-size-label: 0.6875rem;
   --font-size-small: 0.75rem;
   --font-size-base: 0.8125rem;
   --font-size-title: 0.9375rem;
+}
+
+/* The family dark palette for the first frame: the inline script in
+   index.html sets data-theme from the stored appearance before the bundle
+   runs, and the media query covers "system" before anything is stored. */
+:root[data-theme='dark'] {
+  color-scheme: dark;
+  --color-bg: #000000;
+  --color-surface: #000000;
+  --color-surface-raised: #1a1a1a;
+  --color-text: #e5e5e5;
+  --color-text-muted: #999999;
+  --color-border: #404040;
+  --color-border-subtle: #404040;
+  --color-border-interactive: #6b6b6b;
+  --color-accent: #4da3ff;
+  --color-accent-text: #4da3ff;
+  --color-on-accent: #000000;
+  --color-focus: #4da3ff;
+  --color-selected-bg: #0c1a29;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme]) {
+    color-scheme: dark;
+    --color-bg: #000000;
+    --color-surface: #000000;
+    --color-surface-raised: #1a1a1a;
+    --color-text: #e5e5e5;
+    --color-text-muted: #999999;
+    --color-border: #404040;
+    --color-border-subtle: #404040;
+    --color-border-interactive: #6b6b6b;
+    --color-accent: #4da3ff;
+    --color-accent-text: #4da3ff;
+    --color-on-accent: #000000;
+    --color-focus: #4da3ff;
+    --color-selected-bg: #0c1a29;
+  }
 }
 
 body {

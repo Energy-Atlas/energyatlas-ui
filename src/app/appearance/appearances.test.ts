@@ -42,6 +42,38 @@ describe.each(APPEARANCE_LIST)('$label appearance', (appearance) => {
     )
   })
 
+  // Decision 0020: control edges, the accent outline of the active tab (drawn
+  // on the surface behind a gap, never on the inverted fill), and the label
+  // of inverted blocks (active tabs, primary actions).
+  it('keeps controls, focus, and inverted blocks distinguishable', () => {
+    for (const background of [
+      chrome.bg,
+      chrome.surface,
+      chrome.surfaceRaised,
+    ]) {
+      expect(
+        contrastRatio(chrome.borderInteractive, background),
+      ).toBeGreaterThanOrEqual(GRAPHIC)
+      expect(contrastRatio(chrome.focus, background)).toBeGreaterThanOrEqual(
+        GRAPHIC,
+      )
+      expect(contrastRatio(chrome.accent, background)).toBeGreaterThanOrEqual(
+        GRAPHIC,
+      )
+    }
+    for (const background of [chrome.surfaceRaised, chrome.selectedBg]) {
+      expect(
+        contrastRatio(chrome.accentText, background),
+      ).toBeGreaterThanOrEqual(TEXT)
+    }
+    expect(contrastRatio(chrome.surface, chrome.text)).toBeGreaterThanOrEqual(
+      TEXT,
+    )
+    expect(
+      contrastRatio(chrome.textMuted, chrome.toneNeutralBg),
+    ).toBeGreaterThanOrEqual(TEXT)
+  })
+
   it('keeps status tones readable on their tint and on plain surfaces', () => {
     const tones: [string, string][] = [
       [chrome.toneSuccessText, chrome.toneSuccessBg],
