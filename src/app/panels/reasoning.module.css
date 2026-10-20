@@ -10,16 +10,27 @@
   padding: var(--space-3);
 }
 
+/* The panel header is a section strip (decision 0020). */
 .agentHeader {
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: var(--space-2);
+  min-height: 1.75rem;
+  margin: calc(-1 * var(--space-3)) calc(-1 * var(--space-3)) 0;
+  padding: 0 var(--space-3);
+  border-bottom: var(--rule);
+  background: var(--color-surface-raised);
 }
 
 .agentName {
   margin: 0;
-  font-weight: 600;
+  color: var(--color-text-muted);
+  font-family: var(--font-mono);
+  font-size: var(--font-size-label);
+  font-weight: var(--label-weight);
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
 }
 
 .log {
@@ -48,8 +59,11 @@
 .speaker {
   margin: 0 0 0.125rem;
   color: var(--color-text-muted);
-  font-size: var(--font-size-small);
-  font-weight: 600;
+  font-family: var(--font-mono);
+  font-size: var(--font-size-label);
+  font-weight: var(--label-weight);
+  letter-spacing: var(--label-tracking);
+  text-transform: uppercase;
 }
 
 .text {
@@ -59,6 +73,7 @@
 
 .user {
   padding: var(--space-2);
+  border: var(--rule);
   border-radius: var(--radius-md);
   background: var(--color-surface-raised);
 }
@@ -114,7 +129,8 @@
 .toolMeta {
   margin: 0;
   color: var(--color-text-muted);
-  font-size: var(--font-size-small);
+  font-family: var(--font-mono);
+  font-size: var(--font-size-label);
   overflow-wrap: anywhere;
 }
 
@@ -132,6 +148,7 @@
 .toolDetails pre {
   margin: var(--space-1) 0 0;
   padding: var(--space-2);
+  border: var(--rule);
   border-radius: var(--radius-sm);
   background: var(--color-surface-raised);
   font-family: var(--font-mono);
@@ -141,15 +158,19 @@
 }
 
 /* Approvals need attention while pending, then settle into the transcript. */
+/* Approvals are ruled cells; a pending one takes the warning edge and tint. */
 .approval {
   display: grid;
   gap: var(--space-1);
   padding: var(--space-2) var(--space-3);
+  border: var(--rule);
+  border-left: 2px solid var(--color-border-interactive);
   border-radius: var(--radius-md);
   background: var(--color-surface-raised);
 }
 
 .approvalPending {
+  border-left-color: var(--tone-warning-text);
   background: var(--tone-warning-bg);
 }
 
@@ -159,8 +180,11 @@
   gap: var(--space-1);
   margin: 0;
   color: var(--tone-warning-text);
-  font-size: var(--font-size-small);
-  font-weight: 600;
+  font-family: var(--font-mono);
+  font-size: var(--font-size-label);
+  font-weight: var(--label-weight);
+  letter-spacing: var(--label-tracking);
+  text-transform: uppercase;
 }
 
 .approval:not(.approvalPending) .approvalLabel {
@@ -230,15 +254,19 @@
 .controls {
   display: grid;
   gap: var(--space-2);
-  padding-top: var(--space-2);
-  border-top: 1px solid var(--color-border-subtle);
+  margin: 0 calc(-1 * var(--space-3));
+  padding: var(--space-2) var(--space-3) 0;
+  border-top: var(--rule);
 }
 
 .controlsLabel {
   margin: 0;
   color: var(--color-text-muted);
-  font-size: var(--font-size-small);
-  font-weight: 600;
+  font-family: var(--font-mono);
+  font-size: var(--font-size-label);
+  font-weight: var(--label-weight);
+  letter-spacing: var(--label-tracking);
+  text-transform: uppercase;
 }
 
 /* Each suggestion carries why it is offered now, so it cannot read as a
@@ -316,7 +344,7 @@
   width: 100%;
   min-height: 1.75rem;
   padding: 0.25rem 0.5rem;
-  border: 1px solid var(--color-border);
+  border: 1px solid var(--color-border-interactive);
   border-radius: var(--radius-sm);
   background: var(--color-surface);
   color: var(--color-text);
@@ -341,16 +369,21 @@
   margin-left: auto;
 }
 
+/* Send is a primary action: the family's inverted block, the accent on hover. */
 .sendPrimary,
 .sendMenuButton {
   display: inline-flex;
   align-items: center;
   height: 1.625rem;
-  border: 1px solid var(--color-accent);
-  background: var(--color-accent);
-  color: var(--color-on-accent);
+  border: 1px solid var(--color-text);
+  background: var(--color-text);
+  color: var(--color-surface);
   font: inherit;
   cursor: pointer;
+  transition:
+    color var(--transition),
+    background-color var(--transition),
+    border-color var(--transition);
 }
 
 .sendPrimary {
@@ -362,28 +395,31 @@
   padding: 0 0.25rem;
   border-left-color: color-mix(
     in srgb,
-    var(--color-on-accent) 35%,
-    var(--color-accent)
+    var(--color-surface) 45%,
+    var(--color-text)
   );
   border-radius: 0 var(--radius-sm) var(--radius-sm) 0;
 }
 
 .sendPrimary:hover,
-.sendMenuButton[data-hovered] {
-  background: color-mix(in srgb, var(--color-accent) 88%, var(--color-text));
+.sendMenuButton[data-hovered],
+.sendMenuButton[aria-expanded='true'] {
+  border-color: var(--color-accent);
+  background: var(--color-accent);
+  color: var(--color-on-accent);
 }
 
 .sendPrimary:focus-visible,
 .sendMenuButton[data-focus-visible] {
   outline: 2px solid var(--color-focus);
-  outline-offset: 1px;
+  outline-offset: 2px;
 }
 
 /* Nothing to send yet: the control stays visible but recedes, and pressing it
    still records why. */
 .sendSplitIdle .sendPrimary,
 .sendSplitIdle .sendMenuButton {
-  border-color: var(--color-border);
+  border-color: var(--color-border-interactive);
   background: var(--color-surface);
   color: var(--color-text);
 }
@@ -394,8 +430,15 @@
 }
 
 .sendSplitIdle .sendPrimary:hover,
-.sendSplitIdle .sendMenuButton[data-hovered] {
+.sendSplitIdle .sendMenuButton[data-hovered],
+.sendSplitIdle .sendMenuButton[aria-expanded='true'] {
+  border-color: var(--color-border-interactive);
   background: var(--color-surface-raised);
+  color: var(--color-text);
+}
+
+.sendSplitIdle .sendPrimary:hover {
+  color: var(--color-text-muted);
 }
 
 .composerTools {
@@ -411,12 +454,20 @@
   gap: 0.25rem;
   min-height: 1.625rem;
   padding: 0 0.5rem;
-  border: 1px solid var(--color-border);
+  border: 1px solid var(--color-border-interactive);
   border-radius: var(--radius-sm);
   background: var(--color-surface);
   color: var(--color-text-muted);
   font: inherit;
+  font-family: var(--font-mono);
+  font-size: var(--font-size-label);
+  font-weight: var(--label-weight);
+  letter-spacing: var(--label-tracking);
+  text-transform: uppercase;
   cursor: pointer;
+  transition:
+    color var(--transition),
+    border-color var(--transition);
 }
 
 .modeButton[data-hovered] {
@@ -431,10 +482,10 @@
 
 .popover {
   max-width: 18rem;
-  border: 1px solid var(--color-border);
+  border: var(--rule);
   border-radius: var(--radius-md);
-  background: var(--color-surface);
-  box-shadow: 0 8px 24px rgb(0 0 0 / 18%);
+  background: var(--color-surface-raised);
+  box-shadow: var(--shadow-popover);
 }
 
 .menu {
@@ -454,7 +505,7 @@
 }
 
 .menuItem[data-focused] {
-  background: var(--color-surface-raised);
+  background: var(--color-selected-bg);
 }
 
 .menuItem[data-selected] .menuLabel::after {
@@ -468,4 +519,15 @@
 .menuDescription {
   color: var(--color-text-muted);
   font-size: var(--font-size-small);
+}
+
+/* Suggestions are prompts the agent will read, so they stay sentence case in
+   the sans rather than taking the toolbar buttons' mono labels. */
+.suggestions li > button {
+  font-family: var(--font-sans);
+  font-size: var(--font-size-base);
+  font-weight: 500;
+  letter-spacing: normal;
+  text-align: left;
+  text-transform: none;
 }

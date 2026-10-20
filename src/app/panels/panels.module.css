@@ -9,29 +9,42 @@
   padding: var(--space-2) var(--space-3);
 }
 
+/* Panel headers are section strips (decision 0020): a mono uppercase muted
+   label at the left, the existing note (Simulated, counts) at the right, on
+   the raised surface and ruled below, across the panel's full width. */
 .panelHeader {
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: var(--space-2);
-  margin-bottom: var(--space-2);
+  min-height: 1.75rem;
+  margin: calc(-1 * var(--space-2)) calc(-1 * var(--space-3)) var(--space-2);
+  padding: 0 var(--space-3);
+  border-bottom: var(--rule);
+  background: var(--color-surface-raised);
 }
 
 .panelHeader h2 {
   margin: 0;
-  font-size: var(--font-size-title);
+  color: var(--color-text-muted);
+  font-family: var(--font-mono);
+  font-size: var(--font-size-label);
+  font-weight: var(--label-weight);
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
 }
 
+/* Stages are rows of one ruled list. */
 .stageList {
   list-style: none;
-  margin: 0;
+  margin: 0 calc(-1 * var(--space-3));
   padding: 0;
   display: grid;
-  gap: var(--space-1);
 }
 
 .stage {
-  padding: var(--space-1) var(--space-2);
+  padding: var(--space-2) var(--space-3);
+  border-bottom: 1px solid var(--color-border-subtle);
   border-radius: var(--radius-sm);
 }
 
@@ -63,7 +76,10 @@
 .stageNumber {
   min-width: 1.25rem;
   color: var(--color-text-muted);
+  font-family: var(--font-mono);
+  font-size: var(--font-size-small);
   font-variant-numeric: tabular-nums;
+  line-height: 1.5rem;
 }
 
 .stageActions {

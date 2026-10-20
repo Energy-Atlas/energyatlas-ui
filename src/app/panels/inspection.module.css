@@ -15,7 +15,11 @@
 .eyebrow {
   margin: 0;
   color: var(--color-text-muted);
-  font-size: var(--font-size-small);
+  font-family: var(--font-mono);
+  font-size: var(--font-size-label);
+  font-weight: var(--label-weight);
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
 }
 
 .title {
@@ -23,14 +27,21 @@
   font-size: var(--font-size-title);
 }
 
+/* Sections are ruled across the panel, their titles mono labels. */
 .section {
-  margin-top: var(--space-3);
-  padding-top: var(--space-2);
-  border-top: 1px solid var(--color-border-subtle);
+  margin: var(--space-3) calc(-1 * var(--space-3)) 0;
+  padding: var(--space-2) var(--space-3) 0;
+  border-top: var(--rule);
 }
 
 .section h4 {
   margin: 0 0 var(--space-2);
+  color: var(--color-text-muted);
+  font-family: var(--font-mono);
+  font-size: var(--font-size-label);
+  font-weight: var(--label-weight);
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
 }
 
 .facts {
