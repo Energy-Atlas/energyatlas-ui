@@ -359,17 +359,26 @@
   margin-left: auto;
 }
 
-/* Send is a primary action: the family's inverted block, the accent on hover. */
+/* Send follows the control grammar (decision 0020, section 13) as a split
+   button: the send part and the chevron part are two boxes of one height, the
+   chevron part a full-height cell behind a rule, like the pickers. Ready to
+   send, both parts are the inverted primary block; the accent on hover, and an
+   open menu turns its cell to the accent. */
 .sendPrimary,
 .sendMenuButton {
   display: inline-flex;
   align-items: center;
+  justify-content: center;
   height: 1.625rem;
   border: 1px solid var(--color-text);
   background: var(--color-text);
   color: var(--color-surface);
   font: inherit;
   cursor: pointer;
+}
+
+.sendPrimary:hover,
+.sendMenuButton:hover {
   transition:
     color var(--transition),
     background-color var(--transition),
@@ -382,7 +391,8 @@
 }
 
 .sendMenuButton {
-  padding: 0 0.25rem;
+  width: 1.375rem;
+  padding: 0;
   border-left-color: color-mix(
     in srgb,
     var(--color-surface) 45%,
@@ -405,30 +415,41 @@
   outline-offset: 2px;
 }
 
-/* Nothing to send yet: the control stays visible but recedes, and pressing it
-   still records why. */
-.sendSplitIdle .sendPrimary,
-.sendSplitIdle .sendMenuButton {
-  border-color: var(--color-border-interactive);
-  background: var(--color-surface);
-  color: var(--color-text);
-}
-
+/* Nothing to send yet: the send part is disabled-with-reason (a dashed edge,
+   no fill, the reason on hover), and the chevron part is a secondary button:
+   raised, with an even edge and a rule before it. Hovering it steps the fill
+   up; the open menu inverts the whole cell, as an open picker does. */
 .sendSplitIdle .sendPrimary {
+  border: 1px dashed var(--color-border-interactive);
+  border-right: 0;
+  background: transparent;
   color: var(--color-text-muted);
   cursor: not-allowed;
 }
 
-.sendSplitIdle .sendPrimary:hover,
-.sendSplitIdle .sendMenuButton[data-hovered],
-.sendSplitIdle .sendMenuButton[aria-expanded='true'] {
+.sendSplitIdle .sendMenuButton {
   border-color: var(--color-border-interactive);
-  background: var(--color-surface-raised);
+  border-left: 1px solid var(--color-border-interactive);
+  background: var(--button-bg);
   color: var(--color-text);
 }
 
 .sendSplitIdle .sendPrimary:hover {
+  border-color: var(--color-border-interactive);
+  background: transparent;
   color: var(--color-text-muted);
+}
+
+.sendSplitIdle .sendMenuButton[data-hovered] {
+  border-color: var(--color-accent);
+  background: var(--button-bg-hover);
+  color: var(--color-text);
+}
+
+.sendSplitIdle .sendMenuButton[aria-expanded='true'] {
+  border-color: var(--color-text);
+  background: var(--color-text);
+  color: var(--color-surface);
 }
 
 .composerTools {

@@ -170,6 +170,7 @@ now differ in fill, edge, and content, so each reads at a glance and in greyscal
 | Secondary button | `--button-bg`, the text colour at 8 % over the surface | Even 1 px interactive edge | Centred verb |
 | Number steppers | `--button-bg` | On the field's bottom line | Minus and plus |
 | Primary button | Inverted block, unchanged | — | Centred verb |
+| Agent send (split button) | Ready: the inverted primary block; idle: the send part disabled (dashed, no fill), the chevron part `--button-bg` | A rule before the chevron part, a full-height cell | Enter glyph, then chevron; each part hovers on its own, and an open menu fills the whole chevron cell (inverted when idle, accent when ready) |
 | Quiet ribbon buttons | None at rest | An interactive edge and `--button-bg-hover` (14 %) on hover | Icon or menu name |
 
 Pressed buttons take `--button-bg-pressed` (20 %). A dashed edge means disabled and nothing else; disabled buttons lose
