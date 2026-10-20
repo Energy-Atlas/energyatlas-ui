@@ -9,29 +9,17 @@
   padding: var(--space-2) var(--space-3);
 }
 
-/* Panel headers are section strips (decision 0020): a mono uppercase muted
-   label at the left, the existing note (Simulated, counts) at the right, on
-   the raised surface and ruled below, across the panel's full width. */
 .panelHeader {
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: var(--space-2);
-  min-height: 1.75rem;
-  margin: calc(-1 * var(--space-2)) calc(-1 * var(--space-3)) var(--space-2);
-  padding: 0 var(--space-3);
-  border-bottom: var(--rule);
-  background: var(--color-surface-raised);
+  margin-bottom: var(--space-2);
 }
 
 .panelHeader h2 {
   margin: 0;
-  color: var(--color-text-muted);
-  font-family: var(--label-font);
-  font-size: var(--label-size);
-  font-weight: var(--label-weight);
-  letter-spacing: 0.12em;
-  text-transform: var(--label-case);
+  font-size: var(--font-size-title);
 }
 
 /* Stages are rows of one ruled list. */

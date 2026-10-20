@@ -466,15 +466,9 @@
   background: var(--color-surface-raised);
 }
 
-/* Dialog titles are header strips (decision 0020). */
 .dialogTitle {
   margin: 0;
-  color: var(--color-text-muted);
-  font-family: var(--label-font);
-  font-size: var(--label-size);
-  font-weight: var(--label-weight);
-  letter-spacing: 0.12em;
-  text-transform: var(--label-case);
+  font-size: var(--font-size-title);
 }
 
 .dialogBody {

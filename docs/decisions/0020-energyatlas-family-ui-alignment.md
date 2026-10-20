@@ -150,3 +150,10 @@ tiresome. Labels now take the app's sans, as written:
   corners, the palette, and inverted primary actions.
 - Geist Mono stays for code, identifiers, numbers in counts, keyboard hints, and tool metadata.
 - Units in labels read as written again (`MWh`, `m²`, `kWh/yr`).
+- Page, panel, card, form, dialog, and Inspection section titles inside a panel's content are titles, not labels: they
+  keep their earlier design (the title size and weight, the text colour, no tracking) and sit on the pane without a
+  backdrop strip. Only the docked tab strips and side handles keep the strip treatment.
+- Hovering an unselected tab or side handle shows the text colour, the pane surface, and a 1 px interactive edge (at
+  least 3:1 against the strip). The library's own hover gave the label the selected-tab colour, which after the
+  inversion is the strip's colour, so a hovered handle looked empty. Only hovering fades; selecting a tab is immediate,
+  so no check samples a colour halfway through a transition.

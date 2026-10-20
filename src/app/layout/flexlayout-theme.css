@@ -100,9 +100,6 @@
   font-weight: var(--label-weight);
   letter-spacing: var(--label-tracking);
   text-transform: var(--label-case);
-  transition:
-    color var(--transition),
-    background-color var(--transition);
 }
 
 .flexlayout__tab_button--selected,
@@ -115,6 +112,22 @@
 .flexlayout__tab_button--selected:hover,
 .flexlayout__border_button--selected:hover {
   color: var(--color-surface);
+}
+
+/* Hovering an unselected tab or side handle must be visible on its own: the
+   library's hover rule gives the label the selected-tab colour, which is the
+   strip's own colour once the selected tab is inverted. The label takes the
+   text colour, the cell the pane surface, and a 1px interactive edge (at least
+   3:1 against the strip) marks it. */
+.flexlayout__tab_button--unselected:hover,
+.flexlayout__border_button--unselected:hover {
+  background-color: var(--color-surface);
+  color: var(--color-text);
+  box-shadow: inset 0 0 0 1px var(--color-border-interactive);
+  /* Only hovering fades; selecting a tab changes it at once. */
+  transition:
+    color var(--transition),
+    background-color var(--transition);
 }
 
 /* Keyboard focus thickens the accent outline, inside the tab. */

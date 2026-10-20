@@ -6,27 +6,17 @@
   min-height: 0;
 }
 
-/* The page header is a section strip that also carries the map's controls
-   (decision 0020). */
 .header {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
   gap: var(--space-2) var(--space-4);
-  min-height: 2rem;
-  padding: var(--space-1) var(--space-4);
-  border-bottom: var(--rule);
-  background: var(--color-surface-raised);
+  padding: var(--space-2) var(--space-4);
 }
 
 .header h2 {
   margin: 0;
-  color: var(--color-text-muted);
-  font-family: var(--label-font);
-  font-size: var(--label-size);
-  font-weight: var(--label-weight);
-  letter-spacing: 0.12em;
-  text-transform: var(--label-case);
+  font-size: var(--font-size-title);
 }
 
 .metricGroup {

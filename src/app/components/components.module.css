@@ -117,20 +117,9 @@
   padding: var(--space-3) var(--space-4);
 }
 
-/* The page title is a header strip across the page (decision 0020): a mono
-   uppercase muted label on the raised surface, ruled below. */
-.page > h2 {
-  margin: calc(-1 * var(--space-3)) calc(-1 * var(--space-4)) var(--space-3);
-  padding: var(--space-2) var(--space-4);
-  border-bottom: var(--rule);
-  background: var(--color-surface-raised);
-  color: var(--color-text-muted);
-  font-family: var(--label-font);
-  font-size: var(--label-size);
-  font-weight: var(--label-weight);
-  letter-spacing: 0.12em;
-  line-height: 1.2rem;
-  text-transform: var(--label-case);
+.page h2 {
+  margin: 0 0 var(--space-2);
+  font-size: var(--font-size-title);
 }
 
 /* Sections inside a page are ruled, as in the family's grid. */

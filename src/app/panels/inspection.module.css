@@ -18,7 +18,7 @@
   font-family: var(--label-font);
   font-size: var(--label-size);
   font-weight: var(--label-weight);
-  letter-spacing: 0.12em;
+  letter-spacing: var(--label-tracking);
   text-transform: var(--label-case);
 }
 
@@ -36,12 +36,6 @@
 
 .section h4 {
   margin: 0 0 var(--space-2);
-  color: var(--color-text-muted);
-  font-family: var(--label-font);
-  font-size: var(--label-size);
-  font-weight: var(--label-weight);
-  letter-spacing: 0.12em;
-  text-transform: var(--label-case);
 }
 
 .facts {
