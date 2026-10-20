@@ -64,7 +64,51 @@ Only the app has: selection (one `selectedBg` and the accent outline), focus ins
 ## Deviations
 
 - **Pane surface.** The skill's family table maps surface-1 (`#1a1a1a`, `#f8fafc`) to the pane surface. The reference sets content on its base, so the panes use the base and surface-1 goes to strips, the status bar, and overlays.
+- **Grid headers wrap.** Mono uppercase headers are wider than Geist, and at the app's fixed column widths "Year built", "Floor area (m²)", and "PV yield (kWh/yr)" were cut off. The grids now share `workbenchColumnDefaults` (`wrapHeaderText`, `autoHeaderHeight`) in `src/app/grid/agGrid.ts`, so long headers take a second line; the column widths are unchanged, and the header tracking is 0.04em rather than 0.08em.
+- **Agent suggestions stay sentence case.** They are prompts the agent reads, not commands, so they keep the sans although they are buttons in a panel.
+- **Status bar.** Its items are mono uppercase at the label size; the last-operation notice at the right stays a sentence in the sans, because it is a message.
+- **First frame.** `index.html` gained an inline script that applies the stored appearance's scheme before the bundle runs, and `src/index.css` the family dark tokens for it and for `prefers-color-scheme: dark`. Before this pass a stored dark appearance painted light first.
+- **The dialog scrim** `rgb(0 0 0 / 35%)` in `src/app/shell/shell.module.css` stays a literal: a translucent black, the same in every appearance.
+- **Licence text.** `src/assets/fonts/OFL-GeistMono.txt` is kept byte for byte as distributed, including trailing spaces on some lines, so `git diff --check` reports them for that file only.
 
 ## Implementation status
 
-In progress.
+Built on the `trial/app-ui-alignment-family-wins` branch, 2026-10-20.
+
+| Layer | Commit | What changed |
+| --- | --- | --- |
+| Record | `31d2430` | [Decision 0020](decisions/0020-energyatlas-family-ui-alignment.md), this record, the `AGENTS.md` rule, decision 0010 marked superseded in part |
+| Tokens and contrast test | `9aeab36` | Family palette for Light and Dark; `borderInteractive` in every appearance; Light and Dark chart scaffolding; first-frame tokens and script; `appearances.test.ts` extended |
+| Fonts | `3dfff41` | Geist Mono vendored in `src/assets/fonts/` with its licence and a provenance note; `--font-mono` and `--font-size-label` |
+| Shell | `757811a` | Ruled ribbon and status bar; mono menu names with the inverted open menu; the inverted Run ▾; square, ruled menus, palette, and dialogs with header strips |
+| Docking | `5e5dc34` | FlexLayout tab strips and side ribbons in mono labels with the inverted active tab and gapped accent outline; square docking chrome; accent drop indicators |
+| Controls | `444994e` | Square buttons, inputs, steppers, and checkboxes on `borderInteractive`; inverted primary buttons; mono toolbar buttons; page header strips; ruled tables, notices, and empty states |
+| Panels | `01158e2` | Section-strip headers for Assets, Workflow, Reasoning; ruled stage list and Inspection sections; ruled approvals with a tone edge |
+| Data surfaces | `8aaab65` | AG Grid as a data sheet; dashboard tiles, controls, and charts as a shared-border grid; square chart bars and tooltips; ruled map header, controls, and legend; Roadmap nodes |
+| Fixes | `7e99576` | The app's focus ring on MapLibre controls; reduced motion on splitters; sentence-case agent suggestions |
+| Test | `a672423` | `e2e/appearance.spec.ts` checks that Geist Mono labels the tab strips and that no font comes from another origin |
+
+Not changed: the wording of every label (case is CSS only, so accessible names are unchanged), the curated appearances' palettes, the data palettes, the column widths, the row and control heights, and all behaviour.
+
+## Verification (2026-10-20)
+
+Node.js 24 and Microsoft Edge on Windows. The trial branch runs its browser tests on port 5473 and the preview on 4473 (local trial configurations, not committed).
+
+| Check | Result |
+| --- | --- |
+| `npm run typecheck` | passes |
+| `npm run lint` | passes on the repository's files; the two uncommitted trial Playwright configurations are outside the TypeScript project and fail to parse, so the run used `npx eslint . --ignore-pattern "playwright.trial*.config.ts"` |
+| `npm run format:check` | passes |
+| `npm test` | 175 tests in 20 files pass (the contrast test has 6 more checks per appearance) |
+| Playwright, dev server | 51 tests pass, including axe with no serious or critical violation in all six appearances and the new Geist Mono test |
+| `npm run build`, then the production spec | 1 test passes; the bundle carries `geist-mono-latin` (23.12 kB) and `geist-mono-latin-ext` (14.69 kB) |
+| Style audit after | 1 colour literal outside the token files (the scrim, explained above), down from 3; font sizes from the four tokens plus the grid's and charts' numeric pixel values; 68 border declarations (the framing this variant asks for); one `prefers-reduced-motion` rule driving `--transition`; no font host or CDN URL |
+| Browser checks | In Light, Dark, Technical monochrome, and Dark engineering at 1280x800 and 1920x1080: Geist and Geist Mono loaded, no font request to another origin, no horizontal page overflow, no clipped label on the Map, Table, Dashboard, Roadmap, and Creator pages, and no serious or critical axe violation on those pages at 1280x800. A stored Dark appearance paints black from the first frame. Switching from Light to Dark through the command palette restyles the chrome, the selected tab, the grid header, and both charts without a reload. Every control reached by Tab in Dark shows the 2 px accent ring; transitions are 0 s under reduced motion |
+| Screenshots | Before and after of every appearance at both sizes (Map, Dashboard, Table) and of Light and Dark on the Table with Inspection, Roadmap with Workflow, Creator, Settings, the View and Run menus, the command palette, Issues, Tasks, Reasoning, the empty Dashboard, and the shortcuts dialog; kept outside the repository |
+
+## Remaining gaps
+
+- **Map basemap labels** keep OpenFreeMap's Noto Sans glyphs (decision 0012); MapLibre cannot use Geist without generated glyphs.
+- **Canvas text** in charts stays Geist (guidelines section 2); axis labels are not mono labels.
+- **Guidelines:** decision 0020, section 11, lists the amendments the user would need to make to the guidelines for this variant.
+- **Package policy:** Geist Mono is vendored rather than installed from `@fontsource-variable/geist-mono`; the choice is open (decision 0020, section 4).
