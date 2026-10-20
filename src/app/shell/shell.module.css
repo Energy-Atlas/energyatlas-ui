@@ -14,7 +14,7 @@
   gap: var(--space-3);
   min-width: 0;
   padding: 0.25rem var(--space-3);
-  border-bottom: 1px solid var(--color-border);
+  border-bottom: var(--rule);
   background: var(--color-surface);
 }
 
@@ -56,14 +56,34 @@
   border: 1px solid transparent;
   border-radius: var(--radius-sm);
   cursor: pointer;
+  transition:
+    color var(--transition),
+    background-color var(--transition),
+    border-color var(--transition);
 }
 
+/* Menu names are the ribbon's nav labels (decision 0020): mono uppercase,
+   tracked; the open menu is the inverted block of the family's active item. */
 .menuButton {
+  min-height: 1.5rem;
   padding: 0.125rem 0.5rem;
+  font-family: var(--font-mono);
+  font-size: var(--font-size-label);
+  font-weight: var(--label-weight);
+  letter-spacing: var(--label-tracking);
+  text-transform: uppercase;
 }
 
-.menuButton[data-hovered],
-.menuButton[data-pressed],
+.menuButton[aria-expanded='true'] {
+  background: var(--color-text);
+  color: var(--color-surface);
+  box-shadow:
+    inset 0 0 0 1px var(--color-accent),
+    inset 0 0 0 3px var(--color-surface);
+}
+
+.menuButton[data-hovered]:not([aria-expanded='true']),
+.menuButton[data-pressed]:not([aria-expanded='true']),
 .quickButton:hover,
 .searchButton:hover,
 .statusButton:hover,
@@ -74,7 +94,7 @@
 .menuButton[data-focus-visible],
 .iconButton[data-focus-visible] {
   outline: 2px solid var(--color-focus);
-  outline-offset: 1px;
+  outline-offset: -2px;
 }
 
 .quickButton,
@@ -89,6 +109,7 @@
 .quickButton[aria-pressed='true'] {
   background: var(--color-selected-bg);
   border-color: var(--color-accent);
+  color: var(--color-accent-text);
 }
 
 .quickButton[aria-disabled='true'] {
@@ -109,12 +130,20 @@
   align-items: center;
   gap: 0.25rem;
   height: 1.75rem;
-  border: 1px solid var(--color-accent);
-  background: var(--color-accent);
-  color: var(--color-on-accent);
+  border: 1px solid var(--color-text);
+  background: var(--color-text);
+  color: var(--color-surface);
   font: inherit;
-  font-weight: 600;
+  font-family: var(--font-mono);
+  font-size: var(--font-size-label);
+  font-weight: var(--label-weight);
+  letter-spacing: var(--label-tracking);
+  text-transform: uppercase;
   cursor: pointer;
+  transition:
+    color var(--transition),
+    background-color var(--transition),
+    border-color var(--transition);
 }
 
 .runPrimary {
@@ -126,27 +155,31 @@
   padding: 0 0.25rem;
   border-left-color: color-mix(
     in srgb,
-    var(--color-on-accent) 35%,
-    var(--color-accent)
+    var(--color-surface) 45%,
+    var(--color-text)
   );
   border-radius: 0 var(--radius-sm) var(--radius-sm) 0;
 }
 
+/* The inverted block turns to the accent on hover and while its menu is open. */
 .runPrimary:hover,
-.runMenuButton[data-hovered] {
-  background: color-mix(in srgb, var(--color-accent) 88%, var(--color-text));
+.runMenuButton[data-hovered],
+.runMenuButton[aria-expanded='true'] {
+  border-color: var(--color-accent);
+  background: var(--color-accent);
+  color: var(--color-on-accent);
 }
 
 .runPrimary:focus-visible,
 .runMenuButton[data-focus-visible] {
   outline: 2px solid var(--color-focus);
-  outline-offset: 1px;
+  outline-offset: 2px;
 }
 
 /* When the current stage cannot run, the control stays visible but recedes. */
 .runSplitIdle .runPrimary,
 .runSplitIdle .runMenuButton {
-  border-color: var(--color-border);
+  border-color: var(--color-border-interactive);
   background: var(--color-surface);
   color: var(--color-text);
 }
@@ -157,8 +190,15 @@
 }
 
 .runSplitIdle .runPrimary:hover,
-.runSplitIdle .runMenuButton[data-hovered] {
+.runSplitIdle .runMenuButton[data-hovered],
+.runSplitIdle .runMenuButton[aria-expanded='true'] {
+  border-color: var(--color-border-interactive);
   background: var(--color-surface-raised);
+  color: var(--color-text);
+}
+
+.runSplitIdle .runPrimary:hover {
+  color: var(--color-text-muted);
 }
 
 .searchButton {
@@ -167,9 +207,20 @@
   justify-content: space-between;
   gap: var(--space-3);
   min-width: 14rem;
+  min-height: 1.5rem;
   padding: 0.125rem 0.5rem;
-  background: var(--color-surface-raised);
+  border-color: var(--color-border-interactive);
   color: var(--color-text-muted);
+  font-family: var(--font-mono);
+  font-size: var(--font-size-label);
+  letter-spacing: var(--label-tracking);
+  text-transform: uppercase;
+}
+
+.searchButton:hover {
+  border-color: var(--color-accent);
+  background: transparent;
+  color: var(--color-text);
 }
 
 .separator {
@@ -177,12 +228,13 @@
   width: 1px;
   margin: 0.25rem;
   border: 0;
-  background: var(--color-border-subtle);
+  background: var(--color-border);
 }
 
 .kbd {
   font-family: var(--font-mono);
-  font-size: var(--font-size-small);
+  font-size: var(--font-size-label);
+  letter-spacing: 0.04em;
   color: var(--color-text-muted);
 }
 
@@ -192,9 +244,9 @@
   z-index: 1000;
   min-width: 16rem;
   max-width: 28rem;
-  border: 1px solid var(--color-border);
+  border: var(--rule);
   border-radius: var(--radius-md);
-  background: var(--color-surface);
+  background: var(--color-surface-raised);
   box-shadow: var(--shadow-popover);
 }
 
@@ -269,16 +321,21 @@
   min-width: 0;
   min-height: 1.75rem;
   padding: 0 var(--space-3);
-  border-top: 1px solid var(--color-border);
+  border-top: var(--rule);
   background: var(--color-surface-raised);
   white-space: nowrap;
   overflow: hidden;
+  /* The family's meta line: mono at the label size (decision 0020). */
+  font-family: var(--font-mono);
+  font-size: var(--font-size-label);
+  letter-spacing: 0.04em;
 }
 
 .statusItem {
   display: inline-flex;
   align-items: center;
   gap: 0.25rem;
+  text-transform: uppercase;
 }
 
 .statusButton {
@@ -307,6 +364,7 @@
   overflow: hidden;
   border-radius: var(--radius-pill);
   background: var(--color-border);
+  box-shadow: inset 0 0 0 1px var(--color-border-interactive);
 }
 
 .progressFill {
@@ -324,6 +382,9 @@
   overflow: hidden;
   text-overflow: ellipsis;
   color: var(--color-text-muted);
+  font-family: var(--font-sans);
+  font-size: var(--font-size-small);
+  letter-spacing: normal;
 }
 
 .noticeRejected {
@@ -345,7 +406,7 @@
 .paletteModal,
 .dialogModal {
   width: min(40rem, calc(100vw - 2rem));
-  border: 1px solid var(--color-border);
+  border: var(--rule);
   border-radius: var(--radius-md);
   background: var(--color-surface);
   color: var(--color-text);
@@ -359,18 +420,24 @@
 .paletteSearch {
   display: block;
   padding: 0.5rem;
-  border-bottom: 1px solid var(--color-border-subtle);
+  border-bottom: var(--rule);
+  background: var(--color-surface-raised);
 }
 
 .paletteInput {
   box-sizing: border-box;
   width: 100%;
   padding: 0.375rem 0.5rem;
-  border: 1px solid var(--color-border);
+  border: 1px solid var(--color-border-interactive);
   border-radius: var(--radius-sm);
-  background: var(--color-bg);
+  background: var(--color-surface);
   color: var(--color-text);
   font: inherit;
+}
+
+.paletteInput:focus {
+  border-color: var(--color-accent);
+  outline: none;
 }
 
 .paletteMenu {
@@ -394,13 +461,20 @@
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 0.5rem 0.75rem;
-  border-bottom: 1px solid var(--color-border-subtle);
+  padding: 0.375rem 0.75rem;
+  border-bottom: var(--rule);
+  background: var(--color-surface-raised);
 }
 
+/* Dialog titles are header strips (decision 0020). */
 .dialogTitle {
   margin: 0;
-  font-size: var(--font-size-title);
+  color: var(--color-text-muted);
+  font-family: var(--font-mono);
+  font-size: var(--font-size-label);
+  font-weight: var(--label-weight);
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
 }
 
 .dialogBody {

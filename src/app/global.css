@@ -1,10 +1,25 @@
 /* Workbench tokens that do not vary by appearance. Colors come from the active
    appearance (src/app/appearance/appearances.ts), applied on the root element.
-   Status badges always carry an icon and text so color is never the only signal. */
+   Status badges always carry an icon and text so color is never the only signal.
+   Shapes follow the EnergyAtlas family (decision 0020): square corners, one
+   rule width, and short colour transitions. */
 :root {
-  --radius-sm: 4px;
-  --radius-md: 6px;
-  --radius-pill: 999px;
+  --radius-sm: 0;
+  --radius-md: 0;
+  --radius-pill: 0;
+  --rule: 1px solid var(--color-border);
+  --transition: 150ms ease;
+
+  /* Mono uppercase labels: tab strips, header strips, table headers, the
+     status bar, and toolbar buttons. */
+  --label-tracking: 0.08em;
+  --label-weight: 600;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  :root {
+    --transition: 0s;
+  }
 }
 
 html,
