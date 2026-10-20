@@ -166,7 +166,7 @@ now differ in fill, edge, and content, so each reads at a glance and in greyscal
 | Kind | Fill | Edge | Content |
 | --- | --- | --- | --- |
 | Text input, command search, palette and agent inputs | `--field-bg`, the pane colour (a well on raised strips) | 1 px interactive edge, 2 px at the bottom | Value left, muted placeholder |
-| Select (agent permission and model pickers) | As the input | As the input | Value left, chevron in its own cell behind a rule; the open picker inverts the cell |
+| Select (agent permission and model pickers) | As the input | As the input | Value left, chevron in its own full-height cell behind a rule; the open picker inverts the whole cell |
 | Secondary button | `--button-bg`, the text colour at 8 % over the surface | Even 1 px interactive edge | Centred verb |
 | Number steppers | `--button-bg` | On the field's bottom line | Minus and plus |
 | Primary button | Inverted block, unchanged | — | Centred verb |

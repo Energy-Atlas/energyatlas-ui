@@ -442,8 +442,10 @@
   display: inline-flex;
   align-items: center;
   gap: 0.25rem;
+  position: relative;
   min-height: 1.625rem;
-  padding: 0 0.5rem;
+  /* Room on the right for the chevron cell. */
+  padding: 0 1.875rem 0 0.5rem;
   justify-content: space-between;
   border: var(--field-edge);
   border-bottom: var(--field-edge-bottom);
@@ -462,21 +464,36 @@
     border-color var(--transition);
 }
 
-/* A select: the value, then the chevron in its own cell behind a rule. */
-.modeButton svg {
-  align-self: stretch;
-  height: auto;
-  margin-left: 0.25rem;
-  padding-left: 0.25rem;
+/* A select: the value, then the chevron in its own cell behind a rule. The
+   cell is a box of its own at the field's full height, so the open state fills
+   all of it; the icon is centred over it. */
+.modeButton::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  width: 1.375rem;
   border-left: 1px solid var(--color-border-subtle);
+}
+
+.modeButton svg {
+  position: absolute;
+  top: 50%;
+  right: 0.3125rem;
+  z-index: 1;
+  transform: translateY(-50%);
 }
 
 .modeButton[data-hovered] {
   border-color: var(--color-accent);
 }
 
-.modeButton[aria-expanded='true'] svg {
+.modeButton[aria-expanded='true']::after {
   background: var(--color-text);
+}
+
+.modeButton[aria-expanded='true'] svg {
   color: var(--color-surface);
 }
 
