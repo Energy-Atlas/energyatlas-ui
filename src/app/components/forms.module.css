@@ -1,10 +1,12 @@
+/* A form is a ruled cell of the page grid (decision 0020). */
 .form {
   display: grid;
   gap: var(--space-3);
   align-content: start;
   padding: var(--space-3);
+  border: var(--rule);
   border-radius: var(--radius-md);
-  background: var(--color-surface-raised);
+  background: var(--color-surface);
 }
 
 .formHeader {
@@ -12,10 +14,21 @@
   align-items: center;
   justify-content: space-between;
   gap: var(--space-2);
+  margin: calc(-1 * var(--space-3)) calc(-1 * var(--space-3)) 0;
+  padding: var(--space-1) var(--space-3);
+  border-bottom: var(--rule);
+  background: var(--color-surface-raised);
 }
 
 .formHeader h3 {
   margin: 0;
+  color: var(--color-text-muted);
+  font-family: var(--font-mono);
+  font-size: var(--font-size-label);
+  font-weight: var(--label-weight);
+  letter-spacing: 0.12em;
+  line-height: 1.5rem;
+  text-transform: uppercase;
 }
 
 .field {
@@ -32,11 +45,16 @@
   width: 100%;
   min-height: 1.75rem;
   padding: 0.125rem 0.5rem;
-  border: 1px solid var(--color-border);
+  border: 1px solid var(--color-border-interactive);
   border-radius: var(--radius-sm);
   background: var(--color-surface);
   color: var(--color-text);
   font: inherit;
+  transition: border-color var(--transition);
+}
+
+.input[data-focused] {
+  border-color: var(--color-accent);
 }
 
 .input[data-invalid] {
@@ -85,7 +103,7 @@
 }
 
 .checkbox::before {
-  border-radius: 2px;
+  border-radius: 0;
 }
 
 .radio[data-selected]::before {
@@ -122,7 +140,7 @@
 
 .stepper {
   min-width: 1.75rem;
-  border: 1px solid var(--color-border);
+  border: 1px solid var(--color-border-interactive);
   background: var(--color-surface-raised);
   color: var(--color-text);
   font: inherit;
@@ -155,7 +173,7 @@
   height: 4px;
   transform: translateY(-50%);
   border-radius: var(--radius-pill);
-  background: var(--color-border);
+  background: var(--color-border-interactive);
 }
 
 .sliderFill {

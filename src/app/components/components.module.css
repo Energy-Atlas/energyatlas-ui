@@ -10,12 +10,16 @@
 
 /* Stage states and capability disclosure (guidelines section 8): routine
    states are quiet text with an icon; attention states add tone and a tint. */
+/* Small metadata in the family's mono label style (decision 0020). */
 .state {
   display: inline-flex;
   align-items: center;
   gap: 0.25rem;
-  font-size: var(--font-size-small);
+  font-family: var(--font-mono);
+  font-size: var(--font-size-label);
+  letter-spacing: 0.04em;
   line-height: 1.25rem;
+  text-transform: uppercase;
   white-space: nowrap;
 }
 
@@ -34,22 +38,45 @@
   font-weight: 600;
 }
 
+/* Buttons (decision 0020): square, with an interactive edge of at least 3:1.
+   In toolbars and panels the label is a mono uppercase label; inside forms
+   and dialogs it stays sentence case in the sans for scanning. */
 .button {
   display: inline-flex;
   align-items: center;
   gap: 0.25rem;
   min-height: 1.625rem;
   padding: 0 0.5rem;
-  border: 1px solid var(--color-border);
+  border: 1px solid var(--color-border-interactive);
   border-radius: var(--radius-sm);
   background: var(--color-surface);
   color: var(--color-text);
   font: inherit;
+  font-family: var(--font-mono);
+  font-size: var(--font-size-label);
+  font-weight: var(--label-weight);
+  letter-spacing: var(--label-tracking);
+  text-transform: uppercase;
   cursor: pointer;
+  transition:
+    color var(--transition),
+    background-color var(--transition),
+    border-color var(--transition);
+}
+
+:global(form) .button,
+:global([role='dialog']) .button,
+:global([role='alertdialog']) .button {
+  font-family: var(--font-sans);
+  font-size: var(--font-size-base);
+  font-weight: 500;
+  letter-spacing: normal;
+  text-transform: none;
 }
 
 .button:hover {
   border-color: var(--color-accent);
+  color: var(--color-accent-text);
 }
 
 .button[aria-disabled='true'] {
@@ -58,14 +85,28 @@
   cursor: not-allowed;
 }
 
+.button[aria-disabled='true']:hover {
+  border-color: var(--color-border-interactive);
+}
+
+/* Primary actions are the family's inverted block, the accent on hover. */
 .primary {
+  background: var(--color-text);
+  border-color: var(--color-text);
+  color: var(--color-surface);
+}
+
+.primary:hover {
   background: var(--color-accent);
   border-color: var(--color-accent);
   color: var(--color-on-accent);
 }
 
-.primary[aria-disabled='true'] {
+.primary[aria-disabled='true'],
+.primary[aria-disabled='true']:hover {
   background: var(--color-surface);
+  border-color: var(--color-border-interactive);
+  color: var(--color-text-muted);
 }
 
 /* Pages scroll themselves; the overlay thumb in global.css reserves no width. */
@@ -76,22 +117,39 @@
   padding: var(--space-3) var(--space-4);
 }
 
-.page h2 {
-  margin: 0 0 var(--space-2);
-  font-size: var(--font-size-title);
+/* The page title is a header strip across the page (decision 0020): a mono
+   uppercase muted label on the raised surface, ruled below. */
+.page > h2 {
+  margin: calc(-1 * var(--space-3)) calc(-1 * var(--space-4)) var(--space-3);
+  padding: var(--space-2) var(--space-4);
+  border-bottom: var(--rule);
+  background: var(--color-surface-raised);
+  color: var(--color-text-muted);
+  font-family: var(--font-mono);
+  font-size: var(--font-size-label);
+  font-weight: var(--label-weight);
+  letter-spacing: 0.12em;
+  line-height: 1.2rem;
+  text-transform: uppercase;
 }
 
-.page h3 {
-  margin: var(--space-4) 0 var(--space-2);
+/* Sections inside a page are ruled, as in the family's grid. */
+.page > h3 {
+  margin: var(--space-4) calc(-1 * var(--space-4)) var(--space-2);
+  padding: var(--space-2) var(--space-4) 0;
+  border-top: var(--rule);
   font-size: var(--font-size-base);
 }
 
+/* Notices are ruled cells with a tone edge, like the family's admonitions. */
 .notice {
   display: flex;
   align-items: center;
   gap: var(--space-2);
   margin: 0 0 var(--space-2);
   padding: var(--space-2) var(--space-3);
+  border: var(--rule);
+  border-left: 2px solid var(--tone-warning-text);
   border-radius: var(--radius-sm);
   background: var(--color-surface-raised);
 }
@@ -123,7 +181,21 @@
 
 .table th {
   color: var(--color-text-muted);
-  font-weight: 600;
+  font-family: var(--font-mono);
+  font-size: var(--font-size-label);
+  font-weight: var(--label-weight);
+  letter-spacing: var(--label-tracking);
+  text-transform: uppercase;
+  vertical-align: bottom;
+}
+
+.table th + th,
+.table td + td {
+  border-left: 1px solid var(--color-border-subtle);
+}
+
+.table tbody tr:hover {
+  background: color-mix(in srgb, var(--color-accent) 8%, transparent);
 }
 
 .empty {
@@ -137,8 +209,9 @@
   max-width: 36rem;
   margin: var(--space-4);
   padding: var(--space-3) var(--space-4);
+  border: var(--rule);
   border-radius: var(--radius-md);
-  background: var(--color-surface-raised);
+  background: var(--color-surface);
 }
 
 .emptyTitle {

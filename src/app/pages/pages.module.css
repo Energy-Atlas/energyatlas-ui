@@ -5,7 +5,12 @@
 }
 
 .label {
-  font-weight: 600;
+  color: var(--color-text-muted);
+  font-family: var(--font-mono);
+  font-size: var(--font-size-label);
+  font-weight: var(--label-weight);
+  letter-spacing: var(--label-tracking);
+  text-transform: uppercase;
 }
 
 .radios {
@@ -38,11 +43,13 @@
   outline-offset: 2px;
 }
 
-/* Appearance choices: a label, a short description, and a swatch strip. */
+/* Appearance choices: a shared-border grid of cells, each with a label, a
+   short description, and a swatch strip. */
 .appearanceOptions {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(15rem, 1fr));
-  gap: var(--space-1) var(--space-3);
+  border-top: var(--rule);
+  border-left: var(--rule);
 }
 
 .appearanceOption {
@@ -51,6 +58,8 @@
   align-items: start;
   gap: var(--space-1) var(--space-2);
   padding: var(--space-2);
+  border-right: var(--rule);
+  border-bottom: var(--rule);
   border-radius: var(--radius-md);
   cursor: pointer;
 }
@@ -79,7 +88,7 @@
 
 .appearanceOption[data-focus-visible] {
   outline: 2px solid var(--color-focus);
-  outline-offset: 2px;
+  outline-offset: -2px;
 }
 
 .optionText {
@@ -102,9 +111,11 @@
   gap: 0.25rem;
 }
 
+/* The swatch outline is the theme's own rule, so pale and dark swatches both
+   keep an edge. */
 .swatch {
   width: 0.875rem;
   height: 0.875rem;
-  border-radius: 2px;
-  box-shadow: inset 0 0 0 1px rgb(127 127 127 / 40%);
+  border-radius: 0;
+  box-shadow: inset 0 0 0 1px var(--color-border-interactive);
 }
