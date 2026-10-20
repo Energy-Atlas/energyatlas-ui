@@ -95,11 +95,11 @@
 
   min-height: 1.5rem;
   border-radius: 0;
-  font-family: var(--font-mono);
-  font-size: var(--font-size-label);
+  font-family: var(--label-font);
+  font-size: var(--label-size);
   font-weight: var(--label-weight);
   letter-spacing: var(--label-tracking);
-  text-transform: uppercase;
+  text-transform: var(--label-case);
   transition:
     color var(--transition),
     background-color var(--transition);
@@ -148,10 +148,10 @@
 }
 
 .flexlayout__popup_menu_item {
-  font-family: var(--font-mono);
-  font-size: var(--font-size-label);
+  font-family: var(--label-font);
+  font-size: var(--label-size);
   letter-spacing: var(--label-tracking);
-  text-transform: uppercase;
+  text-transform: var(--label-case);
 }
 
 /* Resizing affordance: the seam stays a hairline until pointed at, then a
@@ -223,9 +223,9 @@
   content: 'Drop a tab here to dock it';
   padding: 0 var(--space-2);
   color: var(--color-text-muted);
-  font-family: var(--font-mono);
-  font-size: var(--font-size-label);
+  font-family: var(--label-font);
+  font-size: var(--label-size);
   letter-spacing: var(--label-tracking);
-  text-transform: uppercase;
+  text-transform: var(--label-case);
   white-space: nowrap;
 }

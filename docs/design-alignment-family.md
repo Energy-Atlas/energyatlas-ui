@@ -69,6 +69,8 @@ Only the app has: selection (one `selectedBg` and the accent outline), focus ins
 - **Status bar.** Its items are mono uppercase at the label size; the last-operation notice at the right stays a sentence in the sans, because it is a message.
 - **First frame.** `index.html` gained an inline script that applies the stored appearance's scheme before the bundle runs, and `src/index.css` the family dark tokens for it and for `prefers-color-scheme: dark`. Before this pass a stored dark appearance painted light first.
 - **The dialog scrim** `rgb(0 0 0 / 35%)` in `src/app/shell/shell.module.css` stays a literal: a translucent black, the same in every appearance.
+- **Labels in Geist (2026-10-20).** The owner replaced the mono uppercase labels with Geist as written ([decision 0020, section 12](decisions/0020-energyatlas-family-ui-alignment.md#12-label-style-2026-10-20)); every label rule now reads the label tokens. Grid headers keep `wrapHeaderText`, now rarely needed.
+- **Basemap roads.** The basemap takes its road colour from the pane surface and its land from the background; with both at the family base, roads matched the land. Where the two are equal, roads now take the raised surface (`src/app/pages/basemapStyle.ts`). The trial screenshots did not show this, because the browser tests stub the basemap tiles.
 - **Licence text.** `src/assets/fonts/OFL-GeistMono.txt` is kept byte for byte as distributed, including trailing spaces on some lines, so `git diff --check` reports them for that file only.
 
 ## Implementation status

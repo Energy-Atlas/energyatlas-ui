@@ -26,11 +26,11 @@
 .agentName {
   margin: 0;
   color: var(--color-text-muted);
-  font-family: var(--font-mono);
-  font-size: var(--font-size-label);
+  font-family: var(--label-font);
+  font-size: var(--label-size);
   font-weight: var(--label-weight);
   letter-spacing: 0.12em;
-  text-transform: uppercase;
+  text-transform: var(--label-case);
 }
 
 .log {
@@ -59,11 +59,11 @@
 .speaker {
   margin: 0 0 0.125rem;
   color: var(--color-text-muted);
-  font-family: var(--font-mono);
-  font-size: var(--font-size-label);
+  font-family: var(--label-font);
+  font-size: var(--label-size);
   font-weight: var(--label-weight);
   letter-spacing: var(--label-tracking);
-  text-transform: uppercase;
+  text-transform: var(--label-case);
 }
 
 .text {
@@ -180,11 +180,11 @@
   gap: var(--space-1);
   margin: 0;
   color: var(--tone-warning-text);
-  font-family: var(--font-mono);
-  font-size: var(--font-size-label);
+  font-family: var(--label-font);
+  font-size: var(--label-size);
   font-weight: var(--label-weight);
   letter-spacing: var(--label-tracking);
-  text-transform: uppercase;
+  text-transform: var(--label-case);
 }
 
 .approval:not(.approvalPending) .approvalLabel {
@@ -262,11 +262,11 @@
 .controlsLabel {
   margin: 0;
   color: var(--color-text-muted);
-  font-family: var(--font-mono);
-  font-size: var(--font-size-label);
+  font-family: var(--label-font);
+  font-size: var(--label-size);
   font-weight: var(--label-weight);
   letter-spacing: var(--label-tracking);
-  text-transform: uppercase;
+  text-transform: var(--label-case);
 }
 
 /* Each suggestion carries why it is offered now, so it cannot read as a
@@ -459,11 +459,11 @@
   background: var(--color-surface);
   color: var(--color-text-muted);
   font: inherit;
-  font-family: var(--font-mono);
-  font-size: var(--font-size-label);
+  font-family: var(--label-font);
+  font-size: var(--label-size);
   font-weight: var(--label-weight);
   letter-spacing: var(--label-tracking);
-  text-transform: uppercase;
+  text-transform: var(--label-case);
   cursor: pointer;
   transition:
     color var(--transition),

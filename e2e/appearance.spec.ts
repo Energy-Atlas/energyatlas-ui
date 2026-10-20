@@ -47,8 +47,11 @@ test('loads the Geist typeface for workbench text', async ({ page }) => {
   expect(font.loaded).toBe(true)
 })
 
-// Decision 0020: Geist Mono labels the tab strips, from the app's own bundle.
-test('loads Geist Mono for labels from the app bundle', async ({ page }) => {
+// Decision 0020: tab strips take the label style (Geist, as written), and
+// Geist Mono, for shortcuts and code, comes from the app's own bundle.
+test('labels tab strips in Geist and loads Geist Mono from the app bundle', async ({
+  page,
+}) => {
   await openWorkbench(page)
   const mono = await page.evaluate(async () => {
     await document.fonts.ready
@@ -56,6 +59,7 @@ test('loads Geist Mono for labels from the app bundle', async ({ page }) => {
     const tab = document.querySelector('.flexlayout__tab_button')
     return {
       tab: tab ? getComputedStyle(tab).fontFamily : '',
+      tabCase: tab ? getComputedStyle(tab).textTransform : '',
       loaded: faces.some(
         (face) =>
           face.family.replaceAll('"', '') === 'Geist Mono' &&
@@ -71,7 +75,9 @@ test('loads Geist Mono for labels from the app bundle', async ({ page }) => {
         ),
     }
   })
-  expect(mono.tab).toContain('Geist Mono')
+  expect(mono.tab).toContain('Geist Variable')
+  expect(mono.tab).not.toContain('Geist Mono')
+  expect(mono.tabCase).toBe('none')
   expect(mono.loaded).toBe(true)
   expect(mono.foreignFonts).toEqual([])
 })

@@ -6,11 +6,11 @@
 
 .label {
   color: var(--color-text-muted);
-  font-family: var(--font-mono);
-  font-size: var(--font-size-label);
+  font-family: var(--label-font);
+  font-size: var(--label-size);
   font-weight: var(--label-weight);
   letter-spacing: var(--label-tracking);
-  text-transform: uppercase;
+  text-transform: var(--label-case);
 }
 
 .radios {

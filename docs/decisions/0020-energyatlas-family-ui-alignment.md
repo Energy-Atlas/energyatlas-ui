@@ -17,7 +17,7 @@ Status: decided by the user (the owner) on 2026-10-20 as the "family wins" varia
 | --- | --- | --- | --- |
 | Borders and framing | A continuous rectilinear grid: rules on every frame, strip, and cell; shared borders | Guidelines 1: major pane boundaries only; internal grouping by spacing and surface tone | **Family.** Rules on pane boundaries, tab strips, the ribbon and status bar, and between panel sections; panel headers ruled below; dashboard tiles as a shared-border grid closed on four sides |
 | Panel headers | Section strips: small mono uppercase muted label, optional right-aligned note, ruled | Titles in the title size and weight | **Family.** Panel and page headers are section strips; the right-aligned note keeps whatever the header already shows (capability, count) |
-| Labels | Mono uppercase tracked labels | Sans throughout (guidelines 2: Geist on every surface) | **Family** for tab strips, the ribbon's menu names, panel and page headers, table headers, the status bar, small metadata, and text buttons in toolbars and panels. Menu items, buttons inside forms and dialogs, form labels, and content stay sentence case in Geist |
+| Labels | Mono uppercase tracked labels | Sans throughout (guidelines 2: Geist on every surface) | **App** (owner, 2026-10-20; section 12). Labels keep the family's places, weight, and muted colour, but are set in Geist as written. The first build used mono uppercase |
 | Type sizes | Editorial display sizes (48 to 64 px), 16 px body | Two or three sizes | **Family by role, app density.** The three sizes stay; one mono label size role is added (section 5); no display sizes |
 | Monospace | Geist Mono | Cascadia Code ([decision 0010](0010-geist-typeface.md)) | **Family.** Geist Mono for labels, code, identifiers, and the operation log, against decision 0010 (section 4) |
 | Active tab | Inverted block (text-coloured fill) in a thin accent outline | Text colour and an accent edge | **Family**, with the outline separated from the fill by a surface-coloured gap so it keeps 3:1 (section 6) |
@@ -130,8 +130,23 @@ Recorded in the [family alignment record](../design-alignment-family.md#deviatio
 The guidelines are the user's; these are proposals, not edits.
 
 - **Section 1 (boundaries):** allow a grid-framed language: rules on pane boundaries, tab strips, and between panel sections, with dashboard tiles as a shared-border grid, in place of "internal groupings should rely more on alignment, spacing, typography, and restrained surface contrast".
-- **Section 2 (typography):** allow a fourth size role for mono labels (11 px), and name **Geist Mono** for labels, code, and identifiers beside Geist; state that tab strips, panel headers, table headers, and the status bar use mono uppercase tracked labels.
+- **Section 2 (typography):** name **Geist Mono** for code, identifiers, keyboard hints, and the operation log beside Geist. Labels stay in Geist, as written (section 12), so no new size role is needed.
 - **Section 4 (palettes):** say that Light and Dark carry the EnergyAtlas family palette, and that the curated palettes share the family structure.
 - **Section 9 (Run):** describe the primary action as an inverted block (text-coloured fill) that turns to the accent on hover, keeping **▶ Run ▾**.
 - **Section 11 (consistency):** add square corners and a single overlay shadow to the shared visual language.
 - **Decision 0010:** its "Monospace stays Cascadia Code" consequence is superseded by section 4 of this record.
+
+## 12. Label style (2026-10-20)
+
+After trying the build, the owner kept the family variant but found the mono uppercase tab titles and header labels
+tiresome. Labels now take the app's sans, as written:
+
+- Tab strips, panel and page header strips, table headers, the status bar, dashboard tile labels, the map legend title,
+  and toolbar text buttons use four label tokens in `src/app/global.css`: `--label-font` (`var(--font-sans)`),
+  `--label-case` (`none`), `--label-size` (`var(--font-size-small)`, 12 px), and `--label-tracking` (`0`), with the
+  existing `--label-weight` (600) and the muted colour. The family's treatment is one edit away:
+  `var(--font-mono)`, `uppercase`, `var(--font-size-label)`, `0.08em`.
+- Everything else of the family stays: the rules, the inverted active tab with its outline and gap, the strips, square
+  corners, the palette, and inverted primary actions.
+- Geist Mono stays for code, identifiers, numbers in counts, keyboard hints, and tool metadata.
+- Units in labels read as written again (`MWh`, `m²`, `kWh/yr`).

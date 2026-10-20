@@ -10,11 +10,11 @@ ModuleRegistry.registerModules([AllCommunityModule])
 /**
  * Quartz with its parameters mapped to workbench tokens, so every appearance
  * follows the app. A data sheet in the EnergyAtlas family (decision 0020):
- * mono label headers, row and column rules, no zebra stripes, an accent tint
+ * label-style headers, row and column rules, no zebra stripes, an accent tint
  * on hover, and square corners. Numeric parameters do not take CSS variables,
- * so the header size repeats --font-size-label (0.6875rem, 11px) and the body
- * size --font-size-base (0.8125rem, 13px); the uppercase header text is a
- * class override in table.module.css.
+ * so the header size repeats --label-size (--font-size-small, 0.75rem, 12px)
+ * and the body size --font-size-base (0.8125rem, 13px); the header case and
+ * tracking are a class override in table.module.css.
  */
 export const workbenchGridTheme = themeQuartz.withParams({
   backgroundColor: 'var(--color-surface)',
@@ -22,8 +22,8 @@ export const workbenchGridTheme = themeQuartz.withParams({
   borderColor: 'var(--color-border)',
   headerBackgroundColor: 'var(--color-surface-raised)',
   headerTextColor: 'var(--color-text-muted)',
-  headerFontFamily: 'var(--font-mono)',
-  headerFontSize: 11,
+  headerFontFamily: 'var(--label-font)',
+  headerFontSize: 12,
   headerFontWeight: 600,
   headerColumnBorder: true,
   oddRowBackgroundColor: 'var(--color-surface)',
@@ -43,9 +43,9 @@ export const workbenchGridTheme = themeQuartz.withParams({
 })
 
 /**
- * Column defaults shared by the workbench grids. Mono uppercase header labels
- * (decision 0020) are wider than Geist, so long headers wrap onto a second
- * line instead of being cut off at the app's column widths.
+ * Column defaults shared by the workbench grids. Long header labels wrap onto
+ * a second line instead of being cut off at the app's column widths, whatever
+ * the label style (decision 0020).
  */
 export const workbenchColumnDefaults = {
   wrapHeaderText: true,

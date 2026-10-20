@@ -20,11 +20,11 @@
 .header h2 {
   margin: 0;
   color: var(--color-text-muted);
-  font-family: var(--font-mono);
-  font-size: var(--font-size-label);
+  font-family: var(--label-font);
+  font-size: var(--label-size);
   font-weight: var(--label-weight);
   letter-spacing: 0.12em;
-  text-transform: uppercase;
+  text-transform: var(--label-case);
 }
 
 .tabs {
@@ -48,11 +48,11 @@
 .tab {
   padding: 0.25rem 0.625rem;
   color: var(--color-text-muted);
-  font-family: var(--font-mono);
-  font-size: var(--font-size-label);
+  font-family: var(--label-font);
+  font-size: var(--label-size);
   font-weight: var(--label-weight);
   letter-spacing: var(--label-tracking);
-  text-transform: uppercase;
+  text-transform: var(--label-case);
   cursor: pointer;
   outline: none;
   transition:
@@ -134,6 +134,6 @@
 /* AG Grid header labels in the family's data-sheet style (decision 0020);
    the grid's theme parameters cannot set case or tracking. */
 .grid :global(.ag-header-cell-text) {
-  letter-spacing: 0.04em;
-  text-transform: uppercase;
+  letter-spacing: var(--label-tracking);
+  text-transform: var(--label-case);
 }

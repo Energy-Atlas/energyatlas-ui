@@ -10,9 +10,14 @@
   --rule: 1px solid var(--color-border);
   --transition: 150ms ease;
 
-  /* Mono uppercase labels: tab strips, header strips, table headers, the
-     status bar, and toolbar buttons. */
-  --label-tracking: 0.08em;
+  /* Labels: tab strips, header strips, table headers, the status bar, and
+     toolbar buttons. Sentence case in the interface sans, as the owner chose
+     on 2026-10-20; the family's mono uppercase is var(--font-mono),
+     uppercase, var(--font-size-label), and 0.08em. */
+  --label-font: var(--font-sans);
+  --label-case: none;
+  --label-size: var(--font-size-small);
+  --label-tracking: 0;
   --label-weight: 600;
 }
 

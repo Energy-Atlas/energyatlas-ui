@@ -67,11 +67,11 @@
 .menuButton {
   min-height: 1.5rem;
   padding: 0.125rem 0.5rem;
-  font-family: var(--font-mono);
-  font-size: var(--font-size-label);
+  font-family: var(--label-font);
+  font-size: var(--label-size);
   font-weight: var(--label-weight);
   letter-spacing: var(--label-tracking);
-  text-transform: uppercase;
+  text-transform: var(--label-case);
 }
 
 .menuButton[aria-expanded='true'] {
@@ -134,11 +134,11 @@
   background: var(--color-text);
   color: var(--color-surface);
   font: inherit;
-  font-family: var(--font-mono);
-  font-size: var(--font-size-label);
+  font-family: var(--label-font);
+  font-size: var(--label-size);
   font-weight: var(--label-weight);
   letter-spacing: var(--label-tracking);
-  text-transform: uppercase;
+  text-transform: var(--label-case);
   cursor: pointer;
   transition:
     color var(--transition),
@@ -211,10 +211,10 @@
   padding: 0.125rem 0.5rem;
   border-color: var(--color-border-interactive);
   color: var(--color-text-muted);
-  font-family: var(--font-mono);
-  font-size: var(--font-size-label);
+  font-family: var(--label-font);
+  font-size: var(--label-size);
   letter-spacing: var(--label-tracking);
-  text-transform: uppercase;
+  text-transform: var(--label-case);
 }
 
 .searchButton:hover {
@@ -325,17 +325,17 @@
   background: var(--color-surface-raised);
   white-space: nowrap;
   overflow: hidden;
-  /* The family's meta line: mono at the label size (decision 0020). */
-  font-family: var(--font-mono);
-  font-size: var(--font-size-label);
-  letter-spacing: 0.04em;
+  /* The family's meta line, in the label style (decision 0020). */
+  font-family: var(--label-font);
+  font-size: var(--label-size);
+  letter-spacing: var(--label-tracking);
 }
 
 .statusItem {
   display: inline-flex;
   align-items: center;
   gap: 0.25rem;
-  text-transform: uppercase;
+  text-transform: var(--label-case);
 }
 
 .statusButton {
@@ -470,11 +470,11 @@
 .dialogTitle {
   margin: 0;
   color: var(--color-text-muted);
-  font-family: var(--font-mono);
-  font-size: var(--font-size-label);
+  font-family: var(--label-font);
+  font-size: var(--label-size);
   font-weight: var(--label-weight);
   letter-spacing: 0.12em;
-  text-transform: uppercase;
+  text-transform: var(--label-case);
 }
 
 .dialogBody {

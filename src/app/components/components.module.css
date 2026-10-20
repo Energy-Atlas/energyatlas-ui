@@ -15,11 +15,11 @@
   display: inline-flex;
   align-items: center;
   gap: 0.25rem;
-  font-family: var(--font-mono);
-  font-size: var(--font-size-label);
-  letter-spacing: 0.04em;
+  font-family: var(--label-font);
+  font-size: var(--label-size);
+  letter-spacing: var(--label-tracking);
   line-height: 1.25rem;
-  text-transform: uppercase;
+  text-transform: var(--label-case);
   white-space: nowrap;
 }
 
@@ -52,11 +52,11 @@
   background: var(--color-surface);
   color: var(--color-text);
   font: inherit;
-  font-family: var(--font-mono);
-  font-size: var(--font-size-label);
+  font-family: var(--label-font);
+  font-size: var(--label-size);
   font-weight: var(--label-weight);
   letter-spacing: var(--label-tracking);
-  text-transform: uppercase;
+  text-transform: var(--label-case);
   cursor: pointer;
   transition:
     color var(--transition),
@@ -125,12 +125,12 @@
   border-bottom: var(--rule);
   background: var(--color-surface-raised);
   color: var(--color-text-muted);
-  font-family: var(--font-mono);
-  font-size: var(--font-size-label);
+  font-family: var(--label-font);
+  font-size: var(--label-size);
   font-weight: var(--label-weight);
   letter-spacing: 0.12em;
   line-height: 1.2rem;
-  text-transform: uppercase;
+  text-transform: var(--label-case);
 }
 
 /* Sections inside a page are ruled, as in the family's grid. */
@@ -181,11 +181,11 @@
 
 .table th {
   color: var(--color-text-muted);
-  font-family: var(--font-mono);
-  font-size: var(--font-size-label);
+  font-family: var(--label-font);
+  font-size: var(--label-size);
   font-weight: var(--label-weight);
   letter-spacing: var(--label-tracking);
-  text-transform: uppercase;
+  text-transform: var(--label-case);
   vertical-align: bottom;
 }
 

@@ -105,7 +105,9 @@ export function basemapColors(appearance: Appearance): BasemapColors {
     water: mixHex(chrome.bg, data.sequential[1] ?? chrome.border, 0.35),
     park: chrome.surfaceRaised,
     land: mixHex(chrome.bg, chrome.surfaceRaised, 0.5),
-    road: chrome.surface,
+    // Panes and gutters share one colour in the family appearances; roads
+    // then take the raised surface so they stay apart from the land.
+    road: chrome.surface === chrome.bg ? chrome.surfaceRaised : chrome.surface,
     casing: chrome.borderSubtle,
     line: chrome.border,
     label: chrome.textMuted,

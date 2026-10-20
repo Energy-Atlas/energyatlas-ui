@@ -165,7 +165,8 @@ describe('basemap style', () => {
       expect(colors.water).not.toBe(appearance.chrome.bg)
       expect(
         paintOf(layer(style, 'highway_motorway_inner'))['line-color'],
-      ).toBe(appearance.chrome.surface)
+      ).toBe(colors.road)
+      expect(colors.road).not.toBe(appearance.chrome.bg)
       expect(paintOf(layer(style, 'highway-name-major'))).toEqual({
         'text-color': appearance.chrome.textMuted,
         'text-halo-color': appearance.chrome.bg,
