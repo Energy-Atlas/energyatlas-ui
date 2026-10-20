@@ -82,13 +82,15 @@
     inset 0 0 0 3px var(--color-surface);
 }
 
+/* Quiet controls show their hover on their own: a raised fill and an
+   interactive edge, since the ribbon's own surface is one step away. */
 .menuButton[data-hovered]:not([aria-expanded='true']),
 .menuButton[data-pressed]:not([aria-expanded='true']),
 .quickButton:hover,
-.searchButton:hover,
 .statusButton:hover,
 .iconButton:hover {
-  background: var(--color-surface-raised);
+  border-color: var(--color-border-interactive);
+  background: var(--button-bg-hover);
 }
 
 .menuButton[data-focus-visible],
@@ -217,9 +219,15 @@
   text-transform: var(--label-case);
 }
 
+/* The command search reads as a field: a well with the field's bottom edge. */
+.searchButton {
+  border-bottom: var(--field-edge-bottom);
+  background: var(--field-bg);
+}
+
 .searchButton:hover {
   border-color: var(--color-accent);
-  background: transparent;
+  background: var(--field-bg);
   color: var(--color-text);
 }
 
@@ -428,9 +436,10 @@
   box-sizing: border-box;
   width: 100%;
   padding: 0.375rem 0.5rem;
-  border: 1px solid var(--color-border-interactive);
+  border: var(--field-edge);
+  border-bottom: var(--field-edge-bottom);
   border-radius: var(--radius-sm);
-  background: var(--color-surface);
+  background: var(--field-bg);
   color: var(--color-text);
   font: inherit;
 }

@@ -333,9 +333,10 @@
   width: 100%;
   min-height: 1.75rem;
   padding: 0.25rem 0.5rem;
-  border: 1px solid var(--color-border-interactive);
+  border: var(--field-edge);
+  border-bottom: var(--field-edge-bottom);
   border-radius: var(--radius-sm);
-  background: var(--color-surface);
+  background: var(--field-bg);
   color: var(--color-text);
   font: inherit;
   /* An explicit line height makes the row cap measurable. */
@@ -443,10 +444,12 @@
   gap: 0.25rem;
   min-height: 1.625rem;
   padding: 0 0.5rem;
-  border: 1px solid var(--color-border-interactive);
+  justify-content: space-between;
+  border: var(--field-edge);
+  border-bottom: var(--field-edge-bottom);
   border-radius: var(--radius-sm);
-  background: var(--color-surface);
-  color: var(--color-text-muted);
+  background: var(--field-bg);
+  color: var(--color-text);
   font: inherit;
   font-family: var(--label-font);
   font-size: var(--label-size);
@@ -459,9 +462,22 @@
     border-color var(--transition);
 }
 
+/* A select: the value, then the chevron in its own cell behind a rule. */
+.modeButton svg {
+  align-self: stretch;
+  height: auto;
+  margin-left: 0.25rem;
+  padding-left: 0.25rem;
+  border-left: 1px solid var(--color-border-subtle);
+}
+
 .modeButton[data-hovered] {
   border-color: var(--color-accent);
-  color: var(--color-text);
+}
+
+.modeButton[aria-expanded='true'] svg {
+  background: var(--color-text);
+  color: var(--color-surface);
 }
 
 .modeButton[data-focus-visible] {

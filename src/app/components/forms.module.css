@@ -34,9 +34,10 @@
   width: 100%;
   min-height: 1.75rem;
   padding: 0.125rem 0.5rem;
-  border: 1px solid var(--color-border-interactive);
+  border: var(--field-edge);
+  border-bottom: var(--field-edge-bottom);
   border-radius: var(--radius-sm);
-  background: var(--color-surface);
+  background: var(--field-bg);
   color: var(--color-text);
   font: inherit;
   transition: border-color var(--transition);
@@ -127,10 +128,12 @@
   text-align: right;
 }
 
+/* Steppers are buttons inside the field: raised, on the field's bottom line. */
 .stepper {
   min-width: 1.75rem;
-  border: 1px solid var(--color-border-interactive);
-  background: var(--color-surface-raised);
+  border: var(--field-edge);
+  border-bottom: var(--field-edge-bottom);
+  background: var(--button-bg);
   color: var(--color-text);
   font: inherit;
   cursor: pointer;

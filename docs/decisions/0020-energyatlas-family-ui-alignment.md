@@ -157,3 +157,20 @@ tiresome. Labels now take the app's sans, as written:
   least 3:1 against the strip). The library's own hover gave the label the selected-tab colour, which after the
   inversion is the strip's colour, so a hovered handle looked empty. Only hovering fades; selecting a tab is immediate,
   so no check samples a colour halfway through a transition.
+
+## 13. Control grammar (2026-10-20)
+
+Fields, selects, and buttons had become one object: a square box with a 1 px interactive edge on the pane colour. They
+now differ in fill, edge, and content, so each reads at a glance and in greyscale:
+
+| Kind | Fill | Edge | Content |
+| --- | --- | --- | --- |
+| Text input, command search, palette and agent inputs | `--field-bg`, the pane colour (a well on raised strips) | 1 px interactive edge, 2 px at the bottom | Value left, muted placeholder |
+| Select (agent permission and model pickers) | As the input | As the input | Value left, chevron in its own cell behind a rule; the open picker inverts the cell |
+| Secondary button | `--button-bg`, the text colour at 8 % over the surface | Even 1 px interactive edge | Centred verb |
+| Number steppers | `--button-bg` | On the field's bottom line | Minus and plus |
+| Primary button | Inverted block, unchanged | — | Centred verb |
+| Quiet ribbon buttons | None at rest | An interactive edge and `--button-bg-hover` (14 %) on hover | Icon or menu name |
+
+Pressed buttons take `--button-bg-pressed` (20 %). A dashed edge means disabled and nothing else; disabled buttons lose
+their fill. Muted text stays off the hover and pressed fills (it passes 4.5:1 on the 8 % rest fill in every appearance).
