@@ -17,6 +17,7 @@ import { ACTION_GROUPS, type AppAction } from '../actions.ts'
 import { cx } from '../cx.ts'
 import { toAriaKeyShortcut } from '../shortcuts.ts'
 import styles from './shell.module.css'
+import markUrl from '../../assets/brand/energyatlas-mark.svg'
 
 const RUN_SPLIT = 'run.split'
 
@@ -48,6 +49,7 @@ export function Ribbon({ actions, invoke }: RibbonProps) {
   return (
     <header className={styles.ribbon}>
       <div className={styles.brand}>
+        <img className={styles.brandMark} src={markUrl} alt="" />
         <span className={styles.product}>EnergyAtlas UI</span>
         <h1 className={styles.project}>{projectName}</h1>
       </div>

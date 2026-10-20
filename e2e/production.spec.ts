@@ -43,3 +43,28 @@ test('the built bundle serves its assets and renders the map', async ({
 
   expect(failed).toEqual([])
 })
+
+// Decision 0020, section 14: the EnergyAtlas favicons and mark come from the
+// app's own origin under the base path. Preview answers a missing file with
+// index.html, so the check reads the content type.
+test('serves the EnergyAtlas favicons and mark under the base path', async ({
+  page,
+}) => {
+  await page.goto(BASE_PATH)
+  const links = await page
+    .locator('link[rel~="icon"], link[rel="apple-touch-icon"]')
+    .evaluateAll((elements) =>
+      elements.map((element) => element.getAttribute('href') ?? ''),
+    )
+  expect(links).toHaveLength(4)
+  // The mark is small enough for Vite to inline as a data URI: no request.
+  const mark = await page.locator('header img').first().getAttribute('src')
+  expect(mark ?? '').toMatch(/^(data:image\/svg\+xml|\/)/)
+  const requested = mark?.startsWith('data:') ? links : [...links, mark ?? '']
+  for (const href of requested) {
+    expect(href.startsWith(BASE_PATH)).toBe(true)
+    const response = await page.request.get(href)
+    expect(response.status()).toBe(200)
+    expect(response.headers()['content-type'] ?? '').toMatch(/^image\//)
+  }
+})

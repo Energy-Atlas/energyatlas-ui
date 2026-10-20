@@ -175,3 +175,19 @@ now differ in fill, edge, and content, so each reads at a glance and in greyscal
 
 Pressed buttons take `--button-bg-pressed` (20 %). A dashed edge means disabled and nothing else; disabled buttons lose
 their fill. Muted text stays off the hover and pressed fills (it passes 4.5:1 on the 8 % rest fill in every appearance).
+
+## 14. The EnergyAtlas mark (2026-10-20)
+
+The owner chose the EnergyAtlas mark for the app and allowed copying it in. It replaces the blue square favicon and
+stands before the product name in the ribbon.
+
+- Source: the brand pack of the `app-ui-alignment` skill (`references/brand/`), drawn from the EnergyAtlas website's
+  icon. The white-E version is used everywhere, since the app has dark appearances; the knockout version, whose E
+  shows the surface, is not used.
+- Favicons in `public/brand/` (SVG, 32 px PNG, 16/32/48 px ICO, 180 px apple touch icon), linked from `index.html`
+  with root-relative paths that Vite prefixes with the base path. The production spec checks that each resolves to an
+  image under the base path.
+- The ribbon mark is `src/assets/brand/energyatlas-mark.svg`, imported as a URL (Vite inlines it, under 4 KB), drawn
+  decoratively (`alt=""`) before "EnergyAtlas UI" at 17 px, about 1.3 times the name's size, in every appearance.
+- The mark is never recoloured: its gradient includes the brand red, an image rather than a UI colour, so the rule
+  that red marks only errors does not apply to it.

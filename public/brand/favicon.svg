@@ -1,0 +1,11 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 800 800">
+  <title>EnergyAtlas</title>
+  <defs>
+    <linearGradient id="energyatlas-mark-gradient" x1="235.29" y1="685" x2="564.39" y2="114.97" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#003978"/>
+      <stop offset="1" stop-color="#f1392a"/>
+    </linearGradient>
+  </defs>
+  <path fill="url(#energyatlas-mark-gradient)" d="M729,590,399.84,780,70.74,590V210L399.84,20,729,210ZM446.86,481.42,681.93,345.7V291.41L399.84,454.27V725.71L681.93,562.85V508.56L446.86,644.28V590L681.93,454.27V400L446.86,535.7Z"/>
+  <path fill="#ffffff" d="M446.86,481.42,681.93,345.7V291.41L399.84,454.27V725.71L681.93,562.85V508.56L446.86,644.28V590L681.93,454.27V400L446.86,535.7Z"/>
+</svg>
