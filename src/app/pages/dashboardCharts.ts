@@ -50,6 +50,7 @@ function tooltipStyle(palette: DataPalette) {
     backgroundColor: ink.surface,
     borderColor: ink.axis,
     textStyle: { color: ink.primary, fontSize: TEXT_SIZE },
+    borderRadius: 0,
     extraCssText: 'box-shadow: none;',
   }
 }
@@ -224,7 +225,7 @@ export function annualDemandOption(
         barMaxWidth: 24,
         data: bars.map((bar) => ({
           value: toMwh(bar.kwh),
-          itemStyle: { color: bar.color, borderRadius: [0, 4, 4, 0] },
+          itemStyle: { color: bar.color, borderRadius: 0 },
           label: {
             show: true,
             position: 'right',

@@ -6,16 +6,25 @@
   min-height: 0;
 }
 
+/* The page header is a section strip (decision 0020). */
 .header {
   display: flex;
   align-items: center;
   gap: var(--space-2);
-  padding: var(--space-2) var(--space-4);
+  min-height: 2rem;
+  padding: 0 var(--space-4);
+  border-bottom: var(--rule);
+  background: var(--color-surface-raised);
 }
 
 .header h2 {
   margin: 0;
-  font-size: var(--font-size-title);
+  color: var(--color-text-muted);
+  font-family: var(--font-mono);
+  font-size: var(--font-size-label);
+  font-weight: var(--label-weight);
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
 }
 
 .tabs {
@@ -25,25 +34,42 @@
   min-height: 0;
 }
 
+/* A tab strip like the docked ones: mono labels, the selected tab an
+   inverted block in an accent outline with a gap (decision 0020). */
 .tabList {
   display: flex;
+  align-items: center;
   gap: var(--space-1);
+  min-height: 2rem;
   padding: 0 var(--space-4);
-  border-bottom: 1px solid var(--color-border-subtle);
+  border-bottom: var(--rule);
 }
 
 .tab {
-  padding: 0.375rem 0.75rem;
-  border-bottom: 2px solid transparent;
+  padding: 0.25rem 0.625rem;
   color: var(--color-text-muted);
+  font-family: var(--font-mono);
+  font-size: var(--font-size-label);
+  font-weight: var(--label-weight);
+  letter-spacing: var(--label-tracking);
+  text-transform: uppercase;
   cursor: pointer;
   outline: none;
+  transition:
+    color var(--transition),
+    background-color var(--transition);
+}
+
+.tab[data-hovered]:not([data-selected]) {
+  color: var(--color-text);
 }
 
 .tab[data-selected] {
-  border-bottom-color: var(--color-accent);
-  color: var(--color-text);
-  font-weight: 600;
+  background: var(--color-text);
+  color: var(--color-surface);
+  box-shadow:
+    inset 0 0 0 1px var(--color-accent),
+    inset 0 0 0 3px var(--color-surface);
 }
 
 .tab[data-focus-visible] {
@@ -103,4 +129,11 @@
   background: var(--tone-warning-bg);
   color: var(--tone-warning-text);
   font-weight: 600;
+}
+
+/* AG Grid header labels in the family's data-sheet style (decision 0020);
+   the grid's theme parameters cannot set case or tracking. */
+.grid :global(.ag-header-cell-text) {
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
 }

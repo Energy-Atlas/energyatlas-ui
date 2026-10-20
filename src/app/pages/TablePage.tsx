@@ -30,7 +30,7 @@ import { ActionButton } from '../components/ActionButton.tsx'
 import { CapabilityBadge } from '../components/CapabilityBadge.tsx'
 import { EmptyState } from '../components/EmptyState.tsx'
 import formStyles from '../components/forms.module.css'
-import { workbenchGridTheme } from '../grid/agGrid.ts'
+import { workbenchColumnDefaults, workbenchGridTheme } from '../grid/agGrid.ts'
 import styles from './table.module.css'
 
 type BuildingRow = Building & { baselineMwh: number | null }
@@ -363,6 +363,7 @@ function BuildingsTable() {
       <div className={styles.grid}>
         <AgGridReact<BuildingRow>
           theme={workbenchGridTheme}
+          defaultColDef={workbenchColumnDefaults}
           rowData={rows}
           columnDefs={columns}
           getRowId={(params) => params.data.id}
@@ -463,6 +464,7 @@ function GridElementsTable() {
       <div className={styles.grid}>
         <AgGridReact<GridRow>
           theme={workbenchGridTheme}
+          defaultColDef={workbenchColumnDefaults}
           rowData={rows}
           columnDefs={columns}
           getRowId={(params) => params.data.id}

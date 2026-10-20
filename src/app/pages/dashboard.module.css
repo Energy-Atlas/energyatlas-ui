@@ -9,16 +9,26 @@
   container-type: inline-size;
 }
 
+/* The page header is a section strip (decision 0020). */
 .header {
   display: flex;
   align-items: center;
+  justify-content: space-between;
   gap: var(--space-2);
-  padding: var(--space-2) var(--space-4) 0;
+  min-height: 2rem;
+  padding: 0 var(--space-4);
+  border-bottom: var(--rule);
+  background: var(--color-surface-raised);
 }
 
 .header h2 {
   margin: 0;
-  font-size: var(--font-size-title);
+  color: var(--color-text-muted);
+  font-family: var(--font-mono);
+  font-size: var(--font-size-label);
+  font-weight: var(--label-weight);
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
 }
 
 .staleNotice {
@@ -29,18 +39,26 @@
   flex: 1;
 }
 
-/* Controls sit on a quiet surface tone instead of a bordered card. */
+/* Controls are a ruled cell of the dashboard grid. */
 .controls {
   display: grid;
   gap: var(--space-2);
   margin: 0 var(--space-4);
   padding: var(--space-2) var(--space-3);
+  border: var(--rule);
   border-radius: var(--radius-md);
-  background: var(--color-surface-raised);
 }
 
-.controls h3 {
+.controls h3,
+.card h3,
+.addedCharts h3 {
   margin: 0;
+  color: var(--color-text-muted);
+  font-family: var(--font-mono);
+  font-size: var(--font-size-label);
+  font-weight: var(--label-weight);
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
 }
 
 .controlEmpty {
@@ -62,7 +80,7 @@
 .swatch {
   width: 1rem;
   height: 3px;
-  border-radius: 2px;
+  border-radius: 0;
 }
 
 .slider {
@@ -79,22 +97,30 @@
   gap: 0.25rem;
 }
 
-/* Metrics are aligned values, not boxed cards. */
+/* Metrics are cells of a shared-border grid, closed on all four sides: the
+   grid draws the top and left rules, each tile its right and bottom. */
 .tiles {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(11rem, 1fr));
-  gap: var(--space-2) var(--space-4);
   margin: 0 var(--space-4);
+  border-top: var(--rule);
+  border-left: var(--rule);
 }
 
 .tile {
-  padding: var(--space-1) 0;
+  padding: var(--space-2) var(--space-3);
+  border-right: var(--rule);
+  border-bottom: var(--rule);
 }
 
 .tileLabel {
   margin: 0;
   color: var(--color-text-muted);
-  font-size: var(--font-size-small);
+  font-family: var(--font-mono);
+  font-size: var(--font-size-label);
+  font-weight: var(--label-weight);
+  letter-spacing: var(--label-tracking);
+  text-transform: uppercase;
 }
 
 .tileValue {
@@ -125,11 +151,13 @@
   color: var(--tone-danger-text);
 }
 
+/* Chart cards are cells of the same shared-border grid. */
 .charts {
   display: grid;
   grid-template-columns: minmax(0, 1fr);
-  gap: var(--space-4);
   margin: 0 var(--space-4);
+  border-top: var(--rule);
+  border-left: var(--rule);
 }
 
 @container (min-width: 960px) {
@@ -144,11 +172,13 @@
 
 .card {
   min-width: 0;
-  padding: var(--space-1) 0;
+  padding: var(--space-2) var(--space-3);
+  border-right: var(--rule);
+  border-bottom: var(--rule);
 }
 
 .card h3 {
-  margin: 0 0 var(--space-2);
+  margin-bottom: var(--space-2);
 }
 
 .dataTable {
@@ -184,6 +214,7 @@
   height: 0.5rem;
   border-radius: var(--radius-pill);
   background: var(--color-surface-raised);
+  box-shadow: inset 0 0 0 1px var(--color-border);
 }
 
 .meterFill {

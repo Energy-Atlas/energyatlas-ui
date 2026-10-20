@@ -170,6 +170,7 @@ export function compileChartSpec(
     backgroundColor: ink.surface,
     borderColor: ink.axis,
     textStyle: { color: ink.primary, fontSize: 12 },
+    borderRadius: 0,
     extraCssText: 'box-shadow: none;',
   }
   const measureLabel = CHART_MEASURE_LABELS[spec.measure]
@@ -279,7 +280,7 @@ export function compileChartSpec(
           barMaxWidth: 24,
           data: series.map((item) => ({
             value: value(item),
-            itemStyle: { color: item.color, borderRadius: [0, 4, 4, 0] },
+            itemStyle: { color: item.color, borderRadius: 0 },
             label: {
               show: true,
               position: 'right',
