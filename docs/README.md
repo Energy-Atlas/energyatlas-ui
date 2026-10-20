@@ -4,6 +4,7 @@
 - [Source handoff](20260913_product-ui-experiment-agent-handoff.md): complete initiation brief, preserved unchanged.
 - [UI design guidelines](20260915_energyatlas_ui_design_guidelines.md): current visual and interaction guidance supplied by the user on 2026-09-15 and maintained by the user (decision 0009); the Geist typeface was added at the user's request (decision 0010).
 - [Design alignment](design-alignment.md): the build compared with the design guidelines; decisions from discussion, the implemented plan, verification, and remaining gaps.
+- [Family alignment](design-alignment-family.md): the alignment with the EnergyAtlas family of decision 0020 (the family look winning); audit, translation, contrast evidence, implementation, and verification.
 - [Reference UI audit](reference-ui-audit.md): stack/hosting map, UI inventory, source evidence, legacy risks, reuse assessment, and limitations.
 - [Source manifest](reference-source-manifest.json): hashes of principal inspected reference files; no implementation copied.
 - [UI directions](ui-directions.md): three product approaches, technical comparison, recommendation, proposed slice boundaries, and two pending decisions.
