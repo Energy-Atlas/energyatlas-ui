@@ -47,6 +47,35 @@ test('loads the Geist typeface for workbench text', async ({ page }) => {
   expect(font.loaded).toBe(true)
 })
 
+// Decision 0020: Geist Mono labels the tab strips, from the app's own bundle.
+test('loads Geist Mono for labels from the app bundle', async ({ page }) => {
+  await openWorkbench(page)
+  const mono = await page.evaluate(async () => {
+    await document.fonts.ready
+    const faces = Array.from(document.fonts as unknown as Iterable<FontFace>)
+    const tab = document.querySelector('.flexlayout__tab_button')
+    return {
+      tab: tab ? getComputedStyle(tab).fontFamily : '',
+      loaded: faces.some(
+        (face) =>
+          face.family.replaceAll('"', '') === 'Geist Mono' &&
+          face.status === 'loaded',
+      ),
+      foreignFonts: performance
+        .getEntriesByType('resource')
+        .map((entry) => entry.name)
+        .filter(
+          (url) =>
+            /\.(woff2?|ttf|otf)(\?|$)/.test(url) &&
+            !url.startsWith(location.origin),
+        ),
+    }
+  })
+  expect(mono.tab).toContain('Geist Mono')
+  expect(mono.loaded).toBe(true)
+  expect(mono.foreignFonts).toEqual([])
+})
+
 test('switches appearance from Settings and keeps it across reloads', async ({
   page,
 }) => {
