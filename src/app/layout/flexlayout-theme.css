@@ -161,7 +161,10 @@
   visibility: visible;
 }
 
-.flexlayout__splitter {
+/* The library's own hover rule sets a 0.1s transition; both follow the
+   token, which is 0s under prefers-reduced-motion. */
+.flexlayout__splitter,
+.flexlayout__splitter:hover {
   transition: background-color var(--transition);
 }
 

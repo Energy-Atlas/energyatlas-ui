@@ -206,3 +206,12 @@
   color: var(--color-text-muted);
   font-size: var(--font-size-small);
 }
+
+/* MapLibre's own focus glow is a fixed blue; the app's focus ring replaces it,
+   inset so the control group does not clip it. */
+.mapArea :global(.maplibregl-ctrl button:focus-visible),
+.mapArea :global(.maplibregl-ctrl-attrib-button:focus-visible) {
+  box-shadow: none;
+  outline: 2px solid var(--color-focus);
+  outline-offset: -2px;
+}
