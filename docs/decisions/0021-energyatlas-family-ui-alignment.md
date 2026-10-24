@@ -191,3 +191,15 @@ stands before the product name in the ribbon.
   decoratively (`alt=""`) before "EnergyAtlas UI" at 17 px, about 1.3 times the name's size, in every appearance.
 - The mark is never recoloured: its gradient includes the brand red, an image rather than a UI colour, so the rule
   that red marks only errors does not apply to it.
+
+## 15. The mark alone in the ribbon (2026-10-24)
+
+At the owner's request the ribbon no longer shows the product name ("EnergyAtlas UI") or the project name; the mark
+stands alone at the start of the ribbon. This amends section 14 and the ribbon entry of section 8, which kept the
+product name in its accent colour and the project name in Geist.
+
+- The mark is now the only brand in the ribbon, so it carries the accessible name "EnergyAtlas" instead of `alt=""`.
+  Its size (17 px) and colours are unchanged.
+- The project name stays the page's level-one heading, visually hidden, so screen readers still announce it and the
+  e2e checks of the heading still hold.
+- The app's name in `index.html`, the favicons, and the wording elsewhere are unchanged.

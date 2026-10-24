@@ -49,9 +49,9 @@ export function Ribbon({ actions, invoke }: RibbonProps) {
   return (
     <header className={styles.ribbon}>
       <div className={styles.brand}>
-        <img className={styles.brandMark} src={markUrl} alt="" />
-        <span className={styles.product}>EnergyAtlas UI</span>
-        <h1 className={styles.project}>{projectName}</h1>
+        <img className={styles.brandMark} src={markUrl} alt="EnergyAtlas" />
+        {/* The mark alone is shown; the project name stays the page heading. */}
+        <h1 className="visually-hidden">{projectName}</h1>
       </div>
       <Toolbar aria-label="Workbench commands" className={styles.toolbar}>
         {ACTION_GROUPS.map((group) => (
