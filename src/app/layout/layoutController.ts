@@ -1,7 +1,9 @@
 import {
   Actions,
+  BorderNode,
   DockLocation,
   Model,
+  TabGroupNode,
   TabNode,
   TabSetNode,
   type Action,
@@ -158,7 +160,10 @@ export type LayoutController = {
   getVersion: () => number
   subscribe: (listener: () => void) => () => void
   openPage: (page: PageId, source?: CommandSource) => void
+  /** Whether the page is on screen, wherever it is docked. */
+  isPageOpen: (page: PageId) => boolean
   togglePanel: (panel: PanelId, source?: CommandSource) => void
+  /** Whether the panel is on screen, wherever it is docked. */
   isPanelOpen: (panel: PanelId) => boolean
   /** Collapses or expands a whole side container, whatever it holds. */
   toggleSide: (side: 'left' | 'right', source?: CommandSource) => void
@@ -331,6 +336,40 @@ export function createLayoutController(
     return found
   }
 
+  /** The tab set or border holding a tab, looking through tab groups. */
+  const tabContainer = (node: TabNode) => {
+    const parent = node.getParent()
+    return parent instanceof TabGroupNode ? parent.getParent() : parent
+  }
+
+  /**
+   * On screen: selected in its tab set or border, and hidden neither by
+   * another maximized tab set nor by a hidden border.
+   */
+  const isTabVisible = (id: string): boolean => {
+    const node = model.getNodeById(id)
+    if (!(node instanceof TabNode) || !node.isSelected()) return false
+    const container = tabContainer(node)
+    if (container instanceof BorderNode) return container.isShowing()
+    const maximized = model.getMaximizedTabset()
+    return !maximized || maximized === container
+  }
+
+  /** Brings a docked tab on screen, restoring a maximized tab set that hides it. */
+  const revealTab = (node: TabNode) => {
+    const container = tabContainer(node)
+    const maximized = model.getMaximizedTabset()
+    if (
+      container instanceof TabSetNode &&
+      maximized &&
+      maximized !== container
+    ) {
+      model.doAction(Actions.maximizeToggle(maximized.getId()))
+    }
+    // Selecting an already selected border tab would close it.
+    if (!node.isSelected()) model.doAction(Actions.selectTab(node.getId()))
+  }
+
   const NO_ACTIVE_TAB = 'No tab is active. Select a tab in a tab group first.'
 
   const splitActiveTabBlocker = (): string | null => {
@@ -369,8 +408,7 @@ export function createLayoutController(
       const id = pageTabId(page)
       const existing = model.getNodeById(id)
       if (existing instanceof TabNode) {
-        // Selecting an already selected border tab would close it.
-        if (!existing.isSelected()) model.doAction(Actions.selectTab(id))
+        revealTab(existing)
       } else {
         const target =
           model.getNodeById(MAIN_TABSET_ID) ??
@@ -433,22 +471,43 @@ export function createLayoutController(
         )
         return
       }
+      const name = PANELS[panel].name
+      if (!isTabVisible(id)) {
+        revealTab(node)
+        log(
+          'layout.togglePanel',
+          'Toggle panel',
+          { panel },
+          `Showed the ${name} panel.`,
+          source,
+        )
+        return
+      }
+      if (node.isInsideTabSet()) {
+        // A tab set always shows one of its tabs, so a panel docked among the
+        // pages is hidden by closing it; showing it again docks it back home.
+        model.doAction(Actions.deleteTab(id))
+        log(
+          'layout.togglePanel',
+          'Toggle panel',
+          { panel },
+          `Closed the ${name} panel. Showing it again docks it on the ${PANEL_HOME[panel]} side.`,
+          source,
+        )
+        return
+      }
       model.doAction(Actions.selectTab(id))
       log(
         'layout.togglePanel',
         'Toggle panel',
         { panel },
-        node.isSelected()
-          ? `Showed the ${PANELS[panel].name} panel.`
-          : `Hid the ${PANELS[panel].name} panel.`,
+        `Hid the ${name} panel.`,
         source,
       )
     },
 
-    isPanelOpen: (panel) => {
-      const node = model.getNodeById(panelTabId(panel))
-      return node instanceof TabNode && node.isSelected()
-    },
+    isPageOpen: (page) => isTabVisible(pageTabId(page)),
+    isPanelOpen: (panel) => isTabVisible(panelTabId(panel)),
 
     isSideOpen: (side) => (sideBorder(side)?.getSelected() ?? -1) >= 0,
 

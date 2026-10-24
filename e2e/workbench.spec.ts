@@ -60,6 +60,52 @@ test.describe('workbench shell', () => {
     ).toHaveCount(0)
   })
 
+  test('shows only the EnergyAtlas mark at the start of the ribbon', async ({
+    page,
+  }) => {
+    const banner = page.getByRole('banner')
+    await expect(banner.getByRole('img', { name: 'EnergyAtlas' })).toBeVisible()
+    await expect(banner.getByText('EnergyAtlas UI')).toHaveCount(0)
+    // The project name stays the page heading for assistive technology only.
+    await expect(page.getByRole('heading', { level: 1 })).toHaveClass(
+      'visually-hidden',
+    )
+  })
+
+  test('ticks every page and panel on screen in View > Panels', async ({
+    page,
+  }) => {
+    const toolbar = page.getByRole('toolbar', { name: 'Workbench commands' })
+    const panelsMenu = async () => {
+      await toolbar.getByRole('button', { name: 'View', exact: true }).click()
+      await page.getByRole('menuitem', { name: 'Panels' }).click()
+      // React Aria names a submenu after its trigger item.
+      return page.getByRole('menu', { name: 'Panels' })
+    }
+    const item = (menu: ReturnType<Page['getByRole']>, name: string) =>
+      menu.getByRole('menuitem', { name: new RegExp(`^${name}\\b`) })
+
+    let menu = await panelsMenu()
+    for (const name of ['Map', 'Assets', 'Reasoning']) {
+      await expect(item(menu, name)).toContainText('(on)')
+    }
+    for (const name of ['Table', 'Workflow', 'Inspection']) {
+      await expect(item(menu, name)).not.toContainText('(on)')
+    }
+    await page.keyboard.press('Escape')
+    await page.keyboard.press('Escape')
+
+    await page.getByRole('tab', { name: 'Table', exact: true }).click()
+    await page.getByRole('tab', { name: 'Workflow', exact: true }).click()
+    menu = await panelsMenu()
+    for (const name of ['Table', 'Workflow', 'Reasoning']) {
+      await expect(item(menu, name)).toContainText('(on)')
+    }
+    for (const name of ['Map', 'Assets']) {
+      await expect(item(menu, name)).not.toContainText('(on)')
+    }
+  })
+
   test('runs stages from the Run split button and its menu', async ({
     page,
   }) => {

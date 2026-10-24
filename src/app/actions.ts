@@ -204,6 +204,7 @@ export function useAppActions(dialogs: ShellDialogs): AppAction[] {
         group: 'View',
         menuPath: ['Panels'],
         shortcut: PAGE_SHORTCUTS[page],
+        pressed: layout.isPageOpen(page),
         disabledReason: null,
         perform: () => layout.openPage(page),
       })),
