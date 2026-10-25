@@ -106,34 +106,27 @@ test.describe('workbench shell', () => {
     }
   })
 
-  test('switches the demo account from the initials at the ribbon end', async ({
+  test('opens the account menu from the initials at the ribbon end', async ({
     page,
   }) => {
-    const banner = page.getByRole('banner')
-    const account = banner.getByRole('button', {
-      name: 'Account: Avery Chen (demo)',
-    })
+    const account = page
+      .getByRole('banner')
+      .getByRole('button', { name: 'Account: Avery Chen (demo)' })
     await expect(account).toHaveText('AC')
 
     await account.click()
+    // React Aria names the menu after its trigger button.
     const menu = page.getByRole('menu', { name: /^Account/ })
-    await expect(
-      menu.getByRole('menuitem', { name: /^Avery Chen/ }),
-    ).toContainText('(on)')
-    await expect(
-      menu.getByRole('menuitem', { name: /^Sign out/ }),
-    ).toHaveAttribute('aria-disabled', 'true')
-    await menu.getByRole('menuitem', { name: /^Jordan Okafor/ }).click()
-
-    const switched = banner.getByRole('button', {
-      name: 'Account: Jordan Okafor (demo)',
-    })
-    await expect(switched).toHaveText('JO')
-    await expect(page.getByTestId('status-notice')).toContainText(
-      'Showing the demo account of Jordan Okafor (Project lead).',
+    const items = menu.getByRole('menuitem')
+    await expect(items).toHaveCount(2)
+    await expect(items.nth(0)).toHaveAccessibleName('Account')
+    await expect(items.nth(1)).toHaveAccessibleName('Log out')
+    // Both are planned, and say so instead of doing nothing.
+    await expect(items.nth(1)).toHaveAttribute('aria-disabled', 'true')
+    await expect(items.nth(1)).toContainText(
+      'Signing in is planned; this demo has no account to log out of.',
     )
-    await page.reload()
-    await expect(switched).toHaveText('JO')
+    await expect(items.nth(0)).toHaveAttribute('aria-disabled', 'true')
   })
 
   test('runs stages from the Run split button and its menu', async ({

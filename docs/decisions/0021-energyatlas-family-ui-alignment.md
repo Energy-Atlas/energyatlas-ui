@@ -213,10 +213,10 @@ draw an automatic account picture. Its dropdown is the same menu as File, Edit, 
   every other corner stays square.
 - The initials sit on `--color-accent` in `--color-on-accent`, in Geist at the label size. Hover and the open menu ring
   the circle in the text colour over a surface gap; keyboard focus uses the app's focus ring.
-- Demo only. The account is one of three fictional people in `src/app/demoAccount.ts`; choosing one changes the name
-  and initials shown, is logged, and is kept in this browser (`eaui.account`). Profile, Notifications, and Sign out are
-  planned and say so when chosen; About demo accounts opens the capabilities dialog. Capabilities `account.demo`
-  (simulated), `account.profile`, `account.notifications`, and `account.signIn` (planned) describe them.
+- Demo only. The initials belong to a fictional person, Avery Chen (`src/app/demoAccount.ts`). At the owner's request
+  the menu holds exactly two items, Account and Log out. Both are planned and say so when chosen: capabilities
+  `account.settings` and `account.signIn` (planned) describe them, and `account.demo` (simulated) the initials. A
+  first version that switched between three demo people, with Profile and Notifications, was cut the same day.
 - The actions are in the shared registry under the `Account` group, which is not one of the ribbon's menu names, so the
   command palette finds them too.
 - A menu anchored at its right edge has a fixed width (22 rem): with a width that followed its wrapping reasons,

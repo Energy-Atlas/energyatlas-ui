@@ -12,10 +12,10 @@ import {
   Text,
   Toolbar,
 } from 'react-aria-components'
-import { useServices, useWorkbenchSnapshot } from '../WorkbenchContext.tsx'
+import { useWorkbenchSnapshot } from '../WorkbenchContext.tsx'
 import { ACTION_GROUPS, type AppAction } from '../actions.ts'
 import { cx } from '../cx.ts'
-import { accountInitials } from '../demoAccount.ts'
+import { accountInitials, DEMO_ACCOUNT } from '../demoAccount.ts'
 import { toAriaKeyShortcut } from '../shortcuts.ts'
 import styles from './shell.module.css'
 import markUrl from '../../assets/brand/energyatlas-mark.svg'
@@ -95,8 +95,7 @@ export function Ribbon({ actions, invoke }: RibbonProps) {
 
 /** The demo account's initials in a circle; its menu matches the ribbon menus. */
 function AccountMenu({ actions, invoke }: RibbonProps) {
-  const { account } = useServices()
-  const name = `Account: ${account.name} (demo)`
+  const name = `Account: ${DEMO_ACCOUNT.name} (demo)`
   return (
     <div className={styles.account}>
       <ActionMenu
@@ -106,7 +105,7 @@ function AccountMenu({ actions, invoke }: RibbonProps) {
         trigger={
           // The initials carry the tooltip; the button carries the name.
           <span className={styles.avatar} aria-hidden="true" title={name}>
-            {accountInitials(account.name)}
+            {accountInitials(DEMO_ACCOUNT.name)}
           </span>
         }
         triggerClassName={styles.avatarButton}
