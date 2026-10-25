@@ -12,9 +12,10 @@ import {
   Text,
   Toolbar,
 } from 'react-aria-components'
-import { useWorkbenchSnapshot } from '../WorkbenchContext.tsx'
+import { useServices, useWorkbenchSnapshot } from '../WorkbenchContext.tsx'
 import { ACTION_GROUPS, type AppAction } from '../actions.ts'
 import { cx } from '../cx.ts'
+import { accountInitials } from '../demoAccount.ts'
 import { toAriaKeyShortcut } from '../shortcuts.ts'
 import styles from './shell.module.css'
 import markUrl from '../../assets/brand/energyatlas-mark.svg'
@@ -87,7 +88,32 @@ export function Ribbon({ actions, invoke }: RibbonProps) {
           ) : null
         })}
       </Toolbar>
+      <AccountMenu actions={actions} invoke={invoke} />
     </header>
+  )
+}
+
+/** The demo account's initials in a circle; its menu matches the ribbon menus. */
+function AccountMenu({ actions, invoke }: RibbonProps) {
+  const { account } = useServices()
+  const name = `Account: ${account.name} (demo)`
+  return (
+    <div className={styles.account}>
+      <ActionMenu
+        label="Account"
+        actions={actions.filter((action) => action.group === 'Account')}
+        invoke={invoke}
+        trigger={
+          // The initials carry the tooltip; the button carries the name.
+          <span className={styles.avatar} aria-hidden="true" title={name}>
+            {accountInitials(account.name)}
+          </span>
+        }
+        triggerClassName={styles.avatarButton}
+        triggerAriaLabel={name}
+        placement="bottom end"
+      />
+    </div>
   )
 }
 
@@ -196,6 +222,7 @@ function ActionMenu({
   trigger,
   triggerClassName,
   triggerAriaLabel,
+  placement = 'bottom start',
 }: {
   label: string
   actions: AppAction[]
@@ -203,6 +230,7 @@ function ActionMenu({
   trigger: ReactNode
   triggerClassName: string | undefined
   triggerAriaLabel?: string
+  placement?: 'bottom start' | 'bottom end'
 }) {
   const onAction = (key: React.Key) => {
     const action = actions.find((candidate) => candidate.id === key)
@@ -214,7 +242,13 @@ function ActionMenu({
       <Button className={triggerClassName} aria-label={triggerAriaLabel}>
         {trigger}
       </Button>
-      <Popover className={styles.popover} placement="bottom start">
+      <Popover
+        className={cx(
+          styles.popover,
+          placement === 'bottom end' && styles.popoverEnd,
+        )}
+        placement={placement}
+      >
         <MenuLevel
           label={label}
           actions={actions}

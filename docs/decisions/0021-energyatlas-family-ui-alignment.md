@@ -203,3 +203,21 @@ product name in its accent colour and the project name in Geist.
 - The project name stays the page's level-one heading, visually hidden, so screen readers still announce it and the
   e2e checks of the heading still hold.
 - The app's name in `index.html`, the favicons, and the wording elsewhere are unchanged.
+
+## 16. The account button (2026-10-25)
+
+At the owner's request the ribbon ends with an account button: the account's initials in a circle, as mail clients
+draw an automatic account picture. Its dropdown is the same menu as File, Edit, View, Run, and Help.
+
+- The circle is the family's one round shape. `--radius-round` (50 %) in `src/app/global.css` exists for it alone;
+  every other corner stays square.
+- The initials sit on `--color-accent` in `--color-on-accent`, in Geist at the label size. Hover and the open menu ring
+  the circle in the text colour over a surface gap; keyboard focus uses the app's focus ring.
+- Demo only. The account is one of three fictional people in `src/app/demoAccount.ts`; choosing one changes the name
+  and initials shown, is logged, and is kept in this browser (`eaui.account`). Profile, Notifications, and Sign out are
+  planned and say so when chosen; About demo accounts opens the capabilities dialog. Capabilities `account.demo`
+  (simulated), `account.profile`, `account.notifications`, and `account.signIn` (planned) describe them.
+- The actions are in the shared registry under the `Account` group, which is not one of the ribbon's menu names, so the
+  command palette finds them too.
+- A menu anchored at its right edge has a fixed width (22 rem): with a width that followed its wrapping reasons,
+  React Aria's repositioning set off a ResizeObserver loop.

@@ -106,6 +106,36 @@ test.describe('workbench shell', () => {
     }
   })
 
+  test('switches the demo account from the initials at the ribbon end', async ({
+    page,
+  }) => {
+    const banner = page.getByRole('banner')
+    const account = banner.getByRole('button', {
+      name: 'Account: Avery Chen (demo)',
+    })
+    await expect(account).toHaveText('AC')
+
+    await account.click()
+    const menu = page.getByRole('menu', { name: /^Account/ })
+    await expect(
+      menu.getByRole('menuitem', { name: /^Avery Chen/ }),
+    ).toContainText('(on)')
+    await expect(
+      menu.getByRole('menuitem', { name: /^Sign out/ }),
+    ).toHaveAttribute('aria-disabled', 'true')
+    await menu.getByRole('menuitem', { name: /^Jordan Okafor/ }).click()
+
+    const switched = banner.getByRole('button', {
+      name: 'Account: Jordan Okafor (demo)',
+    })
+    await expect(switched).toHaveText('JO')
+    await expect(page.getByTestId('status-notice')).toContainText(
+      'Showing the demo account of Jordan Okafor (Project lead).',
+    )
+    await page.reload()
+    await expect(switched).toHaveText('JO')
+  })
+
   test('runs stages from the Run split button and its menu', async ({
     page,
   }) => {

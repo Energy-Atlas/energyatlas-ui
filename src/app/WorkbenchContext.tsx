@@ -34,6 +34,12 @@ import {
   readBasemapPreference,
   storeBasemapPreference,
 } from './basemapPreference.ts'
+import {
+  findDemoAccount,
+  readDemoAccount,
+  storeDemoAccount,
+  type DemoAccount,
+} from './demoAccount.ts'
 import { getBrowserStorage } from './storage.ts'
 import {
   applyAppearance,
@@ -71,6 +77,9 @@ export type Services = CoreServices & {
   setBasemapEnabled: (enabled: boolean) => void
   /** Opens the Inspection panel, which follows the shared selection. */
   showInspection: (source?: CommandSource) => void
+  /** The demo account shown in the ribbon; there is no sign-in. */
+  account: DemoAccount
+  setAccount: (id: string) => void
   /** The surface being worked in; Inspection shows its properties when nothing is selected. */
   workedSurface: WorkedSurface
   claimWorked: (surface: 'map') => void
@@ -133,6 +142,9 @@ export function WorkbenchProvider({ children }: { children: ReactNode }) {
     readBasemapPreference(core.storage),
   )
   const appearance = resolveAppearance(appearancePreference, systemDark)
+  const [account, setAccountState] = useState(() =>
+    readDemoAccount(core.storage),
+  )
   const [workedSurface, setWorkedSurface] = useState<WorkedSurface>(null)
 
   useEffect(() => {
@@ -189,10 +201,42 @@ export function WorkbenchProvider({ children }: { children: ReactNode }) {
           core.layout.togglePanel('inspection', source)
         }
       },
+      account,
+      setAccount: (id) => {
+        const next = findDemoAccount(id)
+        if (!next) {
+          core.workbench.record({
+            type: 'account.switch',
+            title: 'Switch demo account',
+            input: { id },
+            status: 'rejected',
+            summary: '',
+            issues: [
+              { path: '', message: `There is no demo account "${id}".` },
+            ],
+          })
+          return
+        }
+        setAccountState(next)
+        storeDemoAccount(core.storage, next.id)
+        core.workbench.record({
+          type: 'account.switch',
+          title: 'Switch demo account',
+          input: { id },
+          summary: `Showing the demo account of ${next.name} (${next.role}). Demo only: nobody is signed in.`,
+        })
+      },
       workedSurface,
       claimWorked: (surface) => setWorkedSurface(surface),
     }
-  }, [core, appearancePreference, appearance, basemapEnabled, workedSurface])
+  }, [
+    core,
+    appearancePreference,
+    appearance,
+    basemapEnabled,
+    account,
+    workedSurface,
+  ])
 
   return (
     <ServicesContext.Provider value={services}>

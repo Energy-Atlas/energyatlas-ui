@@ -158,6 +158,30 @@ export const capabilities = {
     status: 'planned',
     explanation: 'Commenting on assets and results is planned.',
   },
+  'account.demo': {
+    label: 'Account',
+    status: 'simulated',
+    explanation:
+      'The account in the ribbon is one of three fictional demo people; switching changes only the name and initials shown, and nobody is signed in.',
+  },
+  'account.profile': {
+    label: 'Profile',
+    status: 'planned',
+    explanation:
+      'Editing a name, role, and picture is planned once real accounts exist.',
+  },
+  'account.notifications': {
+    label: 'Notifications',
+    status: 'planned',
+    explanation:
+      'Choosing which run, review, and comment notifications to receive is planned.',
+  },
+  'account.signIn': {
+    label: 'Sign in and sign out',
+    status: 'planned',
+    explanation:
+      'Signing in is planned; this demo has no accounts to sign in to or out of.',
+  },
   'status.compute': {
     label: 'Computing resources',
     status: 'simulated',

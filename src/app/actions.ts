@@ -1,12 +1,14 @@
 import {
   ArrowRightLeft,
   Ban,
+  Bell,
   Columns2,
   Command,
   FilePlus,
   FolderTree,
   Info,
   ListChecks,
+  LogOut,
   Maximize,
   MessageSquare,
   Monitor,
@@ -22,6 +24,7 @@ import {
   ScanSearch,
   Sun,
   Undo2,
+  UserRound,
   Workflow,
   type LucideIcon,
 } from 'lucide-react'
@@ -29,6 +32,7 @@ import { useCallback, useMemo } from 'react'
 import { capabilities } from '../domain/capabilities.ts'
 import { stageRunBlocker } from '../domain/workflow.ts'
 import { APPEARANCE_LIST } from './appearance/appearances.ts'
+import { DEMO_ACCOUNTS } from './demoAccount.ts'
 import {
   useLayoutVersion,
   useServices,
@@ -42,7 +46,8 @@ import { saveProject } from './persistence.ts'
 // palette, and keyboard shortcuts, so they cannot drift apart. A disabled or
 // planned action is never a silent no-op: invoking it records the reason.
 
-export type ActionGroup = 'File' | 'Edit' | 'View' | 'Run' | 'Help'
+/** Account actions live in the menu behind the ribbon's account button. */
+export type ActionGroup = 'File' | 'Edit' | 'View' | 'Run' | 'Help' | 'Account'
 
 /**
  * Where a menu action sits inside its menu, as desktop menus do: an empty path
@@ -96,6 +101,8 @@ export function useAppActions(dialogs: ShellDialogs): AppAction[] {
     appearancePreference,
     setAppearance,
     showInspection,
+    account,
+    setAccount,
   } = useServices()
   const snapshot = useWorkbenchSnapshot((current) => current)
   const stageStates = useStageStates()
@@ -447,6 +454,47 @@ export function useAppActions(dialogs: ShellDialogs): AppAction[] {
         disabledReason: `Planned: ${capabilities['ribbon.comments'].explanation}`,
         perform: () => undefined,
       },
+      ...DEMO_ACCOUNTS.map((candidate): AppAction => ({
+        id: `account.switch.${candidate.id}`,
+        label: `${candidate.name} (${candidate.role})`,
+        group: 'Account',
+        // Listed first, as mail clients list accounts; the tick marks the one shown.
+        pressed: account.id === candidate.id,
+        disabledReason: null,
+        perform: () => setAccount(candidate.id),
+      })),
+      {
+        id: 'account.profile',
+        label: 'Profile (planned)',
+        group: 'Account',
+        icon: UserRound,
+        disabledReason: `Planned: ${capabilities['account.profile'].explanation}`,
+        perform: () => undefined,
+      },
+      {
+        id: 'account.notifications',
+        label: 'Notifications (planned)',
+        group: 'Account',
+        icon: Bell,
+        disabledReason: `Planned: ${capabilities['account.notifications'].explanation}`,
+        perform: () => undefined,
+      },
+      {
+        id: 'account.about',
+        label: 'About demo accounts',
+        group: 'Account',
+        icon: Info,
+        disabledReason: null,
+        perform: dialogs.openCapabilities,
+      },
+      {
+        id: 'account.signOut',
+        label: 'Sign out (planned)',
+        group: 'Account',
+        icon: LogOut,
+        disabledReason: `Planned: ${capabilities['account.signIn'].explanation}`,
+        perform: () => undefined,
+      },
     ]
     return actions
   }, [
@@ -459,6 +507,8 @@ export function useAppActions(dialogs: ShellDialogs): AppAction[] {
     appearancePreference,
     setAppearance,
     showInspection,
+    account,
+    setAccount,
     dialogs,
   ])
 }

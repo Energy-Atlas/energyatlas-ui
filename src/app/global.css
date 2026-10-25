@@ -7,6 +7,9 @@
   --radius-sm: 0;
   --radius-md: 0;
   --radius-pill: 0;
+  /* The one round shape: the account initials, as mail clients draw them
+     (decision 0021, section 16). */
+  --radius-round: 50%;
   --rule: 1px solid var(--color-border);
   --transition: 150ms ease;
 
