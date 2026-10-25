@@ -451,20 +451,35 @@ export function useAppActions(dialogs: ShellDialogs): AppAction[] {
         perform: () => undefined,
       },
       {
-        id: 'account.settings',
+        id: 'account.open',
         label: 'Account',
         group: 'Account',
         icon: UserRound,
-        disabledReason: `Planned: ${capabilities['account.settings'].explanation}`,
-        perform: () => undefined,
+        disabledReason: null,
+        perform: () => layout.openPage('account'),
       },
       {
         id: 'account.logOut',
         label: 'Log out',
         group: 'Account',
         icon: LogOut,
-        disabledReason: `Planned: ${capabilities['account.signIn'].explanation}`,
-        perform: () => undefined,
+        disabledReason: null,
+        // Nobody is signed in, so the reason goes to the status bar rather
+        // than under the menu item.
+        perform: () => {
+          workbench.record({
+            type: 'account.logOut',
+            title: 'Log out',
+            status: 'rejected',
+            summary: '',
+            issues: [
+              {
+                path: '',
+                message: `Planned: ${capabilities['account.signIn'].explanation}`,
+              },
+            ],
+          })
+        },
       },
     ]
     return actions

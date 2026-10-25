@@ -26,6 +26,7 @@ export const PAGES = {
   settings: { name: 'Settings', component: 'page.settings' },
   issues: { name: 'Issues', component: 'page.issues' },
   tasks: { name: 'Tasks', component: 'page.tasks' },
+  account: { name: 'Account', component: 'page.account' },
 } as const
 
 export const PANELS = {

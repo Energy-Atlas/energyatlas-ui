@@ -106,7 +106,7 @@ test.describe('workbench shell', () => {
     }
   })
 
-  test('opens the account menu from the initials at the ribbon end', async ({
+  test('opens the Account page from the initials, and explains Log out', async ({
     page,
   }) => {
     const account = page
@@ -119,14 +119,38 @@ test.describe('workbench shell', () => {
     const menu = page.getByRole('menu', { name: /^Account/ })
     const items = menu.getByRole('menuitem')
     await expect(items).toHaveCount(2)
-    await expect(items.nth(0)).toHaveAccessibleName('Account')
-    await expect(items.nth(1)).toHaveAccessibleName('Log out')
-    // Both are planned, and say so instead of doing nothing.
-    await expect(items.nth(1)).toHaveAttribute('aria-disabled', 'true')
-    await expect(items.nth(1)).toContainText(
-      'Signing in is planned; this demo has no account to log out of.',
+    await expect(items.nth(0)).toHaveText('Account')
+    await expect(items.nth(1)).toHaveText('Log out')
+    await items.nth(0).click()
+
+    const tab = page.getByRole('tab', { name: 'Account', exact: true })
+    await expect(tab).toHaveAttribute('aria-selected', 'true')
+    const accountPage = page.getByRole('region', { name: 'Account' })
+    await expect(accountPage).toContainText('Avery Chen')
+
+    // The Account page is a page like any other in View > Panels.
+    await page
+      .getByRole('toolbar', { name: 'Workbench commands' })
+      .getByRole('button', { name: 'View', exact: true })
+      .click()
+    await page.getByRole('menuitem', { name: 'Panels' }).click()
+    await expect(
+      page
+        .getByRole('menu', { name: 'Panels' })
+        .getByRole('menuitem', { name: /^Account/ }),
+    ).toContainText('(on)')
+    await page.keyboard.press('Escape')
+    await page.keyboard.press('Escape')
+
+    // Nobody is signed in, so Log out says why in the status bar.
+    await account.click()
+    await page
+      .getByRole('menu', { name: /^Account/ })
+      .getByRole('menuitem', { name: 'Log out' })
+      .click()
+    await expect(page.getByTestId('status-notice')).toContainText(
+      'this demo has no account to log out of.',
     )
-    await expect(items.nth(0)).toHaveAttribute('aria-disabled', 'true')
   })
 
   test('runs stages from the Run split button and its menu', async ({

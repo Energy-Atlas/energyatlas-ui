@@ -12,6 +12,7 @@ import {
   SquarePlus,
   Table2,
   TriangleAlert,
+  UserRound,
   Workflow,
   type LucideIcon,
 } from 'lucide-react'
@@ -26,6 +27,7 @@ import {
 import componentStyles from '../components/components.module.css'
 import '../global.css'
 import '../layout/flexlayout-theme.css'
+import { AccountPage } from '../pages/AccountPage.tsx'
 import { CreatorPage } from '../pages/CreatorPage.tsx'
 import { DashboardPage } from '../pages/DashboardPage.tsx'
 import { IssuesPage } from '../pages/IssuesPage.tsx'
@@ -64,6 +66,7 @@ const TAB_ICONS: Record<string, LucideIcon> = {
   'page.settings': Settings,
   'page.issues': TriangleAlert,
   'page.tasks': ListChecks,
+  'page.account': UserRound,
 }
 
 const KEY_MAP = { focusNextTabset: 'F6', focusPreviousTabset: 'Shift+F6' }
@@ -87,6 +90,8 @@ function renderTabContent(node: TabNode) {
       return <WorkflowPanel />
     case 'page.tasks':
       return <TasksPage />
+    case 'page.account':
+      return <AccountPage />
     case 'page.issues':
       return <IssuesPage />
     case 'page.settings':

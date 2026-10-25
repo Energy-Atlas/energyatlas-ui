@@ -213,11 +213,18 @@ draw an automatic account picture. Its dropdown is the same menu as File, Edit, 
   every other corner stays square.
 - The initials sit on `--color-accent` in `--color-on-accent`, in Geist at the label size. Hover and the open menu ring
   the circle in the text colour over a surface gap; keyboard focus uses the app's focus ring.
-- Demo only. The initials belong to a fictional person, Avery Chen (`src/app/demoAccount.ts`). At the owner's request
-  the menu holds exactly two items, Account and Log out. Both are planned and say so when chosen: capabilities
-  `account.settings` and `account.signIn` (planned) describe them, and `account.demo` (simulated) the initials. A
-  first version that switched between three demo people, with Profile and Notifications, was cut the same day.
+- Demo only. The initials belong to a fictional person, Avery Chen (`src/app/demoAccount.ts`), disclosed by the
+  `account.demo` capability (simulated). At the owner's request the menu holds exactly two items, with no reason
+  printed under them:
+  - **Account** opens the Account page, a page tab like Map or Settings (`page.account` in `PAGES`, opened on
+    demand rather than in the default layout), so it is listed and ticked in View > Panels and can be docked
+    anywhere. It shows the initials, name, and role.
+  - **Log out** is planned (`account.signIn`). Nobody is signed in, so choosing it records the reason in the
+    operation log and status bar instead of printing it in the menu.
+
+  A first version switched between three demo people and listed Profile, Notifications, and About demo accounts;
+  the owner cut it the same day.
 - The actions are in the shared registry under the `Account` group, which is not one of the ribbon's menu names, so the
   command palette finds them too.
-- A menu anchored at its right edge has a fixed width (22 rem): with a width that followed its wrapping reasons,
+- A menu anchored at its right edge has a fixed width (16 rem): with a width that followed wrapping reasons,
   React Aria's repositioning set off a ResizeObserver loop.

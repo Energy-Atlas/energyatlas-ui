@@ -50,26 +50,9 @@
   cursor: pointer;
 }
 
-/* Initials on the accent, like a mail client's automatic account picture. */
-.avatar {
-  display: inline-grid;
-  place-items: center;
-  width: 1.5rem;
-  height: 1.5rem;
-  border-radius: var(--radius-round);
-  background: var(--color-accent);
-  color: var(--color-on-accent);
-  font-family: var(--font-sans);
-  font-size: var(--font-size-label);
-  font-weight: 600;
-  letter-spacing: 0.02em;
-  line-height: 1;
-  transition: box-shadow var(--transition);
-}
-
 /* Hover and the open menu ring the circle in the text colour. */
-.avatarButton[data-hovered] .avatar,
-.avatarButton[aria-expanded='true'] .avatar {
+.avatarButton[data-hovered] > *,
+.avatarButton[aria-expanded='true'] > * {
   box-shadow:
     0 0 0 1px var(--color-surface),
     0 0 0 2px var(--color-text);
@@ -304,7 +287,7 @@
 /* A menu anchored at its right edge is positioned from its width, so a width
    that followed its wrapping reasons would keep resizing it; fix it instead. */
 .popoverEnd {
-  width: 22rem;
+  width: 16rem;
 }
 
 .menu {

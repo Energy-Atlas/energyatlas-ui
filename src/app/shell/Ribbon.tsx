@@ -15,7 +15,8 @@ import {
 import { useWorkbenchSnapshot } from '../WorkbenchContext.tsx'
 import { ACTION_GROUPS, type AppAction } from '../actions.ts'
 import { cx } from '../cx.ts'
-import { accountInitials, DEMO_ACCOUNT } from '../demoAccount.ts'
+import { AccountAvatar } from '../components/AccountAvatar.tsx'
+import { DEMO_ACCOUNT } from '../demoAccount.ts'
 import { toAriaKeyShortcut } from '../shortcuts.ts'
 import styles from './shell.module.css'
 import markUrl from '../../assets/brand/energyatlas-mark.svg'
@@ -104,9 +105,7 @@ function AccountMenu({ actions, invoke }: RibbonProps) {
         invoke={invoke}
         trigger={
           // The initials carry the tooltip; the button carries the name.
-          <span className={styles.avatar} aria-hidden="true" title={name}>
-            {accountInitials(DEMO_ACCOUNT.name)}
-          </span>
+          <AccountAvatar title={name} />
         }
         triggerClassName={styles.avatarButton}
         triggerAriaLabel={name}

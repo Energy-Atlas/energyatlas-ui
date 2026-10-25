@@ -226,3 +226,28 @@
   flex-wrap: wrap;
   gap: var(--space-2);
 }
+
+/* Account initials on the accent, like a mail client's automatic account
+   picture: the family's one round shape (decision 0021, section 16). */
+.avatar {
+  display: inline-grid;
+  flex-shrink: 0;
+  place-items: center;
+  width: 1.5rem;
+  height: 1.5rem;
+  border-radius: var(--radius-round);
+  background: var(--color-accent);
+  color: var(--color-on-accent);
+  font-family: var(--font-sans);
+  font-size: var(--font-size-label);
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  line-height: 1;
+  transition: box-shadow var(--transition);
+}
+
+.avatarLarge {
+  width: 3.5rem;
+  height: 3.5rem;
+  font-size: var(--font-size-title);
+}

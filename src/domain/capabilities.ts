@@ -162,13 +162,7 @@ export const capabilities = {
     label: 'Account',
     status: 'simulated',
     explanation:
-      'The initials in the ribbon belong to a fictional demo person; nobody is signed in.',
-  },
-  'account.settings': {
-    label: 'Account settings',
-    status: 'planned',
-    explanation:
-      'Viewing and editing your account is planned once real accounts exist.',
+      'The account belongs to a fictional demo person; nobody is signed in.',
   },
   'account.signIn': {
     label: 'Signing in and out',
