@@ -69,7 +69,9 @@ test('validates archetype and schedule fields where they are entered', async ({
   test.setTimeout(60_000)
   const archetypes = await openArchetypes(page)
   // A new archetype with an empty year range is refused on its field.
-  await archetypes.getByRole('textbox', { name: 'Archetype name' }).fill('Office 1990s')
+  await archetypes
+    .getByRole('textbox', { name: 'Archetype name' })
+    .fill('Office 1990s')
   await archetypes
     .getByRole('combobox', { name: 'Building use' })
     .selectOption('office')

@@ -46,9 +46,10 @@ describe('archetype definitions', () => {
     expect(
       matchArchetype(library, { use: 'residential', yearBuilt: 1979 }),
     ).toBe('archetype:residential-pre-1980')
+    // An unknown year takes the narrowest range open at one end, as before.
     expect(
       matchArchetype(library, { use: 'residential', yearBuilt: null }),
-    ).toBeNull()
+    ).toBe('archetype:residential-1980-on')
   })
 
   test('schedule statistics count five weekdays and two weekend days', () => {
@@ -228,5 +229,55 @@ describe('assignment jobs', () => {
     expect(retryBlocker(workbench.getState(), taskId)).toMatch(
       /inputs owned by "Archetype modeling" changed/,
     )
+  })
+
+  test('a first run adds the missing defaults even after an archetype was added', () => {
+    const workbench = partway()
+    workbench.execute({
+      type: 'archetype.addFromLibrary',
+      input: { libraryId: 'archetype:mixed' },
+    })
+    const preview = previewAssignment(workbench.getState())
+    expect(preview.unassigned).toBe(0)
+    runStageNow(workbench, S.archetypes)
+    const state = workbench.getState()
+    expect(Object.keys(state.archetypes)).toHaveLength(6)
+    expect(
+      state.buildingIds.every((id) => state.buildings[id]?.archetypeId),
+    ).toBe(true)
+  })
+
+  test('library schedules keep unique names and unused schedules do not outdate assignment', () => {
+    const workbench = partway()
+    workbench.execute({
+      type: 'schedule.save',
+      input: { name: 'Office occupancy', weekday: flat(0.5), weekend: flat(0) },
+    })
+    workbench.execute({
+      type: 'archetype.addFromLibrary',
+      input: { libraryId: 'archetype:office' },
+    })
+    const names = Object.values(workbench.getState().schedules).map(
+      (schedule) => schedule.name,
+    )
+    expect(names.sort()).toEqual([
+      'Office occupancy',
+      'Office occupancy (library)',
+    ])
+    runStageNow(workbench, S.archetypes)
+    expect(states(workbench)[S.archetypes]).toBe('executed')
+    const custom = Object.values(workbench.getState().schedules).find(
+      (schedule) => schedule.name === 'Office occupancy',
+    )
+    workbench.execute({
+      type: 'schedule.save',
+      input: {
+        id: custom?.id,
+        name: 'Office occupancy',
+        weekday: flat(0.6),
+        weekend: flat(0),
+      },
+    })
+    expect(states(workbench)[S.archetypes]).toBe('executed')
   })
 })

@@ -1,11 +1,7 @@
 import { z } from 'zod'
 import { GROUP, upsertAsset } from './assets.ts'
-import { matchArchetype } from './archetypes/assignment.ts'
-import {
-  ARCHETYPE_LIBRARY,
-  DEFAULT_ARCHETYPE_IDS,
-  SCHEDULE_LIBRARY,
-} from './archetypes/library.ts'
+import { matchArchetype, missingDefaults } from './archetypes/assignment.ts'
+import { ARCHETYPE_LIBRARY, SCHEDULE_LIBRARY } from './archetypes/library.ts'
 import { findDataset } from './intake/datasets.ts'
 import {
   fusionSubmitBlocker,
@@ -37,6 +33,7 @@ import type {
   CommandSource,
   EditValue,
   Archetype,
+  DefinitionSource,
   EditableBuildingField,
   HeldAssignmentOutput,
   HeldFusionOutput,
@@ -269,19 +266,54 @@ function stageItem(
   return { output, missing: output ? null : 'The floor count is missing.' }
 }
 
+/** Provenance after a save: new or edited in this project, remembering a library origin. */
+function editedSource(
+  previous: DefinitionSource | null,
+  operationId: string,
+): DefinitionSource {
+  const libraryId =
+    previous?.kind === 'library'
+      ? previous.libraryId
+      : previous?.kind === 'project'
+        ? previous.libraryId
+        : undefined
+  return libraryId
+    ? { kind: 'project', operationId, libraryId }
+    : { kind: 'project', operationId }
+}
+
 /** Bumps the inputs Archetype modeling owns, so assignments become outdated. */
 function touchArchetypeInputs(state: WorkbenchState) {
   const stage = state.workflow.stages[STAGE_IDS.archetypes]
   if (stage) stage.editRevision = nextRevision(state)
 }
 
-/** Copies a library archetype and the schedule it uses into the project. */
+/**
+ * Copies a library archetype and the schedule it uses into the project. A
+ * copied schedule whose name is taken gets a "(library)" suffix, so names
+ * stay unique and both stay editable.
+ */
 function addLibraryArchetype(state: WorkbenchState, entry: Archetype) {
   state.archetypes[entry.id] = structuredClone(entry)
   const schedule = SCHEDULE_LIBRARY.find((item) => item.id === entry.scheduleId)
   if (schedule && !state.schedules[schedule.id]) {
-    state.schedules[schedule.id] = structuredClone(schedule)
+    const copy = structuredClone(schedule)
+    if (!uniqueName(Object.values(state.schedules), copy.name)) {
+      copy.name = `${copy.name} (library)`
+    }
+    state.schedules[copy.id] = copy
   }
+}
+
+/** Why a stage run cannot be submitted, including item-input checks; shared by commands and controls. */
+export function stageSubmitBlocker(
+  state: WorkbenchState,
+  stageId: string,
+): string | null {
+  return (
+    stageRunBlocker(state.workflow, state.tasks, stageId) ??
+    itemInputBlocker(state, stageId)
+  )
 }
 
 const hourlyProfileSchema = z
@@ -450,14 +482,11 @@ export const commandDefinitions = {
       if (repeated) return repeated
       if (
         stageId === STAGE_IDS.archetypes &&
-        Object.keys(state.archetypes).length === 0 &&
         !stageRunBlocker(state.workflow, state.tasks, stageId)
       ) {
-        // A first assignment starts from the default synthetic library.
-        for (const entry of ARCHETYPE_LIBRARY) {
-          if (DEFAULT_ARCHETYPE_IDS.includes(entry.id)) {
-            addLibraryArchetype(state, entry)
-          }
+        // A first assignment adds the default library archetypes the project lacks.
+        for (const entry of missingDefaults(state)) {
+          addLibraryArchetype(state, entry)
         }
       }
       const blocker =
@@ -647,10 +676,7 @@ export const commandDefinitions = {
         yearTo: input.yearTo,
         euiKwhPerM2: input.euiKwhPerM2,
         scheduleId: input.scheduleId,
-        source: existing?.source ?? {
-          kind: 'project',
-          operationId: context.operationId,
-        },
+        source: editedSource(existing?.source ?? null, context.operationId),
       }
       touchArchetypeInputs(state)
       return applied(
@@ -733,12 +759,16 @@ export const commandDefinitions = {
         name: input.name,
         weekday: [...input.weekday],
         weekend: [...input.weekend],
-        source: existing?.source ?? {
-          kind: 'project',
-          operationId: context.operationId,
-        },
+        source: editedSource(existing?.source ?? null, context.operationId),
       }
-      touchArchetypeInputs(state)
+      // Only archetypes that use the schedule are affected.
+      if (
+        Object.values(state.archetypes).some(
+          (archetype) => archetype.scheduleId === id,
+        )
+      ) {
+        touchArchetypeInputs(state)
+      }
       return applied(
         existing
           ? `Updated schedule "${input.name}".`

@@ -1,3 +1,5 @@
+import { STAGE_IDS } from '../workflow.ts'
+import { ARCHETYPE_LIBRARY, DEFAULT_ARCHETYPE_IDS } from './library.ts'
 import type {
   Archetype,
   Building,
@@ -23,7 +25,10 @@ export function matchesBuilding(
 ): boolean {
   if (building.use !== archetype.use) return false
   if (archetype.yearFrom === null && archetype.yearTo === null) return true
-  if (building.yearBuilt === null) return false
+  // An unknown year falls in any range open at one end; the narrowest wins.
+  if (building.yearBuilt === null) {
+    return archetype.yearFrom === null || archetype.yearTo === null
+  }
   return (
     (archetype.yearFrom === null || building.yearBuilt >= archetype.yearFrom) &&
     (archetype.yearTo === null || building.yearBuilt <= archetype.yearTo)
@@ -37,7 +42,11 @@ export function matchArchetype(
 ): string | null {
   const candidates = Object.values(archetypes)
     .filter((archetype) => matchesBuilding(archetype, building))
-    .sort((a, b) => rangeWidth(a) - rangeWidth(b) || a.id.localeCompare(b.id))
+    .sort(
+      (a, b) =>
+        rangeWidth(a) - rangeWidth(b) ||
+        (a.id < b.id ? -1 : a.id > b.id ? 1 : 0),
+    )
   return candidates[0]?.id ?? null
 }
 
@@ -87,8 +96,34 @@ export type AssignmentPreview = {
   byArchetype: Record<string, number>
 }
 
-/** What assigning the current definitions would do; pure. */
+/**
+ * Library defaults a run adds before assigning: while Archetype modeling has
+ * never run, every default archetype the project lacks, skipping names in use.
+ */
+export function missingDefaults(state: WorkbenchState): Archetype[] {
+  const stage = state.workflow.stages[STAGE_IDS.archetypes]
+  if (!stage || stage.lastRun !== null) return []
+  const names = new Set(
+    Object.values(state.archetypes).map((item) =>
+      item.name.trim().toLowerCase(),
+    ),
+  )
+  return ARCHETYPE_LIBRARY.filter(
+    (entry) =>
+      DEFAULT_ARCHETYPE_IDS.includes(entry.id) &&
+      !state.archetypes[entry.id] &&
+      !names.has(entry.name.trim().toLowerCase()),
+  )
+}
+
+/** What assigning the current definitions would do, including defaults a first run adds; pure. */
 export function previewAssignment(state: WorkbenchState): AssignmentPreview {
+  const archetypes = {
+    ...Object.fromEntries(
+      missingDefaults(state).map((entry) => [entry.id, entry]),
+    ),
+    ...state.archetypes,
+  }
   const rows = new Map<CoverageRow['use'], CoverageRow>()
   const byArchetype: Record<string, number> = {}
   let assigned = 0
@@ -113,7 +148,7 @@ export function previewAssignment(state: WorkbenchState): AssignmentPreview {
       ? typeof override.value === 'string'
         ? override.value
         : null
-      : matchArchetype(state.archetypes, building)
+      : matchArchetype(archetypes, building)
     if (override) {
       row.overridden += 1
       overrides += 1

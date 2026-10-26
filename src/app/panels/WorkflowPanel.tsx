@@ -6,11 +6,8 @@ import {
   retryBlocker,
   retryScope,
 } from '../../domain/jobs/runGroups.ts'
-import {
-  STAGE_IDS,
-  hasActiveTask,
-  stageRunBlocker,
-} from '../../domain/workflow.ts'
+import { stageSubmitBlocker } from '../../domain/commands.ts'
+import { STAGE_IDS, hasActiveTask } from '../../domain/workflow.ts'
 import {
   useClientSnapshot,
   useServices,
@@ -79,7 +76,7 @@ export function WorkflowPanel() {
                       'workflow.runStage',
                       'the run was requested',
                       forStage(stageId),
-                    ) ?? stageRunBlocker(workflow, tasks, stageId)
+                    ) ?? stageSubmitBlocker(project, stageId)
                   }
                   onPress={() =>
                     void client.execute({

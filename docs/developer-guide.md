@@ -160,6 +160,16 @@ capture and enrichment reapply them, so the precedence on reruns is synthetic, t
 overrides. A fusion never changes a stage's `lastRun`. To add a dataset, append a fixture to `DATASETS` with its
 fields; to add a model target, extend `TargetField`, `TARGET_FIELDS`, `parseRecord`, and the schema enum.
 
+### Archetypes and schedules
+
+Definitions live in `state.archetypes` and `state.schedules` with `DefinitionSource` provenance; the synthetic library
+is `src/domain/archetypes/library.ts`. `matchArchetype` and `previewAssignment` in
+`src/domain/archetypes/assignment.ts` are the single matching rule (use, inclusive year range, narrowest first, then
+ID; an unknown year takes the narrowest range open at one end). Archetype modeling is an item stage: a first run adds
+the missing default library archetypes, each building's assignment is held, and `publishAssignment` applies them with
+manual overrides last. `stageSubmitBlocker` in `src/domain/commands.ts` adds item-input checks to `stageRunBlocker`;
+controls that have the whole state use it. Saved archetypes from before ranges are migrated in `projectSchema.ts`.
+
 ### Add or change model behavior: a command
 
 1. Add the entity fields to `src/domain/types.ts` (and `initialState.ts`).
@@ -248,6 +258,7 @@ Only packages from decisions 0007, 0008, and 0010 are allowed. Record a reason i
 End-to-end specs:
 
 - `e2e/project-lifecycle.spec.ts`: start, named creation/validation, multi-project save/open/recent, equal names, draft and job guards, failed Save, malformed storage, held-request recovery, all six appearances at three sizes, axe, keyboard focus, and reproducible screenshots in `tmp/`.
+- `e2e/archetypes.spec.ts`: library copy, coverage, assignment as a job with a notice, per-field archetype and schedule validation, and light, dark, and 900 px rendering with axe.
 - `e2e/intake.spec.ts`: suggested mapping, row validation, ambiguity and unmatched rejection, the schema-wide block and its explained Apply, fusion as a job with a notice, held records with failed-record retry, and light, dark, and 900 px rendering with axe.
 - `e2e/jobs.spec.ts`: partial preprocessing failure with held results, notice to job, failed-item retry and publication, Workflow Retry, changed-input refusal, cancelled stall with fresh run only, keyboard list/detail and filters, notice focus, all six appearances with axe, and a 900 px layout.
 - `e2e/smoke.spec.ts`: renders with no serious or critical axe violations.

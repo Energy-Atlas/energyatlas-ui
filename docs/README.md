@@ -1,6 +1,7 @@
 # Documentation index
 
 - [Autonomous implementation handoff, 2026-10-26](20261026_autonomous-roadmap-handoff.md): next agent starts here; approved scope through Results, local-merge authority, kickoff message, repository/worktree locations, and verification baseline.
+- [Archetypes and schedules plan and status](archetypes-schedules.md): roadmap step 5 as built: definitions, schedules, library, coverage, assignment jobs.
 - [Data intake plan and status](data-intake.md): roadmap step 4 as built: synthetic datasets, mapping, validation, stable-ID fusion jobs.
 - [RC observations for slices 4–8](roadmap-rc-observations.md): read-only reference facts at `7464c140` for data intake, archetypes, scenarios, calibration, and results.
 - [Jobs execution plan and status](jobs-execution-plan.md): roadmap step 3 as built: run groups, held item results, retry rules, FIFO runner, UI, verification.

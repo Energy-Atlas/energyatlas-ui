@@ -67,7 +67,7 @@ export type Building = {
 /** Where a definition came from: the synthetic library, or an operation in this project. */
 export type DefinitionSource =
   | { kind: 'library'; libraryId: string }
-  | { kind: 'project'; operationId: string }
+  | { kind: 'project'; operationId: string; libraryId?: string }
 
 export type Archetype = {
   id: string

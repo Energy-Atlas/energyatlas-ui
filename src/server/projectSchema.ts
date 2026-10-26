@@ -90,7 +90,11 @@ const heldPreprocessing = z.object({
 })
 const definitionSource = z.discriminatedUnion('kind', [
   z.object({ kind: z.literal('library'), libraryId: id }),
-  z.object({ kind: z.literal('project'), operationId: id }),
+  z.object({
+    kind: z.literal('project'),
+    operationId: id,
+    libraryId: id.optional(),
+  }),
 ])
 const archetypeFields = z.object({
   id,

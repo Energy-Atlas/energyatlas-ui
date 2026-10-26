@@ -31,7 +31,7 @@ import {
 import { useCallback, useMemo } from 'react'
 import { useStore } from 'zustand'
 import { capabilities } from '../domain/capabilities.ts'
-import { stageRunBlocker } from '../domain/workflow.ts'
+import { stageSubmitBlocker } from '../domain/commands.ts'
 import { APPEARANCE_LIST } from './appearance/appearances.ts'
 import {
   useClientSnapshot,
@@ -131,7 +131,7 @@ export function useAppActions(dialogs: ShellDialogs): AppAction[] {
     const pendingCount = Object.keys(state.pendingEdits).length
     const currentStageId = state.workflow.currentStageId
     const currentBlocker = currentStageId
-      ? stageRunBlocker(state.workflow, state.tasks, currentStageId)
+      ? stageSubmitBlocker(state, currentStageId)
       : 'No stage is focused.'
     const nextReady = state.workflow.stageIds.find(
       (id) => stageStates[id] === 'ready',

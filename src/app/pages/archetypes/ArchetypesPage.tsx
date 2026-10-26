@@ -13,9 +13,9 @@ import {
   scheduleStats,
 } from '../../../domain/archetypes/assignment.ts'
 import { ARCHETYPE_LIBRARY } from '../../../domain/archetypes/library.ts'
-import { definitionsBlocker } from '../../../domain/commands.ts'
+import { stageSubmitBlocker } from '../../../domain/commands.ts'
 import type { Archetype, BuildingUse, Schedule } from '../../../domain/types.ts'
-import { STAGE_IDS, stageRunBlocker } from '../../../domain/workflow.ts'
+import { STAGE_IDS } from '../../../domain/workflow.ts'
 import {
   useClientSnapshot,
   useServices,
@@ -134,7 +134,9 @@ function ArchetypeEditor({
           <span className={componentStyles.muted}>
             {archetype.source.kind === 'library'
               ? 'From the synthetic library'
-              : `Created in this project (operation ${archetype.source.operationId})`}
+              : archetype.source.libraryId
+                ? `Edited copy of a library archetype (operation ${archetype.source.operationId})`
+                : `Created in this project (operation ${archetype.source.operationId})`}
           </span>
         ) : null}
       </div>
@@ -144,6 +146,25 @@ function ArchetypeEditor({
         onSubmit={(event) => {
           event.preventDefault()
           if (saving) return
+          // Numbers are checked here so a blank or mistyped value is never sent as NaN.
+          const local: Record<string, string> = {}
+          for (const field of ['yearFrom', 'yearTo'] as const) {
+            const value = optionalYear(draft[field])
+            if (value !== null && !Number.isInteger(value)) {
+              local[field] = 'Enter a whole year, or leave it empty.'
+            }
+          }
+          if (
+            !Number.isFinite(Number(draft.euiKwhPerM2)) ||
+            !draft.euiKwhPerM2.trim()
+          ) {
+            local.euiKwhPerM2 = 'Enter the energy use intensity as a number.'
+          }
+          if (Object.keys(local).length > 0) {
+            setErrors(local)
+            setMessage(null)
+            return
+          }
           void client
             .execute({
               type: 'archetype.save',
@@ -356,6 +377,15 @@ function ScheduleForm({
         onSubmit={(event) => {
           event.preventDefault()
           if (saving) return
+          const hours = [
+            ...parseProfile(profile.weekday),
+            ...parseProfile(profile.weekend),
+          ]
+          if (hours.some((value) => !Number.isFinite(value))) {
+            setErrors({ weekday: 'Enter a number from 0 to 1 in every hour.' })
+            setMessage(null)
+            return
+          }
           void client
             .execute({
               type: 'schedule.save',
@@ -462,9 +492,7 @@ export function ArchetypesPage() {
       'the run is being queued',
       (input) =>
         (input as { stageId?: unknown }).stageId === STAGE_IDS.archetypes,
-    ) ??
-    stageRunBlocker(state.workflow, state.tasks, STAGE_IDS.archetypes) ??
-    definitionsBlocker(state)
+    ) ?? stageSubmitBlocker(state, STAGE_IDS.archetypes)
   const archetypeItems: ListItem[] = [
     { id: NEW, name: 'New archetype…', meta: null },
     ...archetypes.map((item) => ({
@@ -501,8 +529,9 @@ export function ArchetypesPage() {
           <h3 className={styles.sectionTitle}>Project archetypes</h3>
           {archetypes.length === 0 ? (
             <p className={componentStyles.empty}>
-              No archetypes yet. Running Archetype modeling starts from the
-              default synthetic library, or add one from the library below.
+              No archetypes yet. The first Archetype modeling run adds the
+              default synthetic library archetypes the project lacks; you can
+              also add or create archetypes first.
             </p>
           ) : null}
           <DefinitionList

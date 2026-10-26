@@ -11,7 +11,7 @@ import type {
   TaskStatus,
   WorkbenchState,
 } from '../../../domain/types.ts'
-import { stageRunBlocker } from '../../../domain/workflow.ts'
+import { stageSubmitBlocker } from '../../../domain/commands.ts'
 import type { PendingRequest } from '../../service/projectClient.ts'
 import { waitingReason } from '../../service/usePendingReason.ts'
 import type { JobFilter } from '../../view/viewOperations.ts'
@@ -136,7 +136,7 @@ export function freshRunBlocker(
       'workflow.runStage',
       'the run is being queued',
       (input) => (input as { stageId?: unknown }).stageId === task.stageId,
-    ) ?? stageRunBlocker(state.workflow, state.tasks, task.stageId)
+    ) ?? stageSubmitBlocker(state, task.stageId)
   )
 }
 
