@@ -1,6 +1,7 @@
 # Unified panel components: audit and proposal
 
-Status: proposal, awaiting the owner's choices (2026-10-26). Nothing here is implemented. It answers the owner's
+Status: accepted as [decision 0027](decisions/0027-unified-panel-components.md) on 2026-10-26, with the owner's
+choices recorded at the end. Nothing here is implemented yet. It answers the owner's
 review comments of 2026-10-26 after testing local `master` at `4400c69`:
 
 1. one design (reusable components, or at least one guideline) for each kind of component inside any panel: tables,
@@ -71,7 +72,7 @@ package), styled only from appearance tokens, and shown on a component gallery p
   toasts; success and info leave after six seconds (paused while hovered or focused); warnings and errors stay until
   dismissed. Toasts never take focus; one shortcut (F6 cycling, or a dedicated key) reaches them; reduced motion
   removes the slide. Every toast is also kept in the panel.
-- **Messages panel.** A dockable panel listing the history as a `LogView`/`SelectableList`: filter by tone and
+- **Messages panel.** A dockable panel (default: the right border, decision 0027) listing the history as a `LogView`/`SelectableList`: filter by tone and
   source, mark read, clear, and run a message's actions again. Scoped to the open project, with a "server" scope
   for connection events.
 - **Status bar.** Keeps a short last-operation sentence and adds an unread counter coloured by the worst unread tone;
@@ -159,12 +160,10 @@ Each step is reviewable on its own and ends with the full check list from `AGENT
    sentence, and per-form result lines.
 5. `SelectableList` and `LogView`; migrate Jobs, Archetypes, Creator, projects, and the agent's tool-call details.
 
-## Open choices for the owner
+## Owner's choices (2026-10-26)
 
-1. Table renderer: A (recommended), B, or C.
-2. Shaded alternate rows as an opt-in table style, amending decision 0021 for that option.
-3. Which events raise a toast: only asynchronous events and failures (recommended; applied commands go to the
-   status bar and the panel history without a popup), or every operation.
-4. Where the Messages panel docks: a new bottom border collapsed by default (recommended, like an output pane), or
-   the right border beside Reasoning and Inspection.
-5. Whether table preferences are per user in this browser (recommended) or saved with the project.
+1. Table renderer: **A**, one contract with two renderers (React Aria `Table`, AG Grid on the Table page).
+2. Shaded alternate rows: **an opt-in table style, off by default**, amending decision 0021 for that option only.
+3. Toasts: **only asynchronous events and failures**; applied commands go to the status bar and the history.
+4. Messages panel: **the right border**, beside Reasoning and Inspection (not the proposed bottom border).
+5. Table preferences: not asked yet; the default is per user in this browser, keyed by table id.
