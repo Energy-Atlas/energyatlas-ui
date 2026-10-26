@@ -52,6 +52,12 @@ export const capabilities = {
     explanation:
       'Daily and weekly schedules are validated and kept with archetypes, with full-load hours; synthetic energy results do not use them yet.',
   },
+  'calibration.fit': {
+    label: 'Calibration',
+    status: 'simulated',
+    explanation:
+      'Meter validation, fit jobs, residual metrics, calibrated variants, and explicit adoption are real state transitions; meter data is synthetic and the fit is one whole-district factor, not a real calibration algorithm.',
+  },
   'workflow.freeformEditing': {
     label: 'Free-form graph editing',
     status: 'planned',

@@ -151,12 +151,12 @@ export function CreatorPage() {
       <h2 id={headingId}>Creator</h2>
       <div className={styles.creators}>
         <MeasureCreator
-          key={measureEditing?.id ?? 'new'}
+          key={measureEditing?.id ?? 'new-measure'}
           editing={measureEditing}
           onDone={() => setEditingMeasure(null)}
         />
         <ScenarioCreator
-          key={scenarioEditing?.id ?? 'new'}
+          key={scenarioEditing?.id ?? 'new-scenario'}
           measures={measureList}
           editing={scenarioEditing}
           onDone={() => setEditingScenario(null)}

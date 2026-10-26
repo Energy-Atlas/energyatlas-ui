@@ -150,10 +150,11 @@ test('intake renders in light, dark, and a narrow pane without serious axe viola
     await page.screenshot({ path: `tmp/intake-${appearance}-1280.png` })
   }
   await page.setViewportSize({ width: 900, height: 700 })
-  expect(
-    await page.evaluate(
-      () => document.documentElement.scrollWidth <= innerWidth,
-    ),
-  ).toBe(true)
+  // Wait for the narrow layout to settle before measuring.
+  await expect
+    .poll(() =>
+      page.evaluate(() => document.documentElement.scrollWidth <= innerWidth),
+    )
+    .toBe(true)
   await page.screenshot({ path: 'tmp/intake-narrow-900.png' })
 })

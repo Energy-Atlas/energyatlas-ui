@@ -81,12 +81,18 @@ export function toolInputOf(call: ToolCall): unknown {
   return call.kind === 'command' ? call.command.input : call.operation.input
 }
 
-/** Commands that start or stop jobs; they wait for approval like model changes. */
+/**
+ * Commands that start or stop jobs, or change the working baseline without
+ * being undoable; they wait for approval like model changes.
+ */
 const JOB_COMMANDS: ReadonlySet<string> = new Set([
   'workflow.runStage',
   'job.retry',
   'task.cancel',
   'intake.applyDataset',
+  'calibration.fit',
+  'calibration.adopt',
+  'calibration.revert',
 ])
 
 /** Task commands the job runner owns; the agent cannot call them. */

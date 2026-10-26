@@ -31,6 +31,12 @@ export function createInitialState(): WorkbenchState {
     sourceRecords: {},
     sourceRecordIds: [],
     datasets: {},
+    calibration: {
+      variants: {},
+      variantIds: [],
+      adoptedVariantId: null,
+      modeled: null,
+    },
     issues: [],
     selection: { entityType: null, ids: [] },
     pendingEdits: {},

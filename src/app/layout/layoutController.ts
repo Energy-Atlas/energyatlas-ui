@@ -29,6 +29,7 @@ export const PAGES = {
   tasks: { name: 'Jobs', component: 'page.tasks' },
   intake: { name: 'Data intake', component: 'page.intake' },
   archetypes: { name: 'Archetypes', component: 'page.archetypes' },
+  calibration: { name: 'Calibration', component: 'page.calibration' },
   account: { name: 'Account', component: 'page.account' },
 } as const
 

@@ -112,6 +112,15 @@ export function WorkflowPanel() {
                     </ActionButton>
                   )
                 })()}
+                {stageId === STAGE_IDS.baseline ? (
+                  <ActionButton
+                    label="Open Calibration to fit the baseline to meters"
+                    disabledReason={null}
+                    onPress={() => layout.openPage('calibration')}
+                  >
+                    Calibration
+                  </ActionButton>
+                ) : null}
                 {stageId === STAGE_IDS.archetypes ? (
                   <ActionButton
                     label="Open Archetypes to edit definitions and schedules"

@@ -135,9 +135,35 @@ const schedule = z.object({
   weekend: z.array(number).length(24),
   source: definitionSource,
 })
+const meterUnit = z.enum(['kWh', 'MWh'])
+const fitMetrics = z.object({ cvrmsePercent: number, nmbePercent: number })
+const calibrationState = z.object({
+  variants: record(
+    z.object({
+      id,
+      label: text,
+      meterId: id,
+      unit: meterUnit,
+      runId: id,
+      operationId: id,
+      createdAt: text,
+      factor: number,
+      before: fitMetrics,
+      after: fitMetrics,
+      meteredKwh: z.array(number),
+      modeledKwh: z.array(number),
+      calibratedKwh: z.array(number),
+      baselineRevision: number,
+      result,
+    }),
+  ),
+  variantIds: ids,
+  adoptedVariantId: id.nullable(),
+  modeled: z.object({ result, revision: number }).nullable(),
+})
 const runGroup = z.object({
   id,
-  kind: z.enum(['stage', 'fusion']).default('stage'),
+  kind: z.enum(['stage', 'fusion', 'calibration']).default('stage'),
   stageId: id,
   signature: z.object({
     ancestors: record(number),
@@ -147,6 +173,10 @@ const runGroup = z.object({
     options: text.default(''),
   }),
   fusion: z.object({ datasetId: id, mapping }).nullable().default(null),
+  calibration: z
+    .object({ meterId: id, unit: meterUnit })
+    .nullable()
+    .default(null),
   attemptIds: ids,
   held: record(
     z.union([heldFusion, heldAssignment, heldScenario, heldPreprocessing]),
@@ -356,6 +386,12 @@ export const projectStateSchema: z.ZodType<WorkbenchState, unknown> = z
       }),
     ).default({}),
     sourceRecordIds: ids.default([]),
+    calibration: calibrationState.default({
+      variants: {},
+      variantIds: [],
+      adoptedVariantId: null,
+      modeled: null,
+    }),
     datasets: record(
       z.object({
         datasetId: id,
@@ -431,7 +467,17 @@ export const projectStateSchema: z.ZodType<WorkbenchState, unknown> = z
     for (const group of Object.values(state.runGroups)) {
       if ((group.kind === 'fusion') !== (group.fusion !== null))
         fail('A data fusion run is missing its dataset.')
+      if ((group.kind === 'calibration') !== (group.calibration !== null))
+        fail('A calibration fit is missing its meter series.')
     }
+    references(state.calibration.variantIds, state.calibration.variants)
+    const adopted = state.calibration.adoptedVariantId
+    if (
+      adopted !== null &&
+      (!(adopted in state.calibration.variants) ||
+        state.calibration.modeled === null)
+    )
+      fail('The adopted calibrated baseline is missing.')
     if (Object.keys(state.runGroups).length !== state.runGroupIds.length)
       fail('A run group is missing from the saved index.')
     for (const group of Object.values(state.runGroups)) {

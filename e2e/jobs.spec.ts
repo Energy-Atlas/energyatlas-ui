@@ -229,10 +229,11 @@ test('jobs render in every appearance and a narrow pane without serious axe viol
   }
   await page.setViewportSize({ width: 900, height: 700 })
   await expect(page.getByRole('listbox', { name: 'Jobs' })).toBeVisible()
-  expect(
-    await page.evaluate(
-      () => document.documentElement.scrollWidth <= innerWidth,
-    ),
-  ).toBe(true)
+  // Wait for the narrow layout to settle before measuring.
+  await expect
+    .poll(() =>
+      page.evaluate(() => document.documentElement.scrollWidth <= innerWidth),
+    )
+    .toBe(true)
   await page.screenshot({ path: 'tmp/jobs-narrow-900.png' })
 })

@@ -1,6 +1,8 @@
 import { findDataset } from '../intake/datasets.ts'
 import { fusionOptions, prepareDataset } from '../intake/fusion.ts'
+import { calibrationOptions } from '../calibration/calibration.ts'
 import type {
+  CalibrationInput,
   FusionInput,
   InputSignature,
   RunGroup,
@@ -82,6 +84,7 @@ export function captureSignature(
   state: WorkbenchState,
   stageId: string,
   fusion: FusionInput | null = null,
+  calibration: CalibrationInput | null = null,
 ): InputSignature {
   const workflow = state.workflow
   const dataset = fusion ? findDataset(fusion.datasetId) : null
@@ -104,7 +107,11 @@ export function captureSignature(
           )
         : []
       : currentMembership(state, stageId),
-    options: fusion ? fusionOptions(fusion.datasetId, fusion.mapping) : '',
+    options: fusion
+      ? fusionOptions(fusion.datasetId, fusion.mapping)
+      : calibration
+        ? calibrationOptions(state, calibration)
+        : '',
   }
 }
 
@@ -115,7 +122,12 @@ export function signatureMismatch(
 ): string | null {
   const stage = state.workflow.stages[group.stageId]
   if (!stage) return 'its stage no longer exists'
-  const now = captureSignature(state, group.stageId, group.fusion)
+  const now = captureSignature(
+    state,
+    group.stageId,
+    group.fusion,
+    group.calibration,
+  )
   const before = group.signature
   const keys = new Set([
     ...Object.keys(now.ancestors),
@@ -152,7 +164,9 @@ export function signatureMismatch(
   // Retries reuse the group's own dataset and mapping, so this guards only
   // against a group whose saved options no longer match its input.
   if (now.options !== before.options) {
-    return 'the dataset or its mapping changed'
+    return group.kind === 'calibration'
+      ? 'the modeled baseline or the meter choice changed'
+      : 'the dataset or its mapping changed'
   }
   return null
 }

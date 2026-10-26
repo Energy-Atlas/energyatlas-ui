@@ -2,6 +2,15 @@ import { z } from 'zod'
 import { GROUP, upsertAsset } from './assets.ts'
 import { matchArchetype, missingDefaults } from './archetypes/assignment.ts'
 import { ARCHETYPE_LIBRARY, SCHEDULE_LIBRARY } from './archetypes/library.ts'
+import {
+  adoptBlocker,
+  calibratedResult,
+  findMeter,
+  fitBlocker,
+  fitFactor,
+  meteredKwh,
+  modeledSource,
+} from './calibration/calibration.ts'
 import { findDataset } from './intake/datasets.ts'
 import { compositionConflict } from './scenarios/comparison.ts'
 import { MEASURE_LIBRARY } from './scenarios/library.ts'
@@ -38,6 +47,7 @@ import type {
   CommandSource,
   EditValue,
   Archetype,
+  CalibrationInput,
   DefinitionSource,
   EditableBuildingField,
   HeldAssignmentOutput,
@@ -121,8 +131,9 @@ function failRun(
   task.message = message
   task.updatedAt = context.now
   task.log.push({ at: context.now, message: `Failed: ${message}` })
-  // A fusion runs beside its stage: it reports on its job, not the stage.
-  if (task.groupId && state.runGroups[task.groupId]?.kind === 'fusion') return
+  // Fusions and fits run beside their stage: they report on the job, not the stage.
+  const kind = task.groupId ? state.runGroups[task.groupId]?.kind : 'stage'
+  if (kind && kind !== 'stage') return
   stage.lastRun = {
     runId: task.runId,
     operationId: context.operationId,
@@ -362,6 +373,79 @@ const yearSchema = z
   .max(2030, 'Use a year up to 2030.')
   .nullable()
 
+/** Runs a calibration fit and publishes its variant, leaving the working baseline as it is. */
+function publishFit(
+  state: WorkbenchState,
+  input: CalibrationInput,
+  task: Task,
+  context: CommandContext,
+): { ok: true; summary: string } | { ok: false; message: string } {
+  const series = findMeter(input.meterId)
+  const metered = series ? meteredKwh(series, input.unit) : null
+  const source = modeledSource(state)
+  if (!series || !metered || !source) {
+    return {
+      ok: false,
+      message: 'The meter series or baseline is no longer available.',
+    }
+  }
+  const fit = fitFactor(source.result.monthlyKwh, metered)
+  const id = allocateId(state, 'variant')
+  const number = state.calibration.variantIds.length + 1
+  state.calibration.variants[id] = {
+    id,
+    label: `Calibrated baseline ${number} (${series.label})`,
+    meterId: input.meterId,
+    unit: input.unit,
+    runId: task.runId,
+    operationId: context.operationId,
+    createdAt: context.now,
+    factor: fit.factor,
+    before: fit.before,
+    after: fit.after,
+    meteredKwh: fit.metered,
+    modeledKwh: fit.modeled,
+    calibratedKwh: fit.calibrated,
+    baselineRevision: source.revision,
+    result: calibratedResult(source.result, fit.factor, task.runId),
+  }
+  state.calibration.variantIds.push(id)
+  upsertAsset(state, {
+    id: `asset:${id}`,
+    kind: 'energyModel',
+    name: state.calibration.variants[id].label,
+    parentId: GROUP.energyModel,
+    provenance: {
+      kind: 'operation',
+      source: context.source,
+      operationId: context.operationId,
+    },
+    capability: 'calibration.fit',
+    summary: `Factor ${fit.factor}; CV(RMSE) ${fit.before.cvrmsePercent}% to ${fit.after.cvrmsePercent}%, NMBE ${fit.before.nmbePercent}% to ${fit.after.nmbePercent}% (synthetic)`,
+  })
+  return {
+    ok: true,
+    summary: `Fitted factor ${fit.factor}: CV(RMSE) ${fit.before.cvrmsePercent}% to ${fit.after.cvrmsePercent}%, NMBE ${fit.before.nmbePercent}% to ${fit.after.nmbePercent}%. The working baseline is unchanged until you adopt the variant.`,
+  }
+}
+
+/** Notes on the baseline result asset what the working baseline now is. */
+function upsertBaselineAsset(
+  state: WorkbenchState,
+  context: CommandContext,
+  change: string,
+) {
+  const asset = state.assets['asset:result-baseline']
+  const baseline = state.results.baseline
+  if (!asset || !baseline) return
+  asset.summary = `${Math.round(baseline.totalKwh / 1000).toLocaleString('en-US')} MWh/yr, peak ${baseline.peakKw.toLocaleString('en-US')} kW (synthetic); ${change}`
+  asset.provenance = {
+    kind: 'operation',
+    source: context.source,
+    operationId: context.operationId,
+  }
+}
+
 /** Closes a stage's open runs of one kind when a fresh run replaces them. */
 function supersedeOpenGroups(
   state: WorkbenchState,
@@ -378,7 +462,9 @@ function supersedeOpenGroups(
       group.statusReason =
         kind === 'fusion'
           ? 'A newer data fusion replaced it.'
-          : 'A fresh run of this stage replaced it.'
+          : kind === 'calibration'
+            ? 'A newer calibration fit replaced it.'
+            : 'A fresh run of this stage replaced it.'
       group.held = {}
     }
   }
@@ -401,7 +487,11 @@ function createAttempt(
     group?.kind === 'fusion' && group.fusion
       ? findDataset(group.fusion.datasetId)
       : null
-  if (group?.kind !== 'fusion') stage.runCount += 1
+  const meter =
+    group?.kind === 'calibration' && group.calibration
+      ? findMeter(group.calibration.meterId)
+      : null
+  if (group?.kind === 'stage') stage.runCount += 1
   const taskId = allocateId(state, 'task')
   const runId = allocateId(state, 'run')
   const attempt = (group?.attemptIds.length ?? 0) + 1
@@ -409,7 +499,11 @@ function createAttempt(
   const noun = dataset ? 'records' : 'items'
   const task: Task = {
     id: taskId,
-    label: dataset ? `Data fusion: ${dataset.label}` : stage.name,
+    label: dataset
+      ? `Data fusion: ${dataset.label}`
+      : meter
+        ? `Calibration fit: ${meter.label}`
+        : stage.name,
     stageId: stage.id,
     runId,
     status: 'queued',
@@ -649,6 +743,7 @@ export const commandDefinitions = {
         stageId,
         signature,
         fusion: null,
+        calibration: null,
         attemptIds: [],
         held: {},
         status: 'open',
@@ -748,6 +843,7 @@ export const commandDefinitions = {
         stageId: stage.id,
         signature,
         fusion,
+        calibration: null,
         attemptIds: [],
         held: {},
         status: 'open',
@@ -917,6 +1013,100 @@ export const commandDefinitions = {
         existing
           ? `Updated schedule "${input.name}".`
           : `Created schedule "${input.name}".`,
+      )
+    },
+  }),
+
+  'calibration.fit': defineCommand({
+    title: 'Fit baseline to meters',
+    description:
+      'Queue a calibration fit of the modeled baseline to a synthetic monthly meter series in kWh or MWh. The fit publishes a separate calibrated variant with before and after residuals; the working baseline changes only when the variant is adopted.',
+    input: z.object({
+      meterId: z.string().min(1, 'Choose a meter series.'),
+      unit: z.enum(['kWh', 'MWh']),
+      requestId: requestIdSchema,
+    }),
+    undoable: false,
+    run(state, { meterId, unit, requestId }, context) {
+      const repeated = repeatedSubmission(state, requestId)
+      if (repeated) return repeated
+      const input = { meterId, unit }
+      const blocker = fitBlocker(state, input)
+      if (blocker) return rejected(blocker, 'meterId')
+      const stage = state.workflow.stages[STAGE_IDS.baseline]
+      if (!stage)
+        return rejected('Baseline model setup is not in this workflow.')
+      supersedeOpenGroups(state, stage.id, 'calibration')
+      const groupId = allocateId(state, 'group')
+      state.runGroups[groupId] = {
+        id: groupId,
+        kind: 'calibration',
+        stageId: stage.id,
+        signature: captureSignature(state, stage.id, null, input),
+        fusion: null,
+        calibration: input,
+        attemptIds: [],
+        held: {},
+        status: 'open',
+        statusReason: null,
+        createdAt: context.now,
+      }
+      state.runGroupIds.push(groupId)
+      createAttempt(state, stage, groupId, {
+        items: null,
+        parentTaskId: null,
+        requestId: requestId ?? null,
+        context,
+      })
+      return applied(
+        `Queued a calibration fit to "${findMeter(meterId)?.label ?? meterId}" in ${unit}.`,
+      )
+    },
+  }),
+
+  'calibration.adopt': defineCommand({
+    title: 'Adopt calibrated baseline',
+    description:
+      'Make a calibrated variant the working baseline. Results that depend on the baseline (scenarios, grid, dashboard) become outdated. The modeled baseline is kept so the change can be reverted.',
+    input: z.object({ variantId: z.string().min(1, 'Choose a variant.') }),
+    undoable: false,
+    run(state, { variantId }, context) {
+      const blocker = adoptBlocker(state, variantId)
+      if (blocker) return rejected(blocker, 'variantId')
+      const variant = state.calibration.variants[variantId]
+      const source = modeledSource(state)
+      const stage = state.workflow.stages[STAGE_IDS.baseline]
+      if (!variant || !source || !stage) return rejected('Nothing to adopt.')
+      state.calibration.modeled = source
+      state.calibration.adoptedVariantId = variantId
+      state.results.baseline = { ...variant.result }
+      stage.revision = nextRevision(state)
+      upsertBaselineAsset(state, context, `adopted "${variant.label}"`)
+      return applied(
+        `Adopted "${variant.label}" as the working baseline; dependent results are now outdated.`,
+      )
+    },
+  }),
+
+  'calibration.revert': defineCommand({
+    title: 'Revert to modeled baseline',
+    description:
+      'Return the working baseline to the modeled baseline kept when a calibrated variant was adopted. Dependent results become outdated.',
+    input: z.object({}),
+    undoable: false,
+    run(state, _input, context) {
+      const modeled = state.calibration.modeled
+      const stage = state.workflow.stages[STAGE_IDS.baseline]
+      if (!state.calibration.adoptedVariantId || !modeled || !stage) {
+        return rejected('No calibrated variant is adopted.')
+      }
+      state.results.baseline = { ...modeled.result }
+      state.calibration.adoptedVariantId = null
+      state.calibration.modeled = null
+      stage.revision = nextRevision(state)
+      upsertBaselineAsset(state, context, 'reverted to the modeled baseline')
+      return applied(
+        'The working baseline is the modeled baseline again; dependent results are now outdated.',
       )
     },
   }),
@@ -1170,7 +1360,7 @@ export const commandDefinitions = {
       )
       const group = groupOf(state, task)
       const isFusion = group?.kind === 'fusion'
-      if (!isFusion) {
+      if (!group || group.kind === 'stage') {
         state.issues = state.issues.filter(
           (issue) => issue.stageId !== stage.id,
         )
@@ -1185,6 +1375,31 @@ export const commandDefinitions = {
         const message = `${group.statusReason} Start a fresh run.`
         failRun(state, task, stage, message, inputRevisions, context)
         return applied(`"${task.label}" was not published: ${changed}.`)
+      }
+
+      if (group?.kind === 'calibration' && group.calibration) {
+        const published = publishFit(state, group.calibration, task, context)
+        if (!published.ok) {
+          failRun(
+            state,
+            task,
+            stage,
+            published.message,
+            inputRevisions,
+            context,
+          )
+          return applied(`"${task.label}" failed: ${published.message}`)
+        }
+        group.status = 'published'
+        group.statusReason = null
+        task.status = 'succeeded'
+        task.progress = 1
+        task.message = published.summary
+        task.log.push({
+          at: context.now,
+          message: `Completed. ${published.summary}`,
+        })
+        return applied(published.summary)
       }
 
       let result: StageRunResult
@@ -1350,7 +1565,7 @@ export const commandDefinitions = {
           state.workflow.stages[id]?.revision ?? 0,
         ]),
       )
-      if (groupOf(state, task)?.kind !== 'fusion') {
+      if ((groupOf(state, task)?.kind ?? 'stage') === 'stage') {
         state.issues = state.issues.filter(
           (issue) => issue.stageId !== stage.id,
         )

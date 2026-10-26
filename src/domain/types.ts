@@ -332,18 +332,56 @@ export type AppliedDataset = {
   operationId: string
 }
 
+export type MeterUnit = 'kWh' | 'MWh'
+
+/** What a calibration fit uses: a synthetic meter series and the unit chosen for it. */
+export type CalibrationInput = { meterId: string; unit: MeterUnit }
+
+/** Goodness of fit of modeled against metered months, in percent. */
+export type FitMetrics = { cvrmsePercent: number; nmbePercent: number }
+
+/** A published calibrated baseline variant; the working baseline changes only on Adopt. */
+export type CalibratedVariant = {
+  id: string
+  label: string
+  meterId: string
+  unit: MeterUnit
+  runId: string
+  operationId: string
+  createdAt: string
+  factor: number
+  before: FitMetrics
+  after: FitMetrics
+  meteredKwh: number[]
+  modeledKwh: number[]
+  calibratedKwh: number[]
+  /** Revision of the modeled baseline the fit used. */
+  baselineRevision: number
+  result: ResultSet
+}
+
+export type CalibrationState = {
+  variants: Record<string, CalibratedVariant>
+  variantIds: string[]
+  adoptedVariantId: string | null
+  /** The modeled baseline kept while a calibrated variant is the working baseline. */
+  modeled: { result: ResultSet; revision: number } | null
+}
+
 export type RunGroupStatus =
   'open' | 'published' | 'cancelled' | 'invalidated' | 'superseded'
 
 /** Every attempt at one stage run with one input context. */
 export type RunGroup = {
   id: string
-  /** A stage run, or a data fusion run shown under Schema matching. */
-  kind: 'stage' | 'fusion'
+  /** A stage run, a data fusion shown under Schema matching, or a calibration fit shown under Baseline model setup. */
+  kind: 'stage' | 'fusion' | 'calibration'
   stageId: string
   signature: InputSignature
-  /** The dataset and mapping a fusion run applies; null for stage runs. */
+  /** The dataset and mapping a fusion run applies; null for other runs. */
   fusion: FusionInput | null
+  /** The meter series and unit a calibration fit uses; null for other runs. */
+  calibration: CalibrationInput | null
   attemptIds: string[]
   /** Successful item outputs, kept out of the project until the group publishes. */
   held: Record<string, HeldOutput>
@@ -418,6 +456,7 @@ export type WorkbenchState = {
   sourceRecordIds: string[]
   /** Datasets fused into the project, by dataset ID. */
   datasets: Record<string, AppliedDataset>
+  calibration: CalibrationState
   issues: Issue[]
   selection: Selection
   pendingEdits: Record<string, PendingEdit>

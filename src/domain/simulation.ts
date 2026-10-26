@@ -597,6 +597,9 @@ function setUpBaseline(
     byBuildingKwh,
   )
   state.results.baseline = baseline
+  // A new modeled baseline replaces any adopted calibrated variant.
+  state.calibration.adoptedVariantId = null
+  state.calibration.modeled = null
 
   const provenance = fromStage(STAGE_IDS.baseline, context)
   upsertAsset(state, {

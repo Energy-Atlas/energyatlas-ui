@@ -36,6 +36,9 @@ export const SERVER_COMMANDS: ReadonlySet<Command['type']> = new Set([
   'workflow.runStage',
   'job.retry',
   'intake.applyDataset',
+  'calibration.fit',
+  'calibration.adopt',
+  'calibration.revert',
   'archetype.save',
   'archetype.addFromLibrary',
   'schedule.save',
@@ -53,6 +56,8 @@ export const SERVER_COMMANDS: ReadonlySet<Command['type']> = new Set([
 
 /** Server commands that change the project model, refused while a run holds it. */
 export const MODEL_COMMANDS: ReadonlySet<Command['type']> = new Set([
+  'calibration.adopt',
+  'calibration.revert',
   'archetype.save',
   'archetype.addFromLibrary',
   'schedule.save',
