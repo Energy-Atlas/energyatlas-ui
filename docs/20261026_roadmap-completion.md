@@ -18,7 +18,7 @@ only read (`git --no-optional-locks show/ls-tree` at `7464c140`). No package was
 | 5 Archetypes and schedules | `claude/slice-5-archetypes` | `081f25e` | [Archetypes and schedules](archetypes-schedules.md) |
 | 6 Measures and scenarios | `claude/slice-6-scenarios` | `8d5c3ea` | [Measures and scenarios](measures-scenarios.md) |
 | 7 Calibration | `claude/slice-7-calibration` | `ad0574a` | [Calibration](calibration.md) |
-| 8 Results | `claude/slice-8-results` | see the Results record | [Results](results.md) |
+| 8 Results | `claude/slice-8-results` | `e35e0cf` | [Results](results.md) |
 
 Read-only RC facts for slices 4–8 are in [RC observations](roadmap-rc-observations.md). The one material difference
 from RC is recorded there: RC fuses geometrically, while the approved demo rule (D9) matches stable source IDs.
@@ -36,9 +36,10 @@ from RC is recorded there: RC fuses geometrically, while the approved demo rule 
 ## Verification
 
 Each slice record lists its own final verification. On the final Results commit: `npm run typecheck`, `npm run lint`,
-and `npm run format:check` clean; `npm test` 299 passed (34 files); `npm run test:e2e` 87 passed; `npm run test:e2e:preview` 3 passed. The baseline
-before slice 3 was 224 unit, 69 development browser, and 2 preview tests. The Edge-based browser suites cover every new page in light and dark engineering
-with axe, keyboard paths, narrow layouts, the base path, and a real CSV download.
+and `npm run format:check` clean; `npm test` 299 passed (34 files); `npm run test:e2e` 87 passed; `npm run test:e2e:preview`
+3 passed. The baseline before slice 3 was 224 unit, 69 development browser, and 2 preview tests. The Edge-based
+browser suites cover every new page in light and dark engineering with axe, keyboard paths, narrow layouts, the base
+path, and a real CSV download.
 
 ## Known limits and next steps
 
