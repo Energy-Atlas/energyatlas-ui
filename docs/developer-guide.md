@@ -150,6 +150,16 @@ publisher, and keep held output out of the live model. Fixtures and tests run jo
 (`src/domain/jobs/runNow.ts`). New persisted fields need defaults in `projectSchema.ts`, whose parsed output (not the
 stored value) is what the catalog keeps.
 
+### Data intake: datasets and fusion
+
+Synthetic datasets live in `src/domain/intake/datasets.ts`; `prepareDataset` in `src/domain/intake/fusion.ts` is the
+pure mapping, validation, matching, and preview used by the page, the command, and fusion item processing.
+`intake.applyDataset` queues a run group of kind `fusion` (stageId Schema matching) whose signature includes the
+dataset and mapping as `options`. Published fusion writes `state.sourceRecords` and `state.datasets`; footprint
+capture and enrichment reapply them, so the precedence on reruns is synthetic, then fused records, then manual
+overrides. A fusion never changes a stage's `lastRun`. To add a dataset, append a fixture to `DATASETS` with its
+fields; to add a model target, extend `TargetField`, `TARGET_FIELDS`, `parseRecord`, and the schema enum.
+
 ### Add or change model behavior: a command
 
 1. Add the entity fields to `src/domain/types.ts` (and `initialState.ts`).
@@ -238,6 +248,7 @@ Only packages from decisions 0007, 0008, and 0010 are allowed. Record a reason i
 End-to-end specs:
 
 - `e2e/project-lifecycle.spec.ts`: start, named creation/validation, multi-project save/open/recent, equal names, draft and job guards, failed Save, malformed storage, held-request recovery, all six appearances at three sizes, axe, keyboard focus, and reproducible screenshots in `tmp/`.
+- `e2e/intake.spec.ts`: suggested mapping, row validation, ambiguity and unmatched rejection, the schema-wide block and its explained Apply, fusion as a job with a notice, held records with failed-record retry, and light, dark, and 900 px rendering with axe.
 - `e2e/jobs.spec.ts`: partial preprocessing failure with held results, notice to job, failed-item retry and publication, Workflow Retry, changed-input refusal, cancelled stall with fresh run only, keyboard list/detail and filters, notice focus, all six appearances with axe, and a 900 px layout.
 - `e2e/smoke.spec.ts`: renders with no serious or critical axe violations.
 - `e2e/workbench.spec.ts`: shell regions, no visible Working labels, the Run split button and menu, placing pages side by side and moving tabs from the palette, background task progress, explained blocked actions, palette and panel shortcuts, undo, save and layout persistence across reloads, narrow-window overlays, reset layout.
