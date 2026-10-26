@@ -44,6 +44,27 @@ function setup() {
 }
 
 describe('scripted agent', () => {
+  it('clears queued delivery even in the idle gap when a project changes', async () => {
+    const { agent, manual, transcript } = setup()
+    agent.startPreset('restore')
+    const prompt =
+      agent.store
+        .getState()
+        .presets.find((preset) => preset.id === 'modelChange')?.prompt ?? ''
+    agent.send(prompt, 'queue')
+    for (let step = 0; step < 100; step += 1) {
+      manual.runNext()
+      await manual.flush()
+      if (agent.store.getState().status === 'idle' && manual.pending() > 0)
+        break
+    }
+    expect(manual.pending()).toBeGreaterThan(0)
+    agent.resetForProject()
+    await manual.settle()
+    expect(agent.store.getState().status).toBe('idle')
+    expect(agent.store.getState().ranSessionIds).toEqual([])
+    expect(transcript()).toEqual([])
+  })
   it('ignores a stopped session reply while a new session runs', async () => {
     const { client, manual, agent, agentEntries, transcript } = setup()
     client.setConditions({ ...DEFAULT_CONDITIONS, latency: 'none', hold: true })

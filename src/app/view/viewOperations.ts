@@ -97,6 +97,16 @@ function rejected(message: string, path = ''): ViewOutcome {
 const EXAGGERATION_MESSAGE = `Use a whole number from ${MIN_EXAGGERATION} to ${MAX_EXAGGERATION}.`
 
 export const viewOperationDefinitions = {
+  'view.resetForProject': defineViewOperation({
+    title: 'Reset project views',
+    description:
+      'Clear project-specific view state when the project session changes.',
+    input: z.object({}),
+    run(view) {
+      Object.assign(view, createInitialViewState())
+      return applied('Reset project-specific views for the new session.')
+    },
+  }),
   'map.setMetric': defineViewOperation({
     title: 'Color map by metric',
     description:

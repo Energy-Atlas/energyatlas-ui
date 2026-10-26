@@ -1,3 +1,4 @@
+import { createProjectFromStart } from './test.ts'
 import { BASE_PATH } from '../basePath.ts'
 import { expect, test } from './test.ts'
 
@@ -20,6 +21,7 @@ test('the built bundle serves its assets and renders the map', async ({
   })
 
   await page.goto(BASE_PATH)
+  await createProjectFromStart(page)
   await expect(
     page.getByRole('toolbar', { name: 'Workbench commands' }),
   ).toBeVisible()

@@ -5,6 +5,7 @@ import {
   type ValidationIssue,
 } from '../../domain/commands.ts'
 import type { CommandSource, WorkbenchState } from '../../domain/types.ts'
+import { createInitialState } from '../../domain/initialState.ts'
 import type { ExecuteResult, Workbench } from '../../domain/workbench.ts'
 import { issuesFromError } from '../../server/apiError.ts'
 import {
@@ -40,7 +41,12 @@ export function isServerCommand(type: Command['type']): boolean {
 export function refuseServerCommand(
   type: Command['type'] | 'history.undo' | 'history.redo',
   pending: PendingRequest[] = [],
+  hasProject = true,
+  transitioning = false,
 ): string | null {
+  if (transitioning)
+    return 'The project session is changing. Wait for it to finish before editing or undoing.'
+  if (!hasProject) return 'Open or create a project first.'
   if (
     (type === 'edits.propose' ||
       type === 'edits.discard' ||
@@ -58,6 +64,7 @@ export function refuseServerCommand(
 
 export type PendingRequest = {
   id: number
+  projectGeneration: number
   /** A command type, `project.save`, or `project.replace`. */
   type: string
   title: string
@@ -66,6 +73,9 @@ export type PendingRequest = {
 }
 
 export type ClientSnapshot = {
+  projectGeneration: number
+  transitioning: boolean
+  saveError: string | null
   pending: PendingRequest[]
   meta: ServerMeta
   conditions: DemoConditions
@@ -75,11 +85,25 @@ export type ProjectClient = {
   store: StoreApi<ClientSnapshot>
   /** Runs a local command at once, or sends a server command and waits. */
   execute: (command: Command, source?: CommandSource) => Promise<ExecuteResult>
+  /** Lifecycle-only mutation fence; its callback can cancel jobs and apply drafts. */
+  withTransition: (
+    operation: (execute: ProjectClient['execute']) => Promise<ExecuteResult>,
+  ) => Promise<ExecuteResult>
   save: (source?: CommandSource) => Promise<ExecuteResult>
   replaceProject: (
     fixture: FixtureId,
     source?: CommandSource,
   ) => Promise<ExecuteResult>
+  listProjects: (source?: CommandSource) => Promise<ExecuteResult>
+  createProject: (
+    name: string,
+    source?: CommandSource,
+  ) => Promise<ExecuteResult>
+  openProject: (
+    projectId: string,
+    source?: CommandSource,
+  ) => Promise<ExecuteResult>
+  closeProject: (source?: CommandSource) => Promise<ExecuteResult>
   setConditions: (conditions: DemoConditions) => void
   dispose: () => void
 }
@@ -130,6 +154,9 @@ export function createProjectClient(options: {
   let nextRequestId = 1
   const waiters: { sequence: number; resolve: () => void }[] = []
   const store = createStore<ClientSnapshot>()(() => ({
+    projectGeneration,
+    transitioning: false,
+    saveError: null,
     pending: [],
     meta: options.initial.meta,
     conditions: transport.getConditions(),
@@ -143,9 +170,11 @@ export function createProjectClient(options: {
     const replaced = update.projectGeneration !== projectGeneration
     projectGeneration = update.projectGeneration
     workbench.adopt(
-      replaced
-        ? update.state
-        : mergeServerState(update.state, workbench.getState()),
+      update.state === null
+        ? createInitialState()
+        : replaced
+          ? update.state
+          : mergeServerState(update.state, workbench.getState()),
       update.operations,
     )
     if (replaced) workbench.clearHistory()
@@ -158,7 +187,11 @@ export function createProjectClient(options: {
           'Back online: the project was refreshed from the server. Changes made while offline are not listed one by one.',
       })
     }
-    store.setState({ meta: update.meta })
+    store.setState({
+      meta: update.meta,
+      projectGeneration,
+      ...(replaced ? { saveError: null } : {}),
+    })
     for (const waiter of [...waiters]) {
       if (waiter.sequence <= applied) {
         waiters.splice(waiters.indexOf(waiter), 1)
@@ -198,6 +231,7 @@ export function createProjectClient(options: {
   > {
     const pending: PendingRequest = {
       id: nextRequestId++,
+      projectGeneration,
       type,
       title,
       input,
@@ -299,15 +333,104 @@ export function createProjectClient(options: {
     }
   }
 
+  async function projectRequest(
+    request: ServerRequest,
+    title: string,
+    input: unknown,
+  ): Promise<ExecuteResult> {
+    const sent = await send(request, request.type, title, input, request.source)
+    return sent.ok
+      ? {
+          operationId: sent.operationId,
+          outcome: { status: 'applied', summary: sent.summary },
+        }
+      : sent.result
+  }
+
+  function executeDirect(
+    command: Command,
+    source: CommandSource = 'manual',
+  ): Promise<ExecuteResult> {
+    return isServerCommand(command.type)
+      ? executeOnServer(command, source)
+      : Promise.resolve(workbench.execute(command, source))
+  }
+
   return {
     store,
     execute(command, source = 'manual') {
-      if (isServerCommand(command.type)) {
-        return executeOnServer(command, source)
+      if (store.getState().transitioning) {
+        const issues = [
+          {
+            path: '',
+            message:
+              'The project session is changing. Wait for it to finish before editing.',
+          },
+        ]
+        const operationId = workbench.record({
+          type: command.type,
+          title: commandDefinitions[command.type].title,
+          source,
+          status: 'rejected',
+          summary: '',
+          issues,
+        })
+        return Promise.resolve({
+          operationId,
+          outcome: { status: 'rejected', issues },
+        })
       }
-      return Promise.resolve(workbench.execute(command, source))
+      return executeDirect(command, source)
+    },
+    async withTransition(operation) {
+      store.setState({ transitioning: true })
+      try {
+        return await operation(executeDirect)
+      } finally {
+        store.setState({ transitioning: false })
+      }
+    },
+    async listProjects(source = 'manual') {
+      const result = await projectRequest(
+        { type: 'project.list', source },
+        'List projects',
+        {},
+      )
+      if (result.outcome.status === 'rejected')
+        store.setState({
+          meta: {
+            ...store.getState().meta,
+            catalogReady: true,
+            catalogError: result.outcome.issues
+              .map((issue) => issue.message)
+              .join(' '),
+          },
+        })
+      return result
+    },
+    createProject(name, source = 'manual') {
+      return projectRequest(
+        { type: 'project.create', name, source },
+        'Create project',
+        { name },
+      )
+    },
+    openProject(projectId, source = 'manual') {
+      return projectRequest(
+        { type: 'project.open', projectId, source },
+        'Open project',
+        { projectId },
+      )
+    },
+    closeProject(source = 'manual') {
+      return projectRequest(
+        { type: 'project.close', source },
+        'Close project',
+        {},
+      )
     },
     async save(source = 'manual') {
+      const savingGeneration = projectGeneration
       const sent = await send(
         { type: 'project.save', source },
         'project.save',
@@ -315,6 +438,16 @@ export function createProjectClient(options: {
         {},
         source,
       )
+      if (savingGeneration === projectGeneration)
+        store.setState({
+          saveError: sent.ok
+            ? null
+            : sent.result.outcome.status === 'rejected'
+              ? sent.result.outcome.issues
+                  .map((issue) => issue.message)
+                  .join(' ')
+              : null,
+        })
       if (!sent.ok) return sent.result
       return {
         operationId: sent.operationId,

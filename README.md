@@ -4,7 +4,7 @@ A standalone experiment for a coherent EnergyAtlas urban/building energy-modelin
 
 ## Status
 
-2026-10-25: a browser-only workbench takes one synthetic project through a 12-stage workflow with docked panels, map, table, dashboard, roadmap, creators, and scripted Reasoning sessions. The Account page, shell updates, and mock-server foundation (decision 0023) have been reviewed and integrated into local `master`, with 200 unit, 60 end-to-end, and 2 production-preview tests passing. Nothing from this review has been pushed. Additional language-model work on `feature/agentic` stays unmerged (decision 0022). Next: discuss project lifecycle, step 2 of the [pre-connection roadmap](docs/pre-connection-roadmap.md); pending directions and verification are in the [review record](docs/20261025_review-and-project-lifecycle.md). New contributors start with the [developer guide](docs/developer-guide.md).
+2026-10-26: project lifecycle is built on `codex/project-lifecycle` for review ([decision 0024](docs/decisions/0024-dedicated-project-start-screen.md)): a dedicated start screen, named browser-local projects, Recent/Open/Create, save status, unsaved-work guards, and confirmation before cancelling jobs on exit. Verification: 224 unit, 68 end-to-end, and 2 production-preview tests passed. This slice is not merged or pushed. The earlier Account/shell/mock-server work is integrated into local `master` ([review](docs/20261025_review-and-project-lifecycle.md)); additional language-model work on `feature/agentic` stays unmerged (decision 0022). Next: lifecycle review, then Jobs in the [pre-connection roadmap](docs/pre-connection-roadmap.md). See the [lifecycle record](docs/project-lifecycle-design.md) and [developer guide](docs/developer-guide.md).
 
 Accepted decisions: web-only React + TypeScript + Vite ([0002](docs/decisions/0002-web-react-typescript-vite.md)); a combined shell ([0003](docs/decisions/0003-combined-product-shell.md)) in a docking workbench layout ([0004](docs/decisions/0004-workbench-layout-and-docking.md)) with a 12-stage default workflow ([0005](docs/decisions/0005-first-slice-workflow-and-panel-scope.md)) and a scripted agent ([0006](docs/decisions/0006-scripted-agent-and-layout-details.md)); packages ([0007](docs/decisions/0007-package-selection.md)) with FlexLayout for docking ([0008](docs/decisions/0008-flexlayout-docking.md)). The reference audit and package spikes are recorded in `docs/`.
 
@@ -24,6 +24,7 @@ npm run lint
 npm run format:check   # npm run format rewrites files
 npm test               # Vitest unit and component tests
 npm run test:e2e       # Playwright + axe; starts the dev server on 127.0.0.1:5173
+npm run test:e2e:preview # run after dev specs; builds and checks the Pages bundle
 ```
 
 Package spikes: run `npm run dev` and open `/?spike=` with `map`, `chart`, `grid`, `flow`, or `flexlayout`.

@@ -29,6 +29,7 @@ import {
   type LucideIcon,
 } from 'lucide-react'
 import { useCallback, useMemo } from 'react'
+import { useStore } from 'zustand'
 import { capabilities } from '../domain/capabilities.ts'
 import { stageRunBlocker } from '../domain/workflow.ts'
 import { APPEARANCE_LIST } from './appearance/appearances.ts'
@@ -97,6 +98,7 @@ export function useAppActions(dialogs: ShellDialogs): AppAction[] {
   const {
     workbench,
     client,
+    lifecycle,
     layout,
     storage,
     appearancePreference,
@@ -105,6 +107,12 @@ export function useAppActions(dialogs: ShellDialogs): AppAction[] {
   } = useServices()
   const snapshot = useWorkbenchSnapshot((current) => current)
   const pending = useClientSnapshot((current) => current.pending)
+  const transitioning = useClientSnapshot((current) => current.transitioning)
+  const lifecycleBusy = useStore(
+    lifecycle.store,
+    (current) => current.busy || current.guard !== null,
+  )
+  const guarded = useStore(lifecycle.store, (current) => current.guard !== null)
   const stageStates = useStageStates()
   const layoutVersion = useLayoutVersion()
 
@@ -143,16 +151,33 @@ export function useAppActions(dialogs: ShellDialogs): AppAction[] {
           ? awaiting('project.save', 'the project is being saved')
           : 'Browser storage is unavailable, so the project cannot be saved here.',
         perform: () => {
-          void client.save()
+          void lifecycle.request({ type: 'save' })
         },
       },
       {
         id: 'file.new',
-        label: 'New empty project…',
+        label: 'New project…',
         group: 'File',
         icon: FilePlus,
         disabledReason: null,
         perform: dialogs.openNewProject,
+      },
+      {
+        id: 'file.openProject',
+        label: 'Open project…',
+        group: 'File',
+        shortcut: 'Ctrl+O',
+        disabledReason: null,
+        perform: () => lifecycle.openCatalog(),
+      },
+      {
+        id: 'file.projects',
+        label: 'Projects…',
+        group: 'File',
+        disabledReason: null,
+        perform: () => {
+          void lifecycle.request({ type: 'close' })
+        },
       },
       {
         id: 'edit.undo',
@@ -494,7 +519,16 @@ export function useAppActions(dialogs: ShellDialogs): AppAction[] {
         },
       },
     ]
-    return actions
+    return actions.map((action) =>
+      (action.group === 'File' && lifecycleBusy) ||
+      (['Edit', 'Run'].includes(action.group) && (guarded || transitioning))
+        ? {
+            ...action,
+            disabledReason:
+              'Finish or cancel the current project transition first.',
+          }
+        : action,
+    )
   }, [
     snapshot,
     stageStates,
@@ -506,8 +540,12 @@ export function useAppActions(dialogs: ShellDialogs): AppAction[] {
     setAppearance,
     showInspection,
     client,
+    lifecycle,
     pending,
     dialogs,
+    lifecycleBusy,
+    guarded,
+    transitioning,
   ])
 }
 

@@ -23,6 +23,7 @@ import type {
 import { STAGE_IDS } from '../../domain/workflow.ts'
 import {
   useServices,
+  useClientSnapshot,
   useViewState,
   useWorkbenchSnapshot,
 } from '../WorkbenchContext.tsx'
@@ -147,10 +148,14 @@ export function TablePage() {
 
 function BuildingsTable() {
   const { workbench, client, view } = useServices()
-  const applying = usePendingReason(
+  const applyingEdits = usePendingReason(
     'edits.apply',
     'the edits are being applied',
   )
+  const transitioning = useClientSnapshot((snapshot) => snapshot.transitioning)
+  const applying = transitioning
+    ? 'The project session is changing. Wait for it to finish before editing.'
+    : applyingEdits
   const buildings = useWorkbenchSnapshot((snapshot) => snapshot.state.buildings)
   const buildingIds = useWorkbenchSnapshot(
     (snapshot) => snapshot.state.buildingIds,

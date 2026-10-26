@@ -49,6 +49,7 @@ export function createScriptedAgent(
   const deps: ToolDeps = {
     workbench: options.workbench,
     client: options.client,
+    lifecycle: options.lifecycle,
     view: options.view,
     layout: options.layout,
   }
@@ -426,6 +427,22 @@ export function createScriptedAgent(
   return {
     label: 'Scripted agent',
     store,
+    resetForProject() {
+      sessionGeneration += 1
+      cancelTimer?.()
+      cancelTimer = null
+      queue = []
+      approvedCalls = []
+      pending = null
+      context = createContext()
+      store.setState({
+        status: 'idle',
+        activeSessionId: null,
+        transcript: [],
+        queued: [],
+        ranSessionIds: [],
+      })
+    },
     send(text, mode = 'send') {
       const prompt = text.trim()
       if (sendBlocker(mode, prompt)) return

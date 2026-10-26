@@ -1,4 +1,4 @@
-import { test as base, type Page } from '@playwright/test'
+import { expect, test as base, type Page } from '@playwright/test'
 
 // Product specs import `test` and `expect` from here. Every page serves a small
 // stand-in for the OpenFreeMap style, TileJSON, and tiles, so tests stay
@@ -89,9 +89,47 @@ export async function blockBasemap(page: Page): Promise<void> {
 /** The session key of the demo conditions (decision 0023). */
 export const DEMO_CONDITIONS_KEY = 'eaui.demoConditions'
 
+/** Normal product entry, through the same Create form a person uses. */
+export async function createProjectFromStart(
+  page: Page,
+  name = 'Synthetic district (demo)',
+) {
+  await expect(page.getByRole('main', { name: 'Projects' })).toBeVisible()
+  await page
+    .getByRole('button', { name: 'Create project', exact: true })
+    .click()
+  const dialog = page.getByRole('dialog', { name: 'Create project' })
+  await dialog.getByRole('textbox', { name: 'Project name' }).fill(name)
+  await dialog
+    .getByRole('button', { name: 'Create project', exact: true })
+    .click()
+  await expect(
+    page.getByRole('toolbar', { name: 'Workbench commands' }),
+  ).toBeVisible()
+}
+
+export async function openRecentProject(
+  page: Page,
+  name = 'Synthetic district (demo)',
+) {
+  await page
+    .getByRole('main', { name: 'Projects' })
+    .getByRole('button')
+    .filter({ hasText: name })
+    .first()
+    .click()
+  await expect(
+    page.getByRole('toolbar', { name: 'Workbench commands' }),
+  ).toBeVisible()
+}
+
 export const test = base.extend<{ basemapStub: undefined }>({
   basemapStub: [
     async ({ page }, use) => {
+      page.on('dialog', async (dialog) => {
+        if (dialog.type() === 'beforeunload') await dialog.accept()
+        else await dialog.dismiss()
+      })
       await serveBasemapStub(page)
       await serveTerrainStub(page)
       // The mock server answers without delay in tests unless a test sets

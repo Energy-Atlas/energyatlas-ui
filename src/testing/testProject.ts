@@ -1,4 +1,5 @@
 import type { WorkbenchState } from '../domain/types.ts'
+import { createInitialState } from '../domain/initialState.ts'
 import { createWorkbench } from '../domain/workbench.ts'
 import {
   DRAFT_COMMANDS,
@@ -25,6 +26,7 @@ export function createTestProject(
     fixture?: FixtureId
     storage?: Storage | null
     initialState?: WorkbenchState
+    startClosed?: boolean
   } = {},
 ) {
   const manual = manualScheduler()
@@ -32,6 +34,7 @@ export function createTestProject(
     storage: options.storage ?? null,
     scheduler: manual.scheduler,
     fixture: options.fixture ?? null,
+    startClosed: options.startClosed,
   })
   const transport = createTransport(server, {
     scheduler: manual.scheduler,
@@ -44,10 +47,15 @@ export function createTestProject(
   const initial = server.current()
   const workbench = createWorkbench({
     operationIdPrefix: 'ui-op',
-    initialState: initial.state,
+    initialState: initial.state ?? createInitialState(),
     isUndoable: (type) => DRAFT_COMMANDS.has(type),
     refuse: (type) =>
-      refuseServerCommand(type, client.store.getState().pending),
+      refuseServerCommand(
+        type,
+        client.store.getState().pending,
+        client.store.getState().meta.currentProject !== null,
+        client.store.getState().transitioning,
+      ),
   })
   const client = createProjectClient({
     workbench,

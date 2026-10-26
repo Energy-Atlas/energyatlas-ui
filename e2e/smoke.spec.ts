@@ -1,3 +1,4 @@
+import { createProjectFromStart } from './test.ts'
 import { AxeBuilder } from '@axe-core/playwright'
 import { expect, test } from './test.ts'
 
@@ -5,6 +6,7 @@ test('workbench renders without serious or critical axe violations', async ({
   page,
 }) => {
   await page.goto('/')
+  await createProjectFromStart(page)
 
   await expect(page.getByRole('heading', { level: 1 })).toHaveText(
     'Synthetic district (demo)',

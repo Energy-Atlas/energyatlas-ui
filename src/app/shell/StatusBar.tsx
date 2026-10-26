@@ -22,7 +22,11 @@ import styles from './shell.module.css'
 
 // Progress ticks are system bookkeeping; announcing each would drown out
 // the operations people care about.
-const QUIET_OPERATION_TYPES = new Set(['task.start', 'task.reportProgress'])
+const QUIET_OPERATION_TYPES = new Set([
+  'task.start',
+  'task.reportProgress',
+  'view.resetForProject',
+])
 
 export function StatusBar({
   onOpenPage,
@@ -34,6 +38,9 @@ export function StatusBar({
   const state = useWorkbenchSnapshot((snapshot) => snapshot.state)
   const pending = useClientSnapshot((snapshot) => snapshot.pending)
   const dirty = useClientSnapshot((snapshot) => snapshot.meta.dirty)
+  const savedAt = useClientSnapshot((snapshot) => snapshot.meta.savedAt)
+  const saveError = useClientSnapshot((snapshot) => snapshot.saveError)
+  const generation = useClientSnapshot((snapshot) => snapshot.projectGeneration)
   const conditions = useClientSnapshot((snapshot) =>
     describeConditions(snapshot.conditions).join(', '),
   )
@@ -57,6 +64,19 @@ export function StatusBar({
   const lastOperation = [...log]
     .reverse()
     .find((entry) => !QUIET_OPERATION_TYPES.has(entry.type))
+  const saveStatus = pending.some(
+    (request) =>
+      request.type === 'project.save' &&
+      request.projectGeneration === generation,
+  )
+    ? 'Saving…'
+    : saveError
+      ? 'Save failed'
+      : dirty || Object.keys(state.pendingEdits).length > 0
+        ? 'Unsaved changes'
+        : savedAt
+          ? `Saved ${new Date(savedAt).toLocaleTimeString()}`
+          : 'Not saved'
   const rejected = lastOperation?.status === 'rejected'
   const notice = lastOperation
     ? rejected
@@ -71,6 +91,13 @@ export function StatusBar({
         {state.project.name}
         {state.project.location ? '' : ' · no location yet'}
         {dirty ? ' · unsaved changes' : ''}
+      </span>
+      <span
+        className={styles.statusItem}
+        data-testid="save-status"
+        aria-live="polite"
+      >
+        {saveStatus}
       </span>
       {conditions ? (
         <button

@@ -1,3 +1,4 @@
+import { createProjectFromStart } from './test.ts'
 import { AxeBuilder } from '@axe-core/playwright'
 import {
   blockBasemap,
@@ -34,7 +35,10 @@ async function seriousViolations(page: Page): Promise<string[]> {
       (violation) =>
         violation.impact === 'serious' || violation.impact === 'critical',
     )
-    .map((violation) => `${violation.id} (${violation.nodes.length})`)
+    .map(
+      (violation) =>
+        `${violation.id}: ${violation.nodes.map((node) => `${node.target.join(' ')} ${node.html}`).join(', ')}`,
+    )
 }
 
 async function runStages(page: Page, names: string[]) {
@@ -53,6 +57,7 @@ async function runStages(page: Page, names: string[]) {
 
 test.beforeEach(async ({ page }) => {
   await page.goto('/')
+  await createProjectFromStart(page)
   await expect(
     page.getByRole('toolbar', { name: 'Workbench commands' }),
   ).toBeVisible()
@@ -151,6 +156,7 @@ test('map falls back to a plain background when the basemap cannot load, then re
 }) => {
   await blockBasemap(page)
   await page.reload()
+  await createProjectFromStart(page)
   await runStages(page, ['Location setup / footprint capturing'])
   await page.getByRole('tab', { name: 'Map', exact: true }).click()
 
@@ -320,6 +326,7 @@ test('settings turns the basemap off and keeps the choice across reloads', async
   )
 
   await page.reload()
+  await createProjectFromStart(page)
   await expect(
     page.getByRole('checkbox', { name: 'Show the OpenFreeMap basemap' }),
   ).not.toBeChecked()

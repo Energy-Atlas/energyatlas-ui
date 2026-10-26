@@ -1,3 +1,4 @@
+import { createProjectFromStart } from './test.ts'
 import { AxeBuilder } from '@axe-core/playwright'
 import { expect, test, type Page } from './test.ts'
 
@@ -30,6 +31,7 @@ test('discloses a fault in the status bar and shows its effect', async ({
   page,
 }) => {
   await page.goto('/')
+  await createProjectFromStart(page)
   const dialog = await openDemoConditions(page)
   await dialog.getByText('Offline', { exact: true }).click()
   const violations = await new AxeBuilder({ page })
@@ -71,7 +73,7 @@ test('discloses a fault in the status bar and shows its effect', async ({
 test('shows a held request as pending until the server answers', async ({
   page,
 }) => {
-  await page.goto('/?hold=1&latency=none')
+  await page.goto('/?fixture=new&hold=1&latency=none')
   await showWorkflow(page)
   const run = workflowPanel(page).getByRole('button', {
     name: `Run ${LOCATION}`,
@@ -95,7 +97,7 @@ test('shows a held request as pending until the server answers', async ({
 test('shows rejected input on its field and the edit lock as a reason', async ({
   page,
 }) => {
-  await page.goto('/?fault=rejectInput')
+  await page.goto('/?fixture=new&fault=rejectInput')
   await page.getByRole('tab', { name: 'Creator', exact: true }).click()
   const measureForm = page.getByRole('region', { name: 'New measure' })
   await measureForm.getByRole('textbox', { name: 'Name' }).fill('Heat pumps')
@@ -107,7 +109,7 @@ test('shows rejected input on its field and the edit lock as a reason', async ({
     measureForm.getByRole('textbox', { name: 'Name' }),
   ).toHaveAttribute('aria-invalid', 'true')
 
-  await page.goto('/?fault=editLock')
+  await page.goto('/?fixture=new&fault=editLock')
   await page.getByRole('tab', { name: 'Creator', exact: true }).click()
   await measureForm.getByRole('textbox', { name: 'Name' }).fill('Heat pumps')
   await measureForm.getByRole('button', { name: 'Create measure' }).click()
@@ -158,10 +160,13 @@ test('loads project fixtures through the server', async ({ page }) => {
   await expect(dialog).toContainText('unsaved changes')
   await dialog.getByText('Complete', { exact: true }).click()
   await dialog.getByRole('button', { name: 'Load "Complete"' }).click()
+  await page
+    .getByRole('alertdialog', { name: 'Leave this project?' })
+    .getByRole('button', { name: 'Discard and leave' })
+    .click()
   await expect(page.getByTestId('status-notice')).toContainText(
     'Loaded the "Complete" fixture',
   )
-  await dialog.getByRole('button', { name: 'Done' }).click()
   await expect(
     workflowPanel(page)
       .getByRole('listitem')
@@ -171,6 +176,7 @@ test('loads project fixtures through the server', async ({ page }) => {
 
 test('fails a job partway and keeps its log', async ({ page }) => {
   await page.goto('/?jobs=failPartway')
+  await createProjectFromStart(page)
   await showWorkflow(page)
   await workflowPanel(page)
     .getByRole('button', { name: `Run ${LOCATION}` })

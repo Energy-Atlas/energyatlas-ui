@@ -82,7 +82,7 @@ export function DemoConditionsDialog({
   isOpen: boolean
   onOpenChange: (isOpen: boolean) => void
 }) {
-  const { client } = useServices()
+  const { client, lifecycle } = useServices()
   const conditions = useClientSnapshot((snapshot) => snapshot.conditions)
   const dirty = useClientSnapshot((snapshot) => snapshot.meta.dirty)
   const [fixture, setFixture] = useState<FixtureId>('partway')
@@ -122,7 +122,7 @@ export function DemoConditionsDialog({
         <Button
           className={componentStyles.button}
           isDisabled={loading !== null}
-          onPress={() => void client.replaceProject(fixture)}
+          onPress={() => void lifecycle.request({ type: 'fixture', fixture })}
         >
           {loading ? 'Loading…' : `Load "${FIXTURES[fixture].label}"`}
         </Button>

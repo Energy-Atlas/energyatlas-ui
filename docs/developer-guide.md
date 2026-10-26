@@ -2,6 +2,8 @@
 
 Date: 2026-09-15, after first-slice stage 4 (scripted agent) on the `feature/agentic` branch and the OpenFreeMap basemap over Back Bay footprints ([decision 0012](decisions/0012-openfreemap-basemap-back-bay.md)) on the `feature/basemap` branch.
 
+Updated 2026-10-26 for project lifecycle on `codex/project-lifecycle` ([decision 0024](decisions/0024-dedicated-project-start-screen.md)); this slice is not merged or pushed. The [lifecycle record](project-lifecycle-design.md) contains its verification and limits.
+
 This guide is for a developer or agent taking over without the original conversation. It describes the code as built, how to extend it without breaking the accepted rules, how it is tested, and what is still missing. Product intent and accepted choices live in the [decision records](decisions/README.md); evidence lives in the [first-slice implementation status](first-slice-proposal.md#implementation-status) and the [design alignment record](design-alignment.md#implementation-status).
 
 ## Reading order
@@ -15,7 +17,9 @@ This guide is for a developer or agent taking over without the original conversa
 
 ## What exists
 
-A browser-only React application with one synthetic project that can be taken through the 12-stage workflow of [decision 0005](decisions/0005-first-slice-workflow-and-panel-scope.md):
+A browser-only React application with a start screen and several named browser-local synthetic projects, one open at a time. Each can be taken through the 12-stage workflow of [decision 0005](decisions/0005-first-slice-workflow-and-panel-scope.md):
+
+- **Project lifecycle:** Recent, Open, and named Create before the workbench; File > Projects returns to the start screen. Shared guards protect unsaved model changes and unsent drafts, and confirm cancelling active jobs. Save status distinguishes pending/saved/unsaved/failure. Appearance and Demo conditions remain available from the start screen; held lifecycle requests expose Demo conditions inside their pending dialog.
 
 - **Shell:** ribbon (menus, quick buttons, the ▶ Run ▾ split button, command palette), FlexLayout docking area, status bar with jobs, issues, requests waiting for the server, unsaved changes, the demo conditions chip, notices, and simulated compute.
 - **Left border (icon side bar):** Assets tree and Workflow panel.
@@ -27,7 +31,7 @@ There is no real server, no model provider, and no real engineering calculation.
 
 Building geometry is real: 464 footprints from a bundled OpenStreetMap extract of Boston Back Bay (`src/domain/fixtures/`, ODbL), with synthetic attributes ([decision 0012](decisions/0012-openfreemap-basemap-back-bay.md)). The Map page loads an OpenFreeMap basemap from the public instance over the network, recolors it from the active appearance, and falls back to a plain background when it is off or cannot load. It can also show live terrain with hillshade from Mapterhorn ([decision 0015](decisions/0015-terrain.md)), for display only: terrain is never project data, and a failure falls back to a flat map.
 
-Run it with `npm ci` then `npm run dev`. To walk the workflow manually: open the Workflow panel, run stages in order (Shading can be skipped), create a measure and a scenario on the Creator page before running Scenario definitions, and expect Grid modeling to fail on its first attempt by design; run it again to recover.
+Run it with `npm ci` then `npm run dev`. Create or open a project on the start screen. To walk the workflow manually: open the Workflow panel, run stages in order (Shading can be skipped), create a measure and a scenario on the Creator page before running Scenario definitions, and expect Grid modeling to fail on its first attempt by design; run it again to recover. An explicit `?fixture=...` demo deep link opens that fixture directly; a normal reload shows the start screen.
 
 ## Architecture
 
@@ -38,15 +42,17 @@ main.tsx ── Geist font CSS, src/index.css (fallback tokens, fonts, type scal
    │
    └─ App ─ WorkbenchProvider (src/app/WorkbenchContext.tsx)
               ├─ storage       getBrowserStorage(): localStorage or null
-              ├─ mock server   createMockServer() (src/server/): domain engine, job runner, saved project
+              ├─ mock server   createMockServer() (src/server/): domain engine, jobs, browser-local project catalog
               ├─ transport     createTransport(server, conditions): delay, faults, ordered pushed updates
               ├─ workbench     createWorkbench(): the UI's copy; refuses server commands, undoes drafts only
               ├─ client        createProjectClient(): server requests, pending requests, server meta
+              ├─ lifecycle     createProjectLifecycle(): shared intents, unsaved-work guard, confirmed job cancellation
               ├─ layout        createLayoutController(workbench, storage): FlexLayout model
               ├─ appearance    resolveAppearance(preference, system setting), applied to the root element
               ├─ view          createViewStore(workbench): logged view operations, including context mode
               └─ agent         createScriptedAgent(workbench, client, layout, view): sessions behind the agent adapter
-            WorkbenchShell (src/app/shell/WorkbenchShell.tsx)
+            ProjectSession (src/App.tsx): ProjectStart while closed; ProjectDialogs shared across both states
+            WorkbenchShell while open (src/app/shell/WorkbenchShell.tsx)
               ├─ Ribbon, CommandPalette, dialogs ── useAppActions() (src/app/actions.ts)
               ├─ <Layout factory=renderTabContent> ── panels and pages by component id
               └─ StatusBar
@@ -57,7 +63,7 @@ Data flow is one-directional:
 1. A control, shortcut, palette entry, or agent tool call invokes `client.execute({ type, input }, source)`. Local commands (selection, drafts, the focused stage) run on the UI's workbench at once. Server commands (`SERVER_COMMANDS` in `src/server/server.ts`) go through the transport to the mock server and return a promise.
 2. On the server, the command's zod schema validates the input; the handler mutates an Immer draft and returns `applied` with a summary or `rejected` with per-field issues. A rejection reaches the UI as RC's error body (`src/server/apiError.ts`) and becomes per-field issues again; model changes during a run are refused with a 409 `run_in_progress`.
 3. The server pushes updates (state plus the operations that produced it, in order); the client merges them with the UI's own selection, drafts, and focus (`mergeServerState`), and the UI's store publishes `{ state, log, canUndo, canRedo }`. Components read it through `useWorkbenchSnapshot(selector)`, and requests in flight, the save state, and the demo conditions through `useClientSnapshot(selector)`. The job runner (`startTaskSimulator`) runs on the server as source `system`.
-4. Requests carry the client's `projectGeneration`; a request delayed past project replacement gets a 409 `project_changed`. Adoption of a new generation clears selection, drafts, focus, and history. Imported operations keep stable server IDs, namespaced per server lifetime; local UI operations and fixture history have separate namespaces. Saved and fixture history is not restored as a log.
+4. Requests carry the client's `projectGeneration`; a request delayed past project replacement gets a 409 `project_changed`. Adoption of a new generation clears selection, drafts, focus, and history. The session subscriber resets project views through `view.resetForProject` and clears agent transcript, queues, and timers with `resetForProject`. Imported operations keep stable server IDs, namespaced per server lifetime; local UI operations and fixture history have separate namespaces. Saved and fixture history is not restored as a log.
 5. Draft changes, discard, undo, and redo wait while Apply is pending. A failed Apply retains drafts and undo history. Agent tool continuations also check their session generation, so a stopped session cannot resume a later one.
 6. Derived values (stage states, dashboard data, map metrics, asset tree rows, Inspection) are computed from state in pure functions, never stored.
 
@@ -109,12 +115,19 @@ Key domain rules:
 
 Everything persists in `localStorage` of the current origin only:
 
-- `eaui.project.v2`: the saved project (File > Save, Ctrl+S). Tasks active at save time load as cancelled. Projects saved under `eaui.project.v1` used the synthetic ocean grid; they stay in storage, are not restored, and the operation log says so.
+- `eaui.projects.v1`: the versioned multi-project catalog, saved atomically with stable IDs, names, last saved/opened metadata, and model snapshots (`src/server/projectCatalog.ts`). Normal entry is the start screen, not automatic restoration. Tasks active at save time load as cancelled. `projectSchema.ts` validates saved state and graph references before opening; malformed or blocked storage produces a visible error and is never silently overwritten.
+- `eaui.project.v2`: the previous single snapshot, imported as an existing project if no catalog exists. Reading migration does not rewrite this key; the first successful save writes the new catalog. The old key remains. Projects under `eaui.project.v1` used the synthetic ocean grid and remain unsupported, with the existing explanation on restore.
 - `eaui.basemap`: `off` hides the OpenFreeMap basemap; anything else shows it. Changes are logged as `view.setBasemap`.
 - `eaui.layout.v1`: the FlexLayout model, saved on every layout change. An unreadable layout falls back to the default. Restored layouts take the current panel names from `PANELS`.
 - `eaui.theme`: the appearance preference, `system` or an appearance id. Values stored before curated appearances (`light`, `dark`) stay valid.
 
-To start clean, use File > New project and View > Reset layout, or clear the site data for `127.0.0.1:5173`. Playwright runs start with fresh storage.
+To start a new workflow, use File > New project; other saved projects remain in the catalog. View > Reset layout resets the shell. Clearing site data for `127.0.0.1:5173` removes saved projects too. Playwright contexts start with fresh storage.
+
+### Project lifecycle operations
+
+Use `services.lifecycle.request({type: 'create' | 'open' | 'close' | 'save' | 'fixture' | 'list', ...})` for user/agent intents. `openCreate()` and `openCatalog()` open the shared UI. The raw client methods are the service implementation, not a shortcut around guards. `withTransition()` fences new commands/drafts/history during a committed session change and supplies the guard's internal cancel/apply command path. Stay sends nothing. A confirmed cancellation stays cancelled if a later Save fails; the project remains open for retry.
+
+Agent `project.*` tools use the same controller and offer list results as structured project summaries. Model-changing lifecycle tools require approval; their guard remains the same manual unsaved-work/job confirmation. New saved model fields must be represented in `src/server/projectSchema.ts`; its typed schema and fixture round-trip tests pin compatibility. Save persists the server model, never UI selection or unsent drafts.
 
 ## Rules for changes, with recipes
 
@@ -201,12 +214,13 @@ Only packages from decisions 0007, 0008, and 0010 are allowed. Record a reason i
 
 | Command | What it covers |
 | --- | --- |
-| `npm test` | 200 Vitest tests: commands, undo, outdated propagation, simulator, shortcuts, asset tree, map metrics, dashboard data, appearance contrast and preferences, Inspection view model, view operations and chart specifications, layout operations, stage planning, scripted agent sessions and tools, basemap recoloring and preference, 3D silhouette projection and terrain lift, terrain display helpers, project fixtures, and the mock server, transport, and project client under every demo condition, including stale requests, session isolation, draft submission, and provenance |
-| `npm run test:e2e` | 60 Playwright tests in Edge at 1280x800 with 4 local workers and axe (no serious or critical violations allowed on product pages) |
+| `npm test` | 224 Vitest tests: domain/views/agent, appearance contrast, spatial helpers, fixtures and service conditions, plus catalog migration/validation, explicit sessions, shared lifecycle guards, mutation fencing, project tool parity, and queued-agent resets |
+| `npm run test:e2e` | 68 Playwright tests in Edge with 4 local workers and axe; default 1280x800, plus lifecycle appearance captures at 1600x1000 and 900x700 (no serious or critical violations allowed) |
 | `npm run typecheck`, `npm run lint`, `npm run format:check` | Must be clean before committing |
 
 End-to-end specs:
 
+- `e2e/project-lifecycle.spec.ts`: start, named creation/validation, multi-project save/open/recent, equal names, draft and job guards, failed Save, malformed storage, held-request recovery, all six appearances at three sizes, axe, keyboard focus, and reproducible screenshots in `tmp/`.
 - `e2e/smoke.spec.ts`: renders with no serious or critical axe violations.
 - `e2e/workbench.spec.ts`: shell regions, no visible Working labels, the Run split button and menu, placing pages side by side and moving tabs from the palette, background task progress, explained blocked actions, palette and panel shortcuts, undo, save and layout persistence across reloads, narrow-window overlays, reset layout.
 - `e2e/pages.spec.ts`: Assets provenance, Creator validation and creation, Roadmap focus and custom stage insertion.
@@ -222,6 +236,8 @@ End-to-end specs:
 Conventions and pitfalls found while building:
 
 - Run `npm run test:e2e` and `npm run test:e2e:preview` sequentially: both use `test-results/`, so concurrent runs can remove each other's trace files and fail during browser cleanup.
+- Product entry helpers in `e2e/test.ts` create and reopen projects through the UI. The fixture accepts native before-unload prompts on intentional test navigation/reload; in-app unsaved-work guards remain exercised. Wait for active theme transitions to finish before axe/screenshots, or mixed intermediate colors can report a transient contrast failure.
+- A pending submit button that disappears with its modal must not leave React Aria Button's live-announcer label references dangling. Create uses explicit disabled/progress status for that reason; ordinary persistent forms retain `isPending`.
 - Playwright treats `aria-disabled` buttons and React Aria's hidden native checkbox and radio inputs as not actionable. Use `focus()` then `Enter` or `Space`.
 - Clicking an already selected border tab (Assets, Workflow, Reasoning, Inspection) closes that panel. Check `aria-selected` before clicking; the helper in `e2e/dashboard.spec.ts` shows how.
 - Stage runs take about 1.6 seconds each through the simulator; wait for the "Complete" state label rather than sleeping. Long flows set `test.setTimeout`.
@@ -261,7 +277,7 @@ Conventions and pitfalls found while building:
 
 Behavior promised by the plan or decisions but not built yet:
 
-- **Mock server (decision 0023):** it restarts with every page load and restores the last saved project, so a reload loses unsaved server-side changes, as the demo did before; it serves one browser tab, with no other writers. While offline, missed updates are caught up as one snapshot without listing the operations between. Layout, view, and appearance changes stay in the UI, not on the server. Only drafts can be undone.
+- **Mock server (decisions 0023/0024):** it restarts with every page load and shows the start screen; browser unload prompts protect unsaved work but cannot finish asynchronous saves. It serves one tab with no coordination between writers. Catalog corruption blocks saving until it is resolved/retried rather than erasing stored projects. While offline, missed updates are caught up as one snapshot without listing the operations between. Layout, view, and appearance changes stay in the UI; only drafts can be undone. Open is a browser-local catalog, with real folder pickers/import/export deferred.
 
 - **Agent (stage 4):** scripted sessions only. Free text starts a session only when it matches a session's keywords, and otherwise the agent says so. Transcripts, view state, and added charts are not saved with the project, and a stage failure during an approved run ends the session. See [stage 4 status](first-slice-proposal.md#stage-4-scripted-agent-2026-09-15).
 - **Design alignment:** the six-appearance reading of the palette answer is unconfirmed, axe runs in non-Light appearances on the default workbench only, the context mode resets on reload, and Inspection is read-only. See [remaining gaps](design-alignment.md#remaining-gaps).

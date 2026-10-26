@@ -1,0 +1,109 @@
+.start {
+  height: 100dvh;
+  display: grid;
+  grid-template-rows: auto 1fr auto;
+  color: var(--color-text);
+  background: var(--color-bg);
+  overflow: auto;
+}
+.header,
+.footer,
+.titleRow,
+.actions {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  flex-wrap: wrap;
+}
+.header,
+.footer {
+  padding: var(--space-3) var(--space-4);
+  justify-content: space-between;
+  background: var(--color-surface-raised);
+}
+.header {
+  border-bottom: var(--rule);
+}
+.footer {
+  border-top: var(--rule);
+  color: var(--color-text-muted);
+  font-size: var(--font-size-small);
+}
+.content {
+  width: min(100%, calc(var(--space-6) * 36));
+  box-sizing: border-box;
+  padding: calc(var(--space-6) * 2) var(--space-4);
+  margin-inline: auto;
+}
+.titleRow {
+  justify-content: space-between;
+}
+.titleRow h1 {
+  font-size: var(--font-size-title);
+}
+.appearance {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  font-size: var(--font-size-small);
+}
+.section {
+  margin-top: var(--space-6);
+  border: var(--rule);
+  background: var(--color-surface);
+  padding: var(--space-3);
+}
+.sectionHeading {
+  font-family: var(--label-font);
+  font-size: var(--label-size);
+  text-transform: var(--label-case);
+  letter-spacing: var(--label-tracking);
+  border-bottom: var(--rule);
+  padding-bottom: var(--space-3);
+  margin: 0;
+}
+.projects {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+.projects li + li {
+  border-top: var(--rule);
+}
+.projectRow {
+  display: grid;
+  gap: var(--space-1);
+  text-align: left;
+  padding: var(--space-3);
+  width: 100%;
+  border: 0;
+  background: var(--color-surface);
+  color: var(--color-text);
+  font: inherit;
+  cursor: pointer;
+  overflow-wrap: anywhere;
+}
+.projectRow[data-hovered] {
+  background: var(--color-surface-raised);
+}
+.projectRow[data-pressed] {
+  background: var(--color-selected-bg);
+}
+.projectRow[data-focus-visible] {
+  outline: var(--space-1) solid var(--color-focus);
+  outline-offset: calc(-1 * var(--space-1));
+}
+.projectRow[data-disabled] {
+  color: var(--color-text-muted);
+  cursor: wait;
+}
+.projectName {
+  font-weight: 600;
+}
+.metadata {
+  color: var(--color-text-muted);
+  font-size: var(--font-size-small);
+}
+.actions {
+  margin-block: var(--space-3);
+}

@@ -1,3 +1,4 @@
+import { createProjectFromStart, openRecentProject } from './test.ts'
 import { expect, test, type Page } from './test.ts'
 
 // First-slice build stage 2: the workbench shell (decisions 0004, 0006, 0008).
@@ -22,6 +23,7 @@ async function runFirstStage(page: Page) {
 test.describe('workbench shell', () => {
   test.beforeEach(async ({ page }) => {
     await page.goto('/')
+    await createProjectFromStart(page)
     await expect(
       page.getByRole('toolbar', { name: 'Workbench commands' }),
     ).toBeVisible()
@@ -294,15 +296,14 @@ test.describe('workbench shell', () => {
     )
 
     await page.reload()
+    await openRecentProject(page)
     await expect(
       page.getByRole('tab', { name: 'Workflow', exact: true }),
     ).toHaveAttribute('aria-selected', 'true')
     await expect(
       workflowPanel(page).getByRole('listitem').first(),
     ).toContainText('Complete')
-    await expect(page.getByTestId('status-notice')).toContainText(
-      'Restored the project',
-    )
+    await expect(page.getByTestId('status-notice')).toContainText('Opened')
   })
 
   test('opens side panels as overlays in a narrow window', async ({ page }) => {
@@ -366,6 +367,7 @@ test.describe('workbench shell', () => {
 // cancelled Backspace in the palette while Delete kept working.
 test('edits the command palette query with Backspace', async ({ page }) => {
   await page.goto('/')
+  await createProjectFromStart(page)
   await expect(
     page.getByRole('toolbar', { name: 'Workbench commands' }),
   ).toBeVisible()

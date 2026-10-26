@@ -1,3 +1,4 @@
+import { createProjectFromStart } from './test.ts'
 import { AxeBuilder } from '@axe-core/playwright'
 import { expect, test, type Page } from './test.ts'
 
@@ -35,6 +36,7 @@ async function selectFirstBuildingInTable(page: Page) {
 
 test.beforeEach(async ({ page }) => {
   await page.goto('/')
+  await createProjectFromStart(page)
   await expect(
     page.getByRole('toolbar', { name: 'Workbench commands' }),
   ).toBeVisible()

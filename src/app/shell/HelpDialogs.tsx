@@ -20,6 +20,7 @@ type DialogFrameProps = {
   onOpenChange: (isOpen: boolean) => void
   children: ReactNode
   role?: 'dialog' | 'alertdialog'
+  isBusy?: boolean
 }
 
 export function DialogFrame({
@@ -28,12 +29,14 @@ export function DialogFrame({
   onOpenChange,
   children,
   role = 'dialog',
+  isBusy = false,
 }: DialogFrameProps) {
   return (
     <ModalOverlay
       isOpen={isOpen}
       onOpenChange={onOpenChange}
-      isDismissable={role === 'dialog'}
+      isDismissable={role === 'dialog' && !isBusy}
+      isKeyboardDismissDisabled={isBusy}
       className={styles.overlay}
     >
       <Modal className={styles.dialogModal}>
@@ -46,6 +49,7 @@ export function DialogFrame({
               slot="close"
               className={styles.iconButton}
               aria-label="Close"
+              isDisabled={isBusy}
             >
               <X size={16} aria-hidden="true" />
             </Button>

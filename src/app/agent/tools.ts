@@ -17,6 +17,10 @@ import {
   type ViewOperation,
 } from '../view/viewOperations.ts'
 import type { ProjectClient } from '../service/projectClient.ts'
+import type {
+  ProjectIntent,
+  ProjectLifecycle,
+} from '../service/projectLifecycle.ts'
 import type { ViewStore } from '../view/viewStore.ts'
 
 // Agent tool calls go through the same paths as manual controls: project
@@ -33,6 +37,7 @@ export type LayoutToolOperation =
   | { type: 'layout.reset'; input: Record<string, never> }
 
 export type ToolCall =
+  | { kind: 'project'; intent: ProjectIntent }
   | { kind: 'command'; command: Command }
   | { kind: 'view'; operation: ViewOperation }
   | { kind: 'layout'; operation: LayoutToolOperation }
@@ -43,11 +48,13 @@ export type ToolResult = {
   issues: ValidationIssue[]
   /** Operation log entries the call recorded, for linking from the transcript. */
   operationIds: string[]
+  data?: unknown
 }
 
 export type ToolDeps = {
   workbench: Workbench
   client: ProjectClient
+  lifecycle?: ProjectLifecycle
   view: ViewStore
   layout: LayoutController
 }
@@ -65,15 +72,18 @@ export function layoutCall(operation: LayoutToolOperation): ToolCall {
 }
 
 export function toolTypeOf(call: ToolCall): string {
+  if (call.kind === 'project') return `project.${call.intent.type}`
   return call.kind === 'command' ? call.command.type : call.operation.type
 }
 
 export function toolInputOf(call: ToolCall): unknown {
+  if (call.kind === 'project') return call.intent
   return call.kind === 'command' ? call.command.input : call.operation.input
 }
 
 /** Tool calls that run stages or change the project model wait for approval. */
 export function requiresApproval(call: ToolCall): boolean {
+  if (call.kind === 'project') return call.intent.type !== 'list'
   if (call.kind !== 'command') return false
   return (
     call.command.type === 'workflow.runStage' ||
@@ -89,10 +99,36 @@ export async function executeToolCall(
   const log = () => deps.workbench.store.getState().log
   const before = log().length
 
+  if (call.kind === 'project' || call.kind === 'command') {
+    if (call.kind === 'project' && !deps.lifecycle)
+      return {
+        status: 'rejected',
+        summary: null,
+        issues: [
+          {
+            path: '',
+            message: 'Project lifecycle tools are unavailable in this session.',
+          },
+        ],
+        operationIds: [],
+      }
+    const result =
+      call.kind === 'command'
+        ? await deps.client.execute(call.command, 'agent')
+        : await deps.lifecycle!.request(call.intent, 'agent')
+    return {
+      status: result.outcome.status,
+      summary:
+        result.outcome.status === 'applied' ? result.outcome.summary : null,
+      issues: result.outcome.status === 'rejected' ? result.outcome.issues : [],
+      operationIds: result.operationId ? [result.operationId] : [],
+      ...(call.kind === 'project' && call.intent.type === 'list'
+        ? { data: { projects: deps.client.store.getState().meta.projects } }
+        : {}),
+    }
+  }
+
   switch (call.kind) {
-    case 'command':
-      await deps.client.execute(call.command, 'agent')
-      break
     case 'view':
       deps.view.execute(call.operation, 'agent')
       break
@@ -181,6 +217,28 @@ export type AgentToolDescription = {
  */
 export function describeAgentTools(): AgentToolDescription[] {
   return [
+    ...[
+      { type: 'list', title: 'List saved projects', input: z.object({}) },
+      {
+        type: 'create',
+        title: 'Create project',
+        input: z.object({ name: z.string().min(1).max(100) }),
+      },
+      {
+        type: 'open',
+        title: 'Open saved project',
+        input: z.object({ projectId: z.string().min(1) }),
+      },
+      { type: 'save', title: 'Save project', input: z.object({}) },
+      { type: 'close', title: 'Close project', input: z.object({}) },
+    ].map((tool) => ({
+      name: `project.${tool.type}`,
+      kind: 'project' as const,
+      title: tool.title,
+      description: `${tool.title} through the shared lifecycle operations and unsaved-work/job guard. Storage is mocked in this browser.`,
+      requiresApproval: tool.type !== 'list',
+      inputSchema: z.toJSONSchema(tool.input, { io: 'input' }),
+    })),
     ...describeCommands()
       .filter((description) => !description.type.startsWith('task.'))
       .map((description) => ({

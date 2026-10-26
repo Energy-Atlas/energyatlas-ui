@@ -42,11 +42,7 @@ import { ReasoningPanel } from '../panels/ReasoningPanel.tsx'
 import { WorkflowPanel } from '../panels/WorkflowPanel.tsx'
 import { useShortcuts } from '../useShortcuts.ts'
 import { CommandPalette } from './CommandPalette.tsx'
-import {
-  CapabilitiesDialog,
-  NewProjectDialog,
-  ShortcutsDialog,
-} from './HelpDialogs.tsx'
+import { CapabilitiesDialog, ShortcutsDialog } from './HelpDialogs.tsx'
 import { Ribbon } from './Ribbon.tsx'
 import { StatusBar } from './StatusBar.tsx'
 import styles from './shell.module.css'
@@ -129,17 +125,17 @@ function renderTabContent(node: TabNode) {
 }
 
 export function WorkbenchShell() {
-  const { client, layout } = useServices()
+  const { lifecycle, layout } = useServices()
   const [openDialog, setOpenDialog] = useState<OpenDialog>(null)
   const dialogs = useMemo<ShellDialogs>(
     () => ({
       openPalette: () => setOpenDialog('palette'),
       openShortcuts: () => setOpenDialog('shortcuts'),
       openCapabilities: () => setOpenDialog('capabilities'),
-      openNewProject: () => setOpenDialog('newProject'),
+      openNewProject: () => lifecycle.openCreate(),
       openDemoConditions: () => setOpenDialog('demoConditions'),
     }),
-    [],
+    [lifecycle],
   )
   const actions = useAppActions(dialogs)
   const invoke = useInvokeAction()
@@ -162,7 +158,7 @@ export function WorkbenchShell() {
   return (
     <div className={styles.shell}>
       <Ribbon actions={actions} invoke={invoke} />
-      <main className={styles.main} aria-label="Workspace">
+      <main className={styles.main} aria-label="Workspace" tabIndex={-1}>
         <Layout
           model={layout.getModel()}
           factory={renderTabContent}
@@ -189,11 +185,6 @@ export function WorkbenchShell() {
       <CapabilitiesDialog
         isOpen={openDialog === 'capabilities'}
         onOpenChange={handleDialogChange}
-      />
-      <NewProjectDialog
-        isOpen={openDialog === 'newProject'}
-        onOpenChange={handleDialogChange}
-        onConfirm={() => void client.replaceProject('new')}
       />
       <DemoConditionsDialog
         isOpen={openDialog === 'demoConditions'}

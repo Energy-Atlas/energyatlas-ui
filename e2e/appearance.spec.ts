@@ -1,3 +1,4 @@
+import { createProjectFromStart } from './test.ts'
 import { AxeBuilder } from '@axe-core/playwright'
 import { expect, test, type Page } from './test.ts'
 
@@ -24,6 +25,7 @@ async function seriousViolations(page: Page): Promise<string[]> {
 
 async function openWorkbench(page: Page) {
   await page.goto('/')
+  await createProjectFromStart(page)
   await expect(
     page.getByRole('toolbar', { name: 'Workbench commands' }),
   ).toBeVisible()
@@ -102,6 +104,7 @@ test('switches appearance from Settings and keeps it across reloads', async ({
   )
 
   await page.reload()
+  await createProjectFromStart(page)
   await expect(root).toHaveAttribute('data-appearance', 'darkEngineering')
 })
 
@@ -115,6 +118,7 @@ test('every appearance renders the workbench without serious axe violations', as
       localStorage.setItem('eaui.theme', value)
     }, id)
     await page.reload()
+    await createProjectFromStart(page)
     await expect(page.locator('html')).toHaveAttribute('data-appearance', id)
     expect(await seriousViolations(page), id).toEqual([])
   }

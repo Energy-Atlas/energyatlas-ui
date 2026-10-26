@@ -1,3 +1,4 @@
+import { createProjectFromStart } from './test.ts'
 import { AxeBuilder } from '@axe-core/playwright'
 import { expect, test, type Page } from './test.ts'
 
@@ -38,6 +39,7 @@ test('dashboard compares a modeled scenario and previews adoption before applyin
 }) => {
   test.setTimeout(120_000)
   await page.goto('/')
+  await createProjectFromStart(page)
   await expect(
     page.getByRole('toolbar', { name: 'Workbench commands' }),
   ).toBeVisible()

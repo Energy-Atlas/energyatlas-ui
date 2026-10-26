@@ -88,4 +88,6 @@ export type AgentAdapter = {
   decline: (itemId: string) => void
   /** Stops the active session; applied changes stay in the project. */
   stop: () => void
+  /** Clears transcript, queued delivery, and callbacks for a replaced project. */
+  resetForProject: () => void
 }

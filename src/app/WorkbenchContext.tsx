@@ -11,6 +11,7 @@ import {
 import { useStore } from 'zustand'
 import { browserScheduler } from '../domain/simulator.ts'
 import type { CommandSource } from '../domain/types.ts'
+import { createInitialState } from '../domain/initialState.ts'
 import {
   createWorkbench,
   type Workbench,
@@ -53,6 +54,10 @@ import {
 } from './theme.ts'
 import type { ViewState } from './view/viewOperations.ts'
 import { createViewStore, type ViewStore } from './view/viewStore.ts'
+import {
+  createProjectLifecycle,
+  type ProjectLifecycle,
+} from './service/projectLifecycle.ts'
 
 type CoreServices = {
   storage: Storage | null
@@ -60,6 +65,7 @@ type CoreServices = {
   workbench: Workbench
   /** Sends server commands to the mock server and follows its updates (decision 0023). */
   client: ProjectClient
+  lifecycle: ProjectLifecycle
   layout: LayoutController
   /** Logged view state shared by manual controls and the agent. */
   view: ViewStore
@@ -112,6 +118,7 @@ function createCoreServices(): CoreServices {
     storage,
     scheduler: browserScheduler,
     fixture,
+    startClosed: true,
   })
   const transport = createTransport(server, {
     scheduler: browserScheduler,
@@ -120,10 +127,15 @@ function createCoreServices(): CoreServices {
   const initial = server.current()
   const workbench = createWorkbench({
     operationIdPrefix: 'ui-op',
-    initialState: initial.state,
+    initialState: initial.state ?? createInitialState(),
     isUndoable: (type) => DRAFT_COMMANDS.has(type),
     refuse: (type) =>
-      refuseServerCommand(type, client.store.getState().pending),
+      refuseServerCommand(
+        type,
+        client.store.getState().pending,
+        client.store.getState().meta.currentProject !== null,
+        client.store.getState().transitioning,
+      ),
   })
   const client = createProjectClient({ workbench, transport, session, initial })
   if (fixture) {
@@ -152,19 +164,29 @@ function createCoreServices(): CoreServices {
   }
   const layout = createLayoutController(workbench, storage)
   const view = createViewStore(workbench)
+  const lifecycle = createProjectLifecycle({ workbench, client })
+  const agent = createScriptedAgent({
+    workbench,
+    client,
+    lifecycle,
+    layout,
+    view,
+    scheduler: browserScheduler,
+  })
+  client.store.subscribe((snapshot, previous) => {
+    if (snapshot.projectGeneration !== previous.projectGeneration) {
+      agent.resetForProject()
+      view.execute({ type: 'view.resetForProject', input: {} }, 'system')
+    }
+  })
   return {
     storage,
     workbench,
     client,
+    lifecycle,
     layout,
     view,
-    agent: createScriptedAgent({
-      workbench,
-      client,
-      layout,
-      view,
-      scheduler: browserScheduler,
-    }),
+    agent,
   }
 }
 
@@ -178,7 +200,15 @@ export function WorkbenchProvider({ children }: { children: ReactNode }) {
     readBasemapPreference(core.storage),
   )
   const appearance = resolveAppearance(appearancePreference, systemDark)
-  const [workedSurface, setWorkedSurface] = useState<WorkedSurface>(null)
+  const generation = useStore(
+    core.client.store,
+    (snapshot) => snapshot.projectGeneration,
+  )
+  const [worked, setWorked] = useState<{
+    generation: number
+    surface: WorkedSurface
+  }>({ generation, surface: null })
+  const workedSurface = worked.generation === generation ? worked.surface : null
 
   useEffect(() => {
     if (typeof window.matchMedia !== 'function') return
@@ -230,9 +260,16 @@ export function WorkbenchProvider({ children }: { children: ReactNode }) {
         }
       },
       workedSurface,
-      claimWorked: (surface) => setWorkedSurface(surface),
+      claimWorked: (surface) => setWorked({ generation, surface }),
     }
-  }, [core, appearancePreference, appearance, basemapEnabled, workedSurface])
+  }, [
+    core,
+    appearancePreference,
+    appearance,
+    basemapEnabled,
+    workedSurface,
+    generation,
+  ])
 
   return (
     <ServicesContext.Provider value={services}>
