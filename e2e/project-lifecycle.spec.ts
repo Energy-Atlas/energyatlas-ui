@@ -93,6 +93,35 @@ test('keeps equal-name saved projects separate and opens them from Recent and Op
   await expect(page.getByRole('heading', { level: 1 })).toHaveText('District')
 })
 
+test('a failed Recent open reports the error and lets the same project retry', async ({
+  page,
+}) => {
+  await page.goto('/')
+  await createProjectFromStart(page, 'Retry district')
+  await save(page)
+  await fileAction(page, /^Projects/)
+  await page
+    .getByRole('button', { name: 'Demo conditions…', exact: true })
+    .click()
+  const conditions = page.getByRole('dialog', { name: 'Demo conditions' })
+  await conditions.getByText('Every request fails', { exact: true }).click()
+  await conditions.getByRole('button', { name: 'Done' }).click()
+  const recent = page.getByRole('region', { name: 'Recent projects' })
+  await recent.getByRole('button').filter({ hasText: 'Retry district' }).click()
+  await expect(page.getByRole('main', { name: 'Projects' })).toBeVisible()
+  await expect(page.getByRole('alert')).toContainText('server failed')
+  await page
+    .getByRole('button', { name: 'Demo conditions…', exact: true })
+    .click()
+  await conditions.getByRole('button', { name: 'Back to normal' }).click()
+  await conditions.getByRole('button', { name: 'Done' }).click()
+  await recent.getByRole('button').filter({ hasText: 'Retry district' }).click()
+  await expect(page.getByRole('heading', { level: 1 })).toHaveText(
+    'Retry district',
+  )
+  await expect(page.getByRole('alert')).toHaveCount(0)
+})
+
 test('Stay retains drafts; explicit Apply, save and leave saves them before closing', async ({
   page,
 }) => {

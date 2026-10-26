@@ -24,7 +24,11 @@ export function ProjectStart() {
     describeConditions(snapshot.conditions).join(', '),
   )
   const pending = useClientSnapshot((snapshot) => snapshot.pending)
-  const busy = useStore(lifecycle.store, (snapshot) => snapshot.busy)
+  const lifecycleSnapshot = useStore(lifecycle.store, (snapshot) => snapshot)
+  const error =
+    lifecycleSnapshot.dialog === null && lifecycleSnapshot.guard === null
+      ? lifecycleSnapshot.issues.map((issue) => issue.message).join(' ')
+      : ''
   const [conditionsOpen, setConditionsOpen] = useState(false)
   const started = useRef(false)
   useEffect(() => {
@@ -36,7 +40,7 @@ export function ProjectStart() {
   const waiting =
     !meta.catalogReady ||
     pending.some((request) => request.type === 'project.list')
-  const unavailable = busy || pending.length > 0
+  const unavailable = lifecycleSnapshot.busy || pending.length > 0
   return (
     <div className={styles.start}>
       <header className={styles.header}>
@@ -96,6 +100,12 @@ export function ProjectStart() {
             Open project
           </Button>
         </div>
+        {error ? (
+          <p role="alert" className={formStyles.alert}>
+            {error} Choose the project again to retry, or change Demo
+            conditions.
+          </p>
+        ) : null}
         <section className={styles.section} aria-labelledby="recent-heading">
           <h2 id="recent-heading" className={styles.sectionHeading}>
             Recent projects

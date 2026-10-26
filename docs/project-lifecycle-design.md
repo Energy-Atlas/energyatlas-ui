@@ -146,3 +146,21 @@ RC cancels jobs when replacing the project session (`ProjectController.StartSess
 
 Next: owner review of `codex/project-lifecycle`, then integration if requested. No push or merge of this slice has
 been performed; the next roadmap slice is Jobs after this lifecycle review.
+
+## Merge review, 2026-10-26
+
+The owner requested review and local integration into `master`, then discussion of roadmap step 3.
+A fresh independent review covered catalog migration/schema validation, session guards, cancellation,
+asynchronous mutation fencing, agent resets, and lifecycle UI feedback.
+
+One P2 was reproduced: selecting a Recent project while requests fail stored a lifecycle rejection but displayed
+no error on the start screen. `ProjectStart` now renders those issues with retry guidance when no project dialog
+or guard owns them. A new browser regression failed on the missing alert, then passed after the fix; it also clears
+the demo fault, retries the same project, and checks that the correct project opens without a lingering alert.
+Focused follow-up review found no further actionable issue.
+
+Fresh verification after the fix: typecheck, lint, format check, 224 unit tests (26 files), 69 development
+browser tests (including the six-appearance/three-size matrix), and the production build plus 2 Pages-base-path
+browser tests all passed. `git diff --check` and 89 local Markdown link targets passed. Browser suites ran
+sequentially. Existing hidden-chart/map-style and large-bundle warnings remain; no check failed. Dependencies
+are unchanged, and the RC checkout remains clean and read-only.
