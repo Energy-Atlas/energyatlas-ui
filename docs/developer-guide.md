@@ -17,13 +17,13 @@ This guide is for a developer or agent taking over without the original conversa
 
 A browser-only React application with one synthetic project that can be taken through the 12-stage workflow of [decision 0005](decisions/0005-first-slice-workflow-and-panel-scope.md):
 
-- **Shell:** ribbon (menus, quick buttons, the ▶ Run ▾ split button, command palette), FlexLayout docking area, status bar with tasks, issues, notices, and simulated compute.
+- **Shell:** ribbon (menus, quick buttons, the ▶ Run ▾ split button, command palette), FlexLayout docking area, status bar with jobs, issues, requests waiting for the server, unsaved changes, the demo conditions chip, notices, and simulated compute.
 - **Left border (icon side bar):** Assets tree and Workflow panel.
-- **Center pages:** Map, Table, Dashboard, Roadmap, Creator, Settings; Issues and Tasks open from the status bar, and Account from the ribbon's account initials.
+- **Center pages:** Map, Table, Dashboard, Roadmap, Creator, Settings; Issues and Jobs (component id `page.tasks`) open from the status bar, and Account from the ribbon's account initials.
 - **Right border:** two independent panels ([decision 0016](decisions/0016-reasoning-and-inspection-panels.md)). Reasoning runs scripted agent sessions with tool calls, approvals, send modes, and permission modes; Inspection is a read-only view of the shared selection. Each has its own Panels menu entry and can be docked anywhere.
 - **Appearance:** System or one of six curated appearances (Light, Dark, Technical monochrome, Lieflat-inspired, Clean technical light, Dark engineering), set in Geist with a three-size type scale.
 
-There is no server, no model provider, and no real engineering calculation. Every number comes from deterministic synthetic code in `src/domain/simulation.ts`, and the UI discloses it as simulated through the capability registry.
+There is no real server, no model provider, and no real engineering calculation. A mock server inside the page owns the project and answers through a transport that adds delay and demo faults ([decision 0023](decisions/0023-mock-server-and-fixture-picker.md)); Help > Demo conditions sets those conditions and loads project fixtures. Every number comes from deterministic synthetic code in `src/domain/simulation.ts`, and the UI discloses it as simulated through the capability registry.
 
 Building geometry is real: 464 footprints from a bundled OpenStreetMap extract of Boston Back Bay (`src/domain/fixtures/`, ODbL), with synthetic attributes ([decision 0012](decisions/0012-openfreemap-basemap-back-bay.md)). The Map page loads an OpenFreeMap basemap from the public instance over the network, recolors it from the active appearance, and falls back to a plain background when it is off or cannot load. It can also show live terrain with hillshade from Mapterhorn ([decision 0015](decisions/0015-terrain.md)), for display only: terrain is never project data, and a failure falls back to a flat map.
 
@@ -38,12 +38,14 @@ main.tsx ── Geist font CSS, src/index.css (fallback tokens, fonts, type scal
    │
    └─ App ─ WorkbenchProvider (src/app/WorkbenchContext.tsx)
               ├─ storage       getBrowserStorage(): localStorage or null
-              ├─ workbench     createWorkbench(): zustand vanilla store + command registry
+              ├─ mock server   createMockServer() (src/server/): domain engine, job runner, saved project
+              ├─ transport     createTransport(server, conditions): delay, faults, ordered pushed updates
+              ├─ workbench     createWorkbench(): the UI's copy; refuses server commands, undoes drafts only
+              ├─ client        createProjectClient(): server requests, pending requests, server meta
               ├─ layout        createLayoutController(workbench, storage): FlexLayout model
-              ├─ task simulator startTaskSimulator(workbench): advances queued tasks as source "system"
               ├─ appearance    resolveAppearance(preference, system setting), applied to the root element
               ├─ view          createViewStore(workbench): logged view operations, including context mode
-              └─ agent         createScriptedAgent(workbench, layout, view): sessions behind the agent adapter
+              └─ agent         createScriptedAgent(workbench, client, layout, view): sessions behind the agent adapter
             WorkbenchShell (src/app/shell/WorkbenchShell.tsx)
               ├─ Ribbon, CommandPalette, dialogs ── useAppActions() (src/app/actions.ts)
               ├─ <Layout factory=renderTabContent> ── panels and pages by component id
@@ -52,9 +54,9 @@ main.tsx ── Geist font CSS, src/index.css (fallback tokens, fonts, type scal
 
 Data flow is one-directional:
 
-1. A control, shortcut, palette entry, simulator tick, or agent tool call invokes `workbench.execute({ type, input }, source)`.
-2. The command's zod schema validates the input; the handler mutates an Immer draft and returns `applied` with a summary or `rejected` with per-field issues.
-3. The store publishes a new snapshot `{ state, log, canUndo, canRedo }`; components read it through `useWorkbenchSnapshot(selector)`.
+1. A control, shortcut, palette entry, or agent tool call invokes `client.execute({ type, input }, source)`. Local commands (selection, drafts, the focused stage) run on the UI's workbench at once. Server commands (`SERVER_COMMANDS` in `src/server/server.ts`) go through the transport to the mock server and return a promise.
+2. On the server, the command's zod schema validates the input; the handler mutates an Immer draft and returns `applied` with a summary or `rejected` with per-field issues. A rejection reaches the UI as RC's error body (`src/server/apiError.ts`) and becomes per-field issues again; model changes during a run are refused with a 409 `run_in_progress`.
+3. The server pushes updates (state plus the operations that produced it, in order); the client merges them with the UI's own selection, drafts, and focus (`mergeServerState`), and the UI's store publishes `{ state, log, canUndo, canRedo }`. Components read it through `useWorkbenchSnapshot(selector)`, and requests in flight, the save state, and the demo conditions through `useClientSnapshot(selector)`. The job runner (`startTaskSimulator`) runs on the server as source `system`.
 4. Derived values (stage states, dashboard data, map metrics, asset tree rows, Inspection) are computed from state in pure functions, never stored.
 
 View state that is not project state changes through the layout controller, the appearance service, or view operations (`src/app/view/`), and is recorded with `workbench.record`, so it appears in the operation log with its source. The agent uses exactly these paths through `src/app/agent/tools.ts`.
@@ -123,6 +125,7 @@ These restate [AGENTS.md](../AGENTS.md) as concrete steps.
 3. Reject with `rejected(message, path)`; `path` must name the input field so forms can place the message.
 4. If the change invalidates results, bump the owning stage's `revision` or `editRevision` through `nextRevision(state)` so outdated propagation happens automatically.
 5. Test it in `src/domain/workbench.test.ts` through `createWorkbench().execute`, including a rejected case and, when undoable, undo and redo.
+6. Decide where it runs ([decision 0023](decisions/0023-mock-server-and-fixture-picker.md)). A command that changes the project belongs to the server: add it to `SERVER_COMMANDS` in `src/server/server.ts`, and to `MODEL_COMMANDS` too when a run must lock it out. UI state (selection, drafts, focus) stays local; keep it in `mergeServerState` in `src/app/service/projectClient.ts` so server updates do not overwrite it. Controls send it with `client.execute` and await the result; show `usePendingReason` (or `waitingReason` in lists) as the control's `disabledReason` while its request is in flight, and `isPending` on form submit buttons. Test the round trip with `createTestProject()` from `src/testing/testProject.ts` and `await manual.settle()`.
 
 Never mutate state outside a command. UI-only concerns (hover, open dialogs, draft input text) stay in React state.
 
@@ -196,8 +199,8 @@ Only packages from decisions 0007, 0008, and 0010 are allowed. Record a reason i
 
 | Command | What it covers |
 | --- | --- |
-| `npm test` | 126 Vitest tests: commands, undo, outdated propagation, simulator, shortcuts, asset tree, map metrics, dashboard data, appearance contrast and preferences, Inspection view model, view operations and chart specifications, layout operations, stage planning, scripted agent sessions and tools, basemap recoloring and preference, 3D silhouette projection and terrain lift, terrain display helpers |
-| `npm run test:e2e` | 47 Playwright tests in Edge at 1280x800 with 4 local workers and axe (no serious or critical violations allowed on product pages) |
+| `npm test` | 193 Vitest tests: commands, undo, outdated propagation, simulator, shortcuts, asset tree, map metrics, dashboard data, appearance contrast and preferences, Inspection view model, view operations and chart specifications, layout operations, stage planning, scripted agent sessions and tools, basemap recoloring and preference, 3D silhouette projection and terrain lift, terrain display helpers, project fixtures, and the mock server, transport, and project client under every demo condition |
+| `npm run test:e2e` | 59 Playwright tests in Edge at 1280x800 with 4 local workers and axe (no serious or critical violations allowed on product pages) |
 | `npm run typecheck`, `npm run lint`, `npm run format:check` | Must be clean before committing |
 
 End-to-end specs:
@@ -206,7 +209,8 @@ End-to-end specs:
 - `e2e/workbench.spec.ts`: shell regions, no visible Working labels, the Run split button and menu, placing pages side by side and moving tabs from the palette, background task progress, explained blocked actions, palette and panel shortcuts, undo, save and layout persistence across reloads, narrow-window overlays, reset layout.
 - `e2e/pages.spec.ts`: Assets provenance, Creator validation and creation, Roadmap focus and custom stage insertion.
 - `e2e/map-table.spec.ts`: empty states, validated pending table edits, table-map shared selection, basemap credits, the fallback and retry when the basemap cannot load, the Settings toggle persisting across reloads, the 2D/3D switch with its missing-heights note, legend rows, and keyboard hint, and the Terrain switch with its exaggeration slider, legend row, credits, and flat fallback with retry.
-- `e2e/test.ts`: not a spec. It exports `test` and `expect` with an automatic fixture that answers OpenFreeMap requests with a stand-in style and empty tiles, plus `blockBasemap` and `serveBasemapStub`.
+- `e2e/test.ts`: not a spec. It exports `test` and `expect` with an automatic fixture that answers OpenFreeMap requests with a stand-in style and empty tiles, plus `blockBasemap` and `serveBasemapStub`. It also stores the demo condition "no delay" in the session before each page loads, unless a test set conditions already, so the mock server answers at once in tests.
+- `e2e/demo-conditions.spec.ts`: the Demo conditions dialog and its status-bar chip, an offline request, a held request shown as pending until released, rejected input on its field and the edit lock, fixtures loaded from the URL and the dialog, and a job failing partway with its log.
 - `e2e/dashboard.spec.ts`: full manual path to scenario results, preview, apply, outdated notice, data table.
 - `e2e/appearance.spec.ts`: Geist loads, appearance switching persists, axe in all six appearances.
 - `e2e/context.spec.ts`: Inspection follows the shared selection, and the Inspect selection action opens it.
@@ -218,7 +222,8 @@ Conventions and pitfalls found while building:
 - Playwright treats `aria-disabled` buttons and React Aria's hidden native checkbox and radio inputs as not actionable. Use `focus()` then `Enter` or `Space`.
 - Clicking an already selected border tab (Assets, Workflow, Reasoning, Inspection) closes that panel. Check `aria-selected` before clicking; the helper in `e2e/dashboard.spec.ts` shows how.
 - Stage runs take about 1.6 seconds each through the simulator; wait for the "Complete" state label rather than sleeping. Long flows set `test.setTimeout`.
-- Status messages are asserted through `getByTestId('status-notice')`.
+- Status messages are asserted through `getByTestId('status-notice')`, and requests waiting for the server through `getByTestId('status-pending')`.
+- Reach a project state with `/?fixture=partway` (or `new`, `failed`, `complete`) instead of running stages; set conditions with `?latency=`, `?fault=`, `?jobs=`, and `?hold=1`. Unit tests that pass through the client must `await manual.settle()`, which lets promise continuations run between scheduled steps.
 - Hidden docked tabs stay mounted, so page-wide text locators can match hidden content; scope to a region or use `.filter({ visible: true })`. Give buttons in the side panels distinct accessible names (for example "Clear selection from Inspection") so page-level locators stay unique.
 - React Aria's `MenuTrigger` names a menu after its trigger button, overriding the menu's own `aria-label`.
 - React Aria keeps a checkbox's real `<input>` visually hidden, and a slider thumb is an `<input type="range">` whose slider role is implicit. `getByRole` finds both, but a CSS query for `[role="slider"]` does not, and calling `.click()` on the wrapping `<label>` from a script does not toggle the checkbox. Use `getByRole(...).focus()` and a key press.
@@ -252,6 +257,8 @@ Conventions and pitfalls found while building:
 ## Known gaps and deviations
 
 Behavior promised by the plan or decisions but not built yet:
+
+- **Mock server (decision 0023):** it restarts with every page load and restores the last saved project, so a reload loses unsaved server-side changes, as the demo did before; it serves one browser tab, with no other writers. While offline, missed updates are caught up as one snapshot without listing the operations between. Layout, view, and appearance changes stay in the UI, not on the server. Only drafts can be undone.
 
 - **Agent (stage 4):** scripted sessions only. Free text starts a session only when it matches a session's keywords, and otherwise the agent says so. Transcripts, view state, and added charts are not saved with the project, and a stage failure during an approved run ends the session. See [stage 4 status](first-slice-proposal.md#stage-4-scripted-agent-2026-09-15).
 - **Design alignment:** the six-appearance reading of the palette answer is unconfirmed, axe runs in non-Light appearances on the default workbench only, the context mode resets on reload, and Inspection is read-only. See [remaining gaps](design-alignment.md#remaining-gaps).

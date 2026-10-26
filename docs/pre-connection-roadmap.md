@@ -11,6 +11,11 @@ into RC replaces one mock layer rather than reworking the interface. RC facts be
 
 ## 1. Foundation
 
+Status: built on `feature/mock-services` (2026-10-25), as [decision 0023](decisions/0023-mock-server-and-fixture-picker.md)
+records. Real: request states, RC-shaped error display, the edit lock, the job lifecycle and logs, and the Demo
+conditions picker. Mocked: the server, its storage, the delay, and the faults. Deferred: HTTP, SignalR, sign-in, and
+native file pickers.
+
 - **Mock service layer.** Commands finish synchronously in memory today; RC is asynchronous and job-based. One
   interface between the UI and its data adds simulated latency, server errors, rejected input with field errors, and
   conflicts. Resources follow RC's names (project, workflow, jobs) and its error body (`{success, message, code}`
