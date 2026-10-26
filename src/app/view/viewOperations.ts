@@ -27,6 +27,16 @@ import {
 
 export type TableView = 'buildings' | 'grid'
 
+/** Which jobs the Jobs list shows. */
+export type JobFilter = 'all' | 'active' | 'attention' | 'finished'
+
+export const JOB_FILTERS: Record<JobFilter, string> = {
+  all: 'All',
+  active: 'Active',
+  attention: 'Needs attention',
+  finished: 'Finished',
+}
+
 export type ViewState = {
   map: {
     metric: MetricId
@@ -44,6 +54,8 @@ export type ViewState = {
   }
   table: { view: TableView; quickFilter: string }
   dashboard: { hiddenScenarioIds: string[]; charts: ChartSpec[] }
+  /** The Jobs page's selected job and list filter; selecting never edits the project. */
+  jobs: { selectedTaskId: string | null; filter: JobFilter }
   nextChartNumber: number
 }
 
@@ -60,6 +72,7 @@ export function createInitialViewState(): ViewState {
     },
     table: { view: 'buildings', quickFilter: '' },
     dashboard: { hiddenScenarioIds: [], charts: [] },
+    jobs: { selectedTaskId: null, filter: 'all' },
     nextChartNumber: 1,
   }
 }
@@ -359,6 +372,36 @@ export const viewOperationDefinitions = {
           ? `The Dashboard compares "${scenario.name}".`
           : `The Dashboard no longer compares "${scenario.name}".`,
       )
+    },
+  }),
+
+  'jobs.select': defineViewOperation({
+    title: 'Select job',
+    description:
+      'Show a job in the Jobs detail pane, or clear the selection with null. Selecting a job does not change the project.',
+    input: z.object({ taskId: z.string().min(1).nullable() }),
+    run(view, { taskId }, project) {
+      if (taskId === null) {
+        view.jobs.selectedTaskId = null
+        return applied('No job is selected.')
+      }
+      const task = project.tasks[taskId]
+      if (!task) return rejected(`Unknown job "${taskId}".`, 'taskId')
+      view.jobs.selectedTaskId = taskId
+      return applied(`Selected "${task.label}", attempt ${task.attempt}.`)
+    },
+  }),
+
+  'jobs.setFilter': defineViewOperation({
+    title: 'Filter jobs',
+    description:
+      'Show all jobs, only active (queued or running) ones, ones needing attention (failed, cancelled, or not run), or finished ones.',
+    input: z.object({
+      filter: z.enum(['all', 'active', 'attention', 'finished']),
+    }),
+    run(view, { filter }) {
+      view.jobs.filter = filter
+      return applied(`Jobs list shows: ${JOB_FILTERS[filter].toLowerCase()}.`)
     },
   }),
 

@@ -194,13 +194,12 @@ test.describe('workbench shell', () => {
     await expect(
       page.getByRole('tab', { name: 'Jobs', exact: true }),
     ).toHaveAttribute('aria-selected', 'true')
-    const jobs = page.getByRole('table', { name: 'Jobs' })
+    const jobs = page.getByRole('listbox', { name: 'Jobs' })
     await expect(jobs).toContainText('Completed')
     // Each job keeps a log, as RC's jobs do (decision 0023).
-    await jobs.locator('summary').first().click()
     await expect(
-      jobs.getByRole('list', {
-        name: 'Log of Location setup / footprint capturing',
+      page.getByRole('list', {
+        name: 'Log of Location setup / footprint capturing, attempt 1',
       }),
     ).toContainText('Started.')
   })

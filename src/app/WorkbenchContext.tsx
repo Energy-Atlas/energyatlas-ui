@@ -52,6 +52,7 @@ import {
   readAppearancePreference,
   storeAppearancePreference,
 } from './theme.ts'
+import { createJobNotices, type JobNotices } from './jobs/jobNotices.ts'
 import type { ViewState } from './view/viewOperations.ts'
 import { createViewStore, type ViewStore } from './view/viewStore.ts'
 import {
@@ -71,6 +72,8 @@ type CoreServices = {
   view: ViewStore
   /** The scripted agent behind the adapter a model provider can replace. */
   agent: AgentAdapter
+  /** Project-scoped notices when jobs finish (jobs rollout plan, D6). */
+  jobNotices: JobNotices
 }
 
 /**
@@ -179,6 +182,10 @@ function createCoreServices(): CoreServices {
       view.execute({ type: 'view.resetForProject', input: {} }, 'system')
     }
   })
+  const jobNotices = createJobNotices(workbench, {
+    getGeneration: () => client.store.getState().projectGeneration,
+    subscribe: (listener) => client.store.subscribe(listener),
+  })
   return {
     storage,
     workbench,
@@ -187,6 +194,7 @@ function createCoreServices(): CoreServices {
     layout,
     view,
     agent,
+    jobNotices,
   }
 }
 

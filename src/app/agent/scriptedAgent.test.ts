@@ -320,6 +320,21 @@ describe('agent tools', () => {
       kind: 'command',
       requiresApproval: true,
     })
-    expect(tools.some((item) => item.name.startsWith('task.'))).toBe(false)
+    // Runner internals stay private; job retry and cancel are shared operations.
+    expect(
+      tools
+        .filter((item) => item.name.startsWith('task.'))
+        .map((item) => item.name),
+    ).toEqual(['task.cancel'])
+    for (const name of ['job.retry', 'task.cancel', 'workflow.runStage']) {
+      expect(tools.find((item) => item.name === name)).toMatchObject({
+        kind: 'command',
+        requiresApproval: true,
+      })
+    }
+    expect(tools.find((item) => item.name === 'jobs.select')).toMatchObject({
+      kind: 'view',
+      requiresApproval: false,
+    })
   })
 })

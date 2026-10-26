@@ -1,4 +1,10 @@
 import { useId } from 'react'
+import {
+  groupOf,
+  openFailedAttempt,
+  retryBlocker,
+  retryScope,
+} from '../../domain/jobs/runGroups.ts'
 import { hasActiveTask, stageRunBlocker } from '../../domain/workflow.ts'
 import {
   useClientSnapshot,
@@ -20,6 +26,7 @@ export function WorkflowPanel() {
   const pending = useClientSnapshot((snapshot) => snapshot.pending)
   const workflow = useWorkbenchSnapshot((snapshot) => snapshot.state.workflow)
   const tasks = useWorkbenchSnapshot((snapshot) => snapshot.state.tasks)
+  const project = useWorkbenchSnapshot((snapshot) => snapshot.state)
   const states = useStageStates()
 
   return (
@@ -78,6 +85,31 @@ export function WorkflowPanel() {
                 >
                   {hasRun ? 'Rerun' : 'Run'}
                 </ActionButton>
+                {(() => {
+                  const failed = openFailedAttempt(project, stageId)
+                  const group = failed ? groupOf(project, failed) : null
+                  if (!failed || !group) return null
+                  return (
+                    <ActionButton
+                      label={`${retryScope(group)} of ${stage.name}`}
+                      disabledReason={
+                        waitingReason(
+                          pending,
+                          'job.retry',
+                          'the retry was requested',
+                        ) ?? retryBlocker(project, failed.id)
+                      }
+                      onPress={() =>
+                        void client.execute({
+                          type: 'job.retry',
+                          input: { taskId: failed.id },
+                        })
+                      }
+                    >
+                      Retry
+                    </ActionButton>
+                  )
+                })()}
                 {stage.skippable ? (
                   <ActionButton
                     label={`${stage.skipped ? 'Restore' : 'Skip'} ${stage.name}`}

@@ -198,3 +198,17 @@ export function retryScope(group: RunGroup): string {
     ? 'Retry publication of held results'
     : `Retry ${outstanding} failed item${outstanding === 1 ? '' : 's'}`
 }
+
+/** The failed latest attempt of a stage's open run, which a retry would continue; null when none. */
+export function openFailedAttempt(
+  state: WorkbenchState,
+  stageId: string,
+): Task | null {
+  for (const id of [...state.runGroupIds].reverse()) {
+    const group = state.runGroups[id]
+    if (!group || group.stageId !== stageId || group.status !== 'open') continue
+    const latest = latestAttempt(state, group)
+    return latest?.status === 'failed' ? latest : null
+  }
+  return null
+}

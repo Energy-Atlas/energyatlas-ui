@@ -38,8 +38,16 @@ import {
   useLayoutVersion,
   useServices,
   useStageStates,
+  useViewState,
   useWorkbenchSnapshot,
 } from './WorkbenchContext.tsx'
+import { freshRunAndSelect, retryAndSelect } from './pages/jobs/jobActions.ts'
+import {
+  cancelBlocker,
+  freshRunBlocker,
+  retryActionBlocker,
+  shownJob,
+} from './pages/jobs/jobView.ts'
 import { DEFAULT_PAGES, PAGES, type PageId } from './layout/layoutController.ts'
 
 // One registry of app actions drives the ribbon menus, quick buttons, command
@@ -115,6 +123,8 @@ export function useAppActions(dialogs: ShellDialogs): AppAction[] {
   const guarded = useStore(lifecycle.store, (current) => current.guard !== null)
   const stageStates = useStageStates()
   const layoutVersion = useLayoutVersion()
+  const view = useServices().view
+  const jobsView = useViewState((current) => current.jobs)
 
   return useMemo(() => {
     void layoutVersion
@@ -446,6 +456,48 @@ export function useAppActions(dialogs: ShellDialogs): AppAction[] {
           }
         },
       },
+      ...(() => {
+        const job = shownJob(state, jobsView.selectedTaskId, jobsView.filter)
+        const none = 'No job is selected. Open Jobs and select one.'
+        const services = { client, workbench, view }
+        return [
+          {
+            id: 'jobs.retrySelected',
+            label: 'Retry selected job',
+            group: 'Run' as const,
+            icon: RotateCcw,
+            disabledReason: job
+              ? retryActionBlocker(state, job, pending)
+              : none,
+            perform: () => {
+              if (job) void retryAndSelect(services, job.id)
+            },
+          },
+          {
+            id: 'jobs.freshRunSelected',
+            label: "Fresh run of selected job's stage",
+            group: 'Run' as const,
+            disabledReason: job ? freshRunBlocker(state, job, pending) : none,
+            perform: () => {
+              if (job) void freshRunAndSelect(services, job.stageId)
+            },
+          },
+          {
+            id: 'jobs.cancelSelected',
+            label: 'Cancel selected job',
+            group: 'Run' as const,
+            disabledReason: job ? cancelBlocker(job, pending) : none,
+            perform: () => {
+              if (job) {
+                void client.execute({
+                  type: 'task.cancel',
+                  input: { taskId: job.id },
+                })
+              }
+            },
+          },
+        ]
+      })(),
       {
         id: 'help.palette',
         label: 'Search commands…',
@@ -546,6 +598,8 @@ export function useAppActions(dialogs: ShellDialogs): AppAction[] {
     lifecycleBusy,
     guarded,
     transitioning,
+    view,
+    jobsView,
   ])
 }
 

@@ -186,10 +186,9 @@ test('fails a job partway and keeps its log', async ({ page }) => {
   ).toContainText('Failed', { timeout: 10_000 })
 
   await page.getByRole('button', { name: /Open Jobs/ }).click()
-  const jobs = page.getByRole('table', { name: 'Jobs' })
+  const jobs = page.getByRole('listbox', { name: 'Jobs' })
   await expect(jobs).toContainText('Failed')
-  await jobs.locator('summary').first().click()
   await expect(
-    jobs.getByRole('list', { name: `Log of ${LOCATION}` }),
+    page.getByRole('list', { name: `Log of ${LOCATION}, attempt 1` }),
   ).toContainText('Failed: The server reported an error partway')
 })

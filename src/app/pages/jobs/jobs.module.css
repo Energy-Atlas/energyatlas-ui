@@ -1,0 +1,268 @@
+/* Jobs (decision 0025): a list beside the selected job's detail. The page is
+   a size container so the pair stacks when its tab is narrow, wherever it is
+   docked. */
+.page {
+  container-type: inline-size;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.header {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2) var(--space-3);
+}
+
+.header h2 {
+  margin: 0;
+}
+
+.filter {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-1) var(--space-3);
+  margin-left: auto;
+}
+
+.split {
+  display: grid;
+  grid-template-columns: minmax(14rem, 22rem) minmax(0, 1fr);
+  gap: var(--space-3);
+  align-items: start;
+  min-height: 0;
+}
+
+@container (max-width: 40rem) {
+  .split {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+.listPane {
+  min-width: 0;
+}
+
+.list {
+  display: flex;
+  flex-direction: column;
+  max-height: 32rem;
+  overflow: auto;
+  border: var(--rule);
+  border-radius: var(--radius-sm);
+  outline: none;
+}
+
+.list[data-focus-visible] {
+  outline: 2px solid var(--color-focus);
+  outline-offset: 2px;
+}
+
+.row {
+  display: flex;
+  flex-direction: column;
+  gap: 0.125rem;
+  padding: var(--space-1) var(--space-2);
+  border-bottom: 1px solid var(--color-border-subtle);
+  cursor: pointer;
+  outline: none;
+}
+
+.row:last-child {
+  border-bottom: none;
+}
+
+.row[data-hovered] {
+  background: color-mix(in srgb, var(--color-accent) 8%, transparent);
+}
+
+.row[data-selected] {
+  background: var(--color-surface-raised);
+  box-shadow: inset 2px 0 0 var(--color-accent);
+}
+
+.row[data-focus-visible] {
+  outline: 2px solid var(--color-focus);
+  outline-offset: -2px;
+}
+
+.rowTitle {
+  font-weight: 500;
+}
+
+.rowMeta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-1) var(--space-2);
+  font-size: var(--font-size-small);
+}
+
+.detailPane {
+  min-width: 0;
+}
+
+.detail {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.detailHeader {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.detailHeader h3 {
+  margin: 0;
+  font-size: var(--font-size-base);
+}
+
+.actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-1);
+}
+
+.message {
+  margin: 0;
+  padding: var(--space-2) var(--space-3);
+  border: var(--rule);
+  border-radius: var(--radius-sm);
+  background: var(--color-surface-raised);
+}
+
+.messageFailed {
+  border-left: 2px solid var(--tone-danger-text);
+}
+
+.messageWarning {
+  border-left: 2px solid var(--tone-warning-text);
+}
+
+.progress {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.progressTrack {
+  flex: 1;
+  height: 0.375rem;
+  border-radius: var(--radius-pill);
+  background: var(--color-border-subtle);
+  overflow: hidden;
+}
+
+.progressFill {
+  display: block;
+  height: 100%;
+  background: var(--color-accent);
+}
+
+.progressText {
+  font-size: var(--font-size-small);
+  font-variant-numeric: tabular-nums;
+}
+
+.facts {
+  display: grid;
+  grid-template-columns: max-content minmax(0, 1fr);
+  gap: var(--space-1) var(--space-3);
+  margin: 0;
+}
+
+.facts dt {
+  color: var(--color-text-muted);
+  font-family: var(--label-font);
+  font-size: var(--label-size);
+  letter-spacing: var(--label-tracking);
+  text-transform: var(--label-case);
+}
+
+.facts dd {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+.section {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+}
+
+.section h4 {
+  margin: 0;
+  color: var(--color-text-muted);
+  font-family: var(--label-font);
+  font-size: var(--label-size);
+  font-weight: var(--label-weight);
+  letter-spacing: var(--label-tracking);
+  text-transform: var(--label-case);
+}
+
+.sectionHeader {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+}
+
+.attempts {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-1);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.attempt {
+  padding: 0.125rem var(--space-2);
+  border: 1px solid var(--color-border-interactive);
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--color-text);
+  font: inherit;
+  font-size: var(--font-size-small);
+  cursor: pointer;
+}
+
+.attempt:hover {
+  border-color: var(--color-accent);
+}
+
+.attemptCurrent {
+  background: var(--color-surface-raised);
+  font-weight: 600;
+}
+
+.more {
+  margin: 0;
+  font-size: var(--font-size-small);
+}
+
+.log {
+  max-height: 16rem;
+  overflow: auto;
+  border: var(--rule);
+  border-radius: var(--radius-sm);
+  padding: var(--space-1) var(--space-2);
+}
+
+.log ol {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  font-family: var(--font-mono);
+  font-size: var(--font-size-small);
+  overflow-wrap: anywhere;
+}
+
+.log time {
+  color: var(--color-text-muted);
+}

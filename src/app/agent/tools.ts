@@ -81,12 +81,24 @@ export function toolInputOf(call: ToolCall): unknown {
   return call.kind === 'command' ? call.command.input : call.operation.input
 }
 
-/** Tool calls that run stages or change the project model wait for approval. */
+/** Commands that start or stop jobs; they wait for approval like model changes. */
+const JOB_COMMANDS: ReadonlySet<string> = new Set([
+  'workflow.runStage',
+  'job.retry',
+  'task.cancel',
+])
+
+/** Task commands the job runner owns; the agent cannot call them. */
+function isRunnerCommand(type: string): boolean {
+  return type.startsWith('task.') && type !== 'task.cancel'
+}
+
+/** Tool calls that run, retry, or cancel jobs or change the project model wait for approval. */
 export function requiresApproval(call: ToolCall): boolean {
   if (call.kind === 'project') return call.intent.type !== 'list'
   if (call.kind !== 'command') return false
   return (
-    call.command.type === 'workflow.runStage' ||
+    JOB_COMMANDS.has(call.command.type) ||
     commandDefinitions[call.command.type].undoable
   )
 }
@@ -213,7 +225,8 @@ export type AgentToolDescription = {
 
 /**
  * Tool catalog with JSON Schema inputs for a future model provider. Task
- * commands are internal to the simulator and are not offered as tools.
+ * commands are internal to the job runner and are not offered as tools,
+ * except Cancel job, which people use too.
  */
 export function describeAgentTools(): AgentToolDescription[] {
   return [
@@ -240,14 +253,14 @@ export function describeAgentTools(): AgentToolDescription[] {
       inputSchema: z.toJSONSchema(tool.input, { io: 'input' }),
     })),
     ...describeCommands()
-      .filter((description) => !description.type.startsWith('task.'))
+      .filter((description) => !isRunnerCommand(description.type))
       .map((description) => ({
         name: description.type,
         kind: 'command' as const,
         title: description.title,
         description: description.description,
         requiresApproval:
-          description.type === 'workflow.runStage' || description.undoable,
+          JOB_COMMANDS.has(description.type) || description.undoable,
         inputSchema: description.inputSchema,
       })),
     ...describeViewOperations().map((description) => ({

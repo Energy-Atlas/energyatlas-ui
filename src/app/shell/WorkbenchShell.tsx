@@ -36,6 +36,7 @@ import { RoadmapPage } from '../pages/RoadmapPage.tsx'
 import { SettingsPage } from '../pages/SettingsPage.tsx'
 import { TablePage } from '../pages/TablePage.tsx'
 import { TasksPage } from '../pages/TasksPage.tsx'
+import { JobNoticeTray } from './JobNoticeTray.tsx'
 import { AssetsPanel } from '../panels/AssetsPanel.tsx'
 import { InspectionPanel } from '../panels/InspectionPanel.tsx'
 import { ReasoningPanel } from '../panels/ReasoningPanel.tsx'
@@ -167,6 +168,7 @@ export function WorkbenchShell() {
           keyMap={KEY_MAP}
         />
       </main>
+      <JobNoticeTray />
       <StatusBar
         onOpenPage={(page) => layout.openPage(page)}
         onOpenDemoConditions={() => setOpenDialog('demoConditions')}
