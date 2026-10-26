@@ -80,5 +80,7 @@ Scale and accessibility checks run alongside every step.
 
 Step 3 is in [design discussion](jobs-discussion.md): the owner chose a Jobs list and detail pane
 ([decision 0025](decisions/0025-jobs-list-and-detail-pane.md)), held successful results until failures are resolved,
-and failed-item retry only when inputs are unchanged. The [rollout proposal](jobs-rollout-plan.md) bundles the
-remaining choices across workflow stages and steps 3–8 before autonomous implementation.
+and failed-item retry only when inputs are unchanged. The owner approved the [rollout defaults](jobs-rollout-plan.md)
+through Results (steps 3–8), with local merges after review and checks pass and no implementation pushes/deployments
+([decision 0026](decisions/0026-autonomous-roadmap-through-results.md)). The next agent starts from the
+[autonomous handoff](20261026_autonomous-roadmap-handoff.md).

@@ -26,5 +26,6 @@ Keep short dated records of accepted decisions: status, context, decision, ratio
 - [0023: A mock server owns the project, and a fixture picker sets demo conditions](0023-mock-server-and-fixture-picker.md)
 - [0024: A dedicated project start screen](0024-dedicated-project-start-screen.md)
 - [0025: Jobs list with a detail pane](0025-jobs-list-and-detail-pane.md)
+- [0026: Autonomous roadmap through Results, with reviewed local integration](0026-autonomous-roadmap-through-results.md)
 
 Number 0020 is used on the unmerged `feature/agentic` branch.

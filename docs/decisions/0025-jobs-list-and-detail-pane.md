@@ -2,8 +2,8 @@
 
 Date: 2026-10-26
 
-Status: surface direction, held results, and input-compatible failed-item retries accepted by the owner.
-The remaining cross-stage choices and autonomous execution scope are in a bundled discussion before implementation.
+Status: accepted by the owner, including the rollout defaults through Results and reviewed local merges
+([decision 0026](0026-autonomous-roadmap-through-results.md)).
 
 ## Decision
 
@@ -26,8 +26,10 @@ Accepted by the owner in the follow-up discussion:
 | List plus separate job detail tabs | Supports side-by-side run comparison but adds navigation and tab ownership |
 | Generic Job Runner first | Adds a job catalog, input forms, and outputs before the later workflow inputs exist |
 
-## Pending behavior
+## Cross-stage behavior and execution
 
-The owner requested planning across stages and discussing multiple decisions together before autonomous execution.
-Queue behavior, cancellation, save/reopen recovery, notices, later slice boundaries, and integration scope are
-proposals in the [rollout plan](../jobs-rollout-plan.md); they are not implied by the accepted choices above.
+The owner approved the bundled defaults in the [rollout plan](../jobs-rollout-plan.md): queue behavior,
+cancellation, save/reopen recovery, notices, later slice boundaries, fusion precedence, calibration destination,
+and autonomous implementation scope. Each slice merges into local `master` after review and checks pass.
+The [handoff](../20261026_autonomous-roadmap-handoff.md) is the next agent's entry point; no further routine
+design approval is needed before starting Jobs.

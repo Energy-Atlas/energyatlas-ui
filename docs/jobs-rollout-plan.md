@@ -1,8 +1,9 @@
-# Jobs and later roadmap slices: rollout proposal
+# Jobs and later roadmap slices: approved rollout plan
 
 Date: 2026-10-26. Branch: `codex/jobs-design`, based on local `master` at `47f5541`.
-Status: draft for one bundled discussion. Accepted choices are listed separately from recommendations.
-This is the owner-facing rollout and decision plan; per-slice implementation tasks follow once the bundle is settled.
+Status: defaults D1–D10 approved by the owner through Results ([decision 0026](decisions/0026-autonomous-roadmap-through-results.md)).
+Merge each slice into local `master` once review and required checks pass. The next agent implements;
+this session prepares the [handoff](20261026_autonomous-roadmap-handoff.md). Per-slice implementation tasks are delegated.
 
 ## Intent and accepted boundaries
 
@@ -38,11 +39,12 @@ Demo source at `47f5541`:
 
 RC source observations, exact revision and paths are in [Jobs discussion](jobs-discussion.md). In particular,
 RC's Created state does not establish a scheduler policy, and RC session job storage does not establish saved-history
-parity. The future-slice table below contains proposed demo experiences, not newly observed RC behavior.
+parity. The future-slice table below contains approved demo experiences, not newly observed RC behavior.
 
-## Decisions to settle together
+## Approved decision bundle
 
-All entries in this table are recommendations awaiting the owner, except consequences explicitly tied to accepted rules.
+The owner approved the defaults below. The alternative column preserves the discussion; it is not an open choice.
+D8 includes the owner's explicit authorization for reviewed local merges. No routine approval remains pending.
 
 | ID | Recommended default | Meaningful alternative / consequence |
 | --- | --- | --- |
@@ -53,17 +55,17 @@ All entries in this table are recommendations awaiting the owner, except consequ
 | D5 Save and reopen | Explicit Save includes compact job history, logs, and held item outputs. Reopen interrupts previously active attempts; do not restart work automatically. A finished partial group remains retryable if its saved input signature still matches. Preserve old project saves through migration | Session-only diagnostics are smaller but lose failed-item retry across close/reopen |
 | D6 Notices and manual/agent parity | Project-scoped, nonmodal notices for completion/failure/partial failure; opening a notice selects its job. No focus stealing or OS notification. Manual retries only; agent retry uses the same command and existing permission mode | Automatic retries or desktop notifications need separate limits/permissions |
 | D7 Later-slice shape | Approve the bounded demo slices below as the direction for steps 4–8, using the same staged job contract and synthetic fixtures | Stop at Jobs and discuss each later slice separately |
-| D8 Autonomous scope and Git | After the bundle is agreed, implement and verify the agreed slices sequentially, review/fix each, commit coherent stages, and update durable records without routine approval. Proposed scope is Jobs through Results. Keep integration local; leave each slice on a reviewable branch without merging/pushing unless the owner includes local merges in the authorization | Jobs only, or Jobs + Data intake, is a smaller autonomous scope; local merge after each passing slice can also be explicitly authorized |
+| D8 Autonomous scope and Git | Implement Jobs through Results sequentially; review/fix and verify each, commit coherent stages, and merge each passing slice into local master. Update durable records without routine supervision. The implementing agent must not push or deploy | Smaller scope and review-only branches were discussed; the owner chose the complete scope and local merges |
 | D9 Data fusion identity and precedence | Match incoming fixture records by an explicit stable source ID, update matched source attributes, add valid new records, and retain unmatched existing buildings. Preserve manual overrides above imported values and show their conflicts/provenance in the preview. Reject duplicate/ambiguous source IDs rather than guessing. No implicit deletion | Replacing the entire collection requires explicit deletion and override reconciliation semantics |
 | D10 Calibration destination | Publish a separate calibrated baseline variant with fit diagnostics. Explicit Adopt makes it the working baseline and stales dependent scenario results; until adoption the current baseline remains in use | Automatically replace the working baseline on fit success; simpler flow but changes dependent results without a separate adoption choice |
 
-Implementation calls delegated to the builder under this proposal: component decomposition, exact type names,
+Implementation calls delegated to the builder under this plan: component decomposition, exact type names,
 filter controls, log pagination/virtualization thresholds, compact persistence representation, and synthetic failure
 distribution. These choices must preserve the accepted interaction rules, accessibility, provenance, and package limits.
 
 ## Shared run contract
 
-This section proposes consistent behavior across the slices; it does not claim the current demo has these facilities.
+This section specifies approved behavior across the slices; it does not claim the current demo has these facilities.
 
 - Keep an immutable attempt record and a group identifying retries of the same input context. A retry creates a new
   attempt; it does not rewrite the earlier log or outcome. Repeated delivery of a submission must not create duplicates.
@@ -92,7 +94,7 @@ This section proposes consistent behavior across the slices; it does not claim t
 These are two levels: roadmap slices 3–8 below, and the domain workflow stages each slice operates on.
 Every slice uses the same job contract; it does not create a separate retry engine.
 
-| Roadmap slice | Bounded demo experience proposed | Job units / publication | Explicitly deferred |
+| Roadmap slice | Approved bounded demo experience | Job units / publication | Explicitly deferred |
 | --- | --- | --- | --- |
 | 3 Jobs | Active/history list, detail summary, attempts, scoped progress, item failures, logs, Cancel/Retry/Fresh run, completion notices; existing workflow entry points stay valid | Building-level geospatial preprocessing proves held successes, failed-only retry, changed-input refusal, and one atomic publish. Other stages retain coherent whole-stage jobs | Generic job-schema runner, priorities, concurrent writers, real computation |
 | 4 Data intake | Select synthetic upload/dataset fixtures; inspect fields, map to the model schema, see field/row validation and fusion preview, then explicitly apply a valid prepared dataset. Stable-ID merge adds/updates source data, retains unmatched existing buildings, and preserves manual overrides (D9) | Independent source records/geometry items; schema-wide errors block submission, and held fusion output must complete before live data changes | Real native picker, server uploads, arbitrary geospatial format parsing, implicit deletion; no new parsing package implied |
@@ -107,7 +109,7 @@ Use meaningful item boundaries; independent retry is not promised for computatio
 Scale checks accompany slices without inflating the UI with 10,000 DOM rows; a full district benchmark remains
 a separately documented cross-cutting deliverable rather than silently expanding every editor's scope.
 
-## Jobs implementation sequence after the bundle is settled
+## Jobs implementation sequence
 
 1. **Run records and input context.** Extend `src/domain/types.ts`; put focused job/input helpers in
    `src/domain/jobs/`; adapt `commands.ts` and `workflow.ts`. Define immutable attempts, group aggregation,
@@ -140,7 +142,7 @@ Before each slice, inspect its relevant RC surfaces read-only, record exact path
 and implement original synthetic demo behavior. A substantive conflict with the agreed boundary is reported,
 rather than silently importing reference implementation or expanding scope.
 
-## Verification and autonomy contract to confirm
+## Approved verification and autonomy contract
 
 - For application changes, run `npm run typecheck`, `npm run lint`, `npm run format:check`, `npm test`,
   `npm run test:e2e`, `npm run test:e2e:preview`, `git diff --check`, and inspect `git diff --cached` before commits.
@@ -150,14 +152,16 @@ rather than silently importing reference implementation or expanding scope.
 - Resolve routine engineering choices, bugs, test failures and review feedback autonomously. Report outcomes with
   evidence; do not ask for approval of file names, ordinary commits, or routine fixes.
 - Do not push/deploy, mutate RC, merge `feature/agentic`, add packages outside the recorded decisions, or discard user
-  changes under this proposal. Merge into local master only if D8 explicitly includes that authorization.
+  changes. Merge each slice into local master after its review and required checks pass. The preparation session's
+  one-time handoff-branch push exception is recorded in decision 0026; it is not implementation push permission.
 - A genuinely unresolved product decision or unavailable required source pauses the affected work; continue useful
   independent work and explain the specific issue. Do not reopen settled choices or add routine approval gates.
 
 ## Current checkpoint
 
-Planning only; no application code changed. The owner can approve defaults for D1–D7 and D9–D10, choose D8's endpoint
-and local-merge policy together, or override any numbered entry. No autonomous implementation starts until that response.
+Approved and ready for the next agent. No application code has changed during planning/preparation. The next agent
+reads the [handoff](20261026_autonomous-roadmap-handoff.md), writes the detailed Jobs execution plan, and starts
+implementation without repeating these questions. This preparing agent does not start the implementation.
 
 Builder check: a fresh reviewer found no additional Jobs choices outside D1–D8, and identified fusion identity/
 override handling and calibration destination as product decisions for a longer autonomous scope. They are now

@@ -1,8 +1,8 @@
 # Jobs: roadmap step 3 discussion
 
 Date: 2026-10-26. Status: direction A accepted ([decision 0025](decisions/0025-jobs-list-and-detail-pane.md));
-held results and input-compatible failed-item retries are also accepted; remaining choices are grouped in the
-[rollout plan](jobs-rollout-plan.md) before autonomous implementation.
+held results and input-compatible failed-item retries are accepted. The owner also approved the defaults in the
+[rollout plan](jobs-rollout-plan.md) through Results, with reviewed local merges ([decision 0026](decisions/0026-autonomous-roadmap-through-results.md)).
 The owner requested review/integration of project lifecycle, followed by discussion of Jobs.
 Decision 0022 keeps computation and transport mocked here; connections are built inside RC later.
 
@@ -49,7 +49,7 @@ The owner chose A, retaining stage runs as the entry point, and requested retry/
 implementation. The other directions remain recorded as alternatives.
 Do not infer a single-worker scheduler or batch prioritization from the current Created label.
 
-## Proposed behavioral boundaries for the next design discussion
+## Behavioral boundaries, now approved
 
 - Retry creates a new linked attempt and keeps the original log/error immutable. Under the accepted rule it requires
   the original consumed inputs to remain unchanged; a changed context requires a fresh run rather than a retry.
@@ -81,13 +81,13 @@ Owner-accepted behavior:
 - Hold successful results until failed items are resolved.
 - Retry only failed items if inputs have not changed; changed inputs require a fresh run.
 
-Other candidate behavior, not yet accepted:
+Additional behavior approved with the rollout defaults:
 
 - Retry is manual and creates a new linked attempt. Original status, log, and item outcomes remain available.
 - An execution-wide failure without reusable item outputs retries the whole run.
 - Retain successful item results and failed-item reasons in job detail. Publication is all-or-nothing under the
-  accepted held-results rule; the rollout plan proposes downstream, cancellation, and persistence consequences.
+  accepted held-results rule; the approved rollout specifies downstream, cancellation, and persistence consequences.
 - Distinguish transport submission failure from execution failure: a rejected submission must not invent a job
   attempt, and any later retry must avoid duplicating an already accepted submission.
 
-Next: discuss the [bundled rollout choices](jobs-rollout-plan.md), including scope of autonomous execution.
+Next: the implementing agent follows the [handoff](20261026_autonomous-roadmap-handoff.md) and approved rollout.
