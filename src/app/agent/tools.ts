@@ -86,6 +86,7 @@ const JOB_COMMANDS: ReadonlySet<string> = new Set([
   'workflow.runStage',
   'job.retry',
   'task.cancel',
+  'intake.applyDataset',
 ])
 
 /** Task commands the job runner owns; the agent cannot call them. */

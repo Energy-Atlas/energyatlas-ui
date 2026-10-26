@@ -9,6 +9,7 @@ import { CapabilityBadge } from '../../components/CapabilityBadge.tsx'
 import componentStyles from '../../components/components.module.css'
 import formStyles from '../../components/forms.module.css'
 import { JOB_FILTERS, type JobFilter } from '../../view/viewOperations.ts'
+import { groupOf, itemNoun } from '../../../domain/jobs/runGroups.ts'
 import { JobDetail } from './JobDetail.tsx'
 import { JobList } from './JobList.tsx'
 import { listJobs, shownJob } from './jobView.ts'
@@ -74,7 +75,11 @@ export function JobsPage() {
                 {total === 1 ? '' : 's'} in this project.
               </p>
             ) : (
-              <JobList jobs={jobs} selectedId={selected?.id ?? null} />
+              <JobList
+                jobs={jobs}
+                selectedId={selected?.id ?? null}
+                nounOf={(task) => itemNoun(groupOf(state, task))}
+              />
             )}
           </div>
           <div className={styles.detailPane}>

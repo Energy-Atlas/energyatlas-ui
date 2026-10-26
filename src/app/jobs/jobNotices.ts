@@ -1,5 +1,10 @@
 import { createStore, type StoreApi } from 'zustand/vanilla'
-import { isActiveStatus, itemCounts } from '../../domain/jobs/runGroups.ts'
+import {
+  groupOf,
+  isActiveStatus,
+  itemCounts,
+  itemNoun,
+} from '../../domain/jobs/runGroups.ts'
 import type { Task, WorkbenchState } from '../../domain/types.ts'
 import type { Workbench } from '../../domain/workbench.ts'
 
@@ -27,7 +32,10 @@ export type JobNotices = {
 /** At most this many notices are kept; older ones drop off. */
 const LIMIT = 3
 
-function describe(task: Task): { tone: JobNoticeTone; message: string } | null {
+function describe(
+  task: Task,
+  state: WorkbenchState,
+): { tone: JobNoticeTone; message: string } | null {
   const counts = itemCounts(task)
   switch (task.status) {
     case 'succeeded':
@@ -39,7 +47,7 @@ function describe(task: Task): { tone: JobNoticeTone; message: string } | null {
       return counts && counts.failed > 0
         ? {
             tone: 'warning',
-            message: `${task.label} partly failed: ${counts.failed} of ${counts.total} items failed; successful results are held.`,
+            message: `${task.label} partly failed: ${counts.failed} of ${counts.total} ${itemNoun(groupOf(state, task))} failed; successful results are held.`,
           }
         : { tone: 'danger', message: `${task.label} failed.` }
     case 'invalidated':
@@ -92,7 +100,7 @@ export function createJobNotices(
       if (!task || !earlier) continue
       if (!isActiveStatus(earlier.status) || isActiveStatus(task.status))
         continue
-      const notice = describe(task)
+      const notice = describe(task, state)
       if (notice) {
         fresh.push({
           id: `job-notice-${next++}`,

@@ -27,6 +27,7 @@ export const PAGES = {
   issues: { name: 'Issues', component: 'page.issues' },
   // Tasks became Jobs (decision 0023); the component id stays page.tasks.
   tasks: { name: 'Jobs', component: 'page.tasks' },
+  intake: { name: 'Data intake', component: 'page.intake' },
   account: { name: 'Account', component: 'page.account' },
 } as const
 

@@ -3,6 +3,7 @@ import {
   discardNote,
   groupOf,
   itemCounts,
+  itemNoun,
   signatureMismatch,
 } from '../../../domain/jobs/runGroups.ts'
 import type { Task, WorkbenchState } from '../../../domain/types.ts'
@@ -137,7 +138,7 @@ export function JobDetail({
         </dd>
         {counts ? (
           <>
-            <dt>Items</dt>
+            <dt>{group?.kind === 'fusion' ? 'Records' : 'Items'}</dt>
             <dd>
               {counts.total === 0
                 ? 'Publication only'
@@ -169,7 +170,7 @@ export function JobDetail({
                 ? `Changed since submission: ${changed}. A retry is not possible; start a fresh run.`
                 : group.status === 'open'
                   ? 'Unchanged since submission.'
-                  : `Captured at submission (${group.signature.membership.length || 'whole-stage'}${group.signature.membership.length ? ' items' : ''}).`}
+                  : `Captured at submission (${group.signature.membership.length || 'whole-stage'}${group.signature.membership.length ? ` ${itemNoun(group)}` : ''}).`}
             </dd>
           </>
         ) : null}
@@ -197,7 +198,7 @@ export function JobDetail({
                 >
                   Attempt {attempt.attempt}: {JOB_STATUS_LABELS[attempt.status]}
                   {attempt.items
-                    ? `, ${attempt.items.ids.length} item${attempt.items.ids.length === 1 ? '' : 's'}`
+                    ? `, ${attempt.items.ids.length} ${itemNoun(group, attempt.items.ids.length)}`
                     : ''}
                 </button>
               </li>
@@ -206,7 +207,7 @@ export function JobDetail({
         </section>
       ) : null}
 
-      <JobItems key={task.id} task={task} />
+      <JobItems key={task.id} task={task} state={state} />
 
       <section aria-label="Log" className={styles.section}>
         <h4>Log ({task.log.length})</h4>

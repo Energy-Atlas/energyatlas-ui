@@ -12,6 +12,8 @@ import {
 } from './projectCatalog.ts'
 import { retryBlocker } from '../domain/jobs/runGroups.ts'
 import { finishJobNow, runStageNow } from '../domain/jobs/runNow.ts'
+import { findDataset } from '../domain/intake/datasets.ts'
+import { suggestMapping } from '../domain/intake/fusion.ts'
 import { createWorkbench } from '../domain/workbench.ts'
 import { STAGE_IDS } from '../domain/workflow.ts'
 
@@ -274,5 +276,67 @@ describe('project catalog', () => {
       }),
     )
     expect(readProjectCatalog(storage).error).toBeTruthy()
+  })
+
+  it('migrates a Jobs-era save without intake fields and round-trips fused data', () => {
+    const storage = memoryStorage()
+    const engine = createWorkbench({
+      initialState: buildFixture('partway', () => new Date()),
+    })
+    const jobsEra = JSON.parse(JSON.stringify(engine.getState())) as Record<
+      string,
+      unknown
+    >
+    delete jobsEra.sourceRecords
+    delete jobsEra.sourceRecordIds
+    delete jobsEra.datasets
+    for (const group of Object.values(
+      jobsEra.runGroups as Record<string, Record<string, unknown>>,
+    )) {
+      delete group.kind
+      delete group.fusion
+      delete (group.signature as Record<string, unknown>).options
+    }
+    const id = engine.getState().project.id
+    const name = engine.getState().project.name
+    storage.setItem(
+      CATALOG_KEY,
+      JSON.stringify({
+        version: 1,
+        projects: [{ ...entry(id), name, state: jobsEra }],
+      }),
+    )
+    const read = readProjectCatalog(storage)
+    expect(read.error).toBeNull()
+    const migrated = read.catalog.projects[0]?.state
+    expect(migrated?.sourceRecords).toEqual({})
+    expect(Object.values(migrated?.runGroups ?? {})[0]).toMatchObject({
+      kind: 'stage',
+      fusion: null,
+      signature: { options: '' },
+    })
+
+    engine.execute({
+      type: 'intake.applyDataset',
+      input: {
+        datasetId: 'dataset:infill',
+        mapping: suggestMapping(findDataset('dataset:infill')!),
+      },
+    })
+    finishJobNow(engine, engine.getState().taskIds.at(-1) ?? '')
+    const fused = engine.getState()
+    expect(
+      writeProjectCatalog(storage, {
+        projects: [{ ...entry(id), name, state: fused }],
+      }).ok,
+    ).toBe(true)
+    const reread = readProjectCatalog(storage)
+    expect(reread.error).toBeNull()
+    expect(reread.catalog.projects[0]?.state.buildings.B0465?.sourceRef).toBe(
+      'infill/1',
+    )
+    expect(
+      reread.catalog.projects[0]?.state.datasets['dataset:infill'],
+    ).toBeTruthy()
   })
 })

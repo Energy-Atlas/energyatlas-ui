@@ -1,4 +1,7 @@
+import { findDataset } from '../intake/datasets.ts'
+import { fusionOptions, prepareDataset } from '../intake/fusion.ts'
 import type {
+  FusionInput,
   InputSignature,
   RunGroup,
   Task,
@@ -20,6 +23,13 @@ export const ITEM_STAGES: ReadonlySet<string> = new Set([
 
 export function isItemStage(stageId: string): boolean {
   return ITEM_STAGES.has(stageId)
+}
+
+/** Item groups hold per-item outputs: item stages and every data fusion. */
+export function isItemGroup(
+  group: Pick<RunGroup, 'kind' | 'stageId'>,
+): boolean {
+  return group.kind === 'fusion' || isItemStage(group.stageId)
 }
 
 export function isActiveStatus(status: TaskStatus): boolean {
@@ -50,11 +60,17 @@ export function currentMembership(
   return isItemStage(stageId) ? [...state.buildingIds] : []
 }
 
+/**
+ * What a run consumes now. A fusion also consumes its dataset and mapping
+ * (options) and the records that prepare as valid (membership).
+ */
 export function captureSignature(
   state: WorkbenchState,
   stageId: string,
+  fusion: FusionInput | null = null,
 ): InputSignature {
   const workflow = state.workflow
+  const dataset = fusion ? findDataset(fusion.datasetId) : null
   return {
     ancestors: Object.fromEntries(
       ancestorIds(workflow, stageId)
@@ -62,7 +78,14 @@ export function captureSignature(
         .map((id) => [id, workflow.stages[id]?.revision ?? 0]),
     ),
     editRevision: workflow.stages[stageId]?.editRevision ?? 0,
-    membership: currentMembership(state, stageId),
+    membership: fusion
+      ? dataset
+        ? prepareDataset(state, dataset, fusion.mapping).plans.map(
+            (plan) => plan.sourceKey,
+          )
+        : []
+      : currentMembership(state, stageId),
+    options: fusion ? fusionOptions(fusion.datasetId, fusion.mapping) : '',
   }
 }
 
@@ -73,7 +96,7 @@ export function signatureMismatch(
 ): string | null {
   const stage = state.workflow.stages[group.stageId]
   if (!stage) return 'its stage no longer exists'
-  const now = captureSignature(state, group.stageId)
+  const now = captureSignature(state, group.stageId, group.fusion)
   const before = group.signature
   const keys = new Set([
     ...Object.keys(now.ancestors),
@@ -92,7 +115,12 @@ export function signatureMismatch(
     now.membership.length !== before.membership.length ||
     now.membership.some((id, index) => before.membership[index] !== id)
   ) {
-    return 'the set of buildings changed'
+    return group.kind === 'fusion'
+      ? 'the records that validate changed'
+      : 'the set of buildings changed'
+  }
+  if (now.options !== before.options) {
+    return 'the dataset or its mapping changed'
   }
   return null
 }
@@ -193,11 +221,12 @@ export function retryBlocker(
 
 /** What a retry of the group would do, for buttons and confirmations. */
 export function retryScope(group: RunGroup): string {
-  if (!isItemStage(group.stageId)) return 'Retry the whole run'
+  if (!isItemGroup(group)) return 'Retry the whole run'
   const outstanding = outstandingItems(group).length
+  const noun = group.kind === 'fusion' ? 'record' : 'item'
   return outstanding === 0
     ? 'Retry publication of held results'
-    : `Retry ${outstanding} failed item${outstanding === 1 ? '' : 's'}`
+    : `Retry ${outstanding} failed ${noun}${outstanding === 1 ? '' : 's'}`
 }
 
 /** The failed latest attempt of a stage's open run, which a retry would continue; null when none. */
@@ -207,7 +236,13 @@ export function openFailedAttempt(
 ): Task | null {
   for (const id of [...state.runGroupIds].reverse()) {
     const group = state.runGroups[id]
-    if (!group || group.stageId !== stageId || group.status !== 'open') continue
+    if (
+      !group ||
+      group.stageId !== stageId ||
+      group.kind !== 'stage' ||
+      group.status !== 'open'
+    )
+      continue
     const latest = latestAttempt(state, group)
     return latest?.status === 'failed' ? latest : null
   }
@@ -218,7 +253,11 @@ export function openFailedAttempt(
 export function heldCount(state: WorkbenchState, stageId: string): number {
   let held = 0
   for (const group of Object.values(state.runGroups)) {
-    if (group.stageId === stageId && group.status === 'open') {
+    if (
+      group.stageId === stageId &&
+      group.kind === 'stage' &&
+      group.status === 'open'
+    ) {
       held += Object.keys(group.held).length
     }
   }
@@ -231,4 +270,13 @@ export function discardNote(state: WorkbenchState, stageId: string): string {
   return held > 0
     ? `, discarding ${held} held result${held === 1 ? '' : 's'}`
     : ''
+}
+
+/** What a job's items are called: fusion records or building items. */
+export function itemNoun(
+  group: Pick<RunGroup, 'kind'> | null,
+  count = 2,
+): string {
+  const noun = group?.kind === 'fusion' ? 'record' : 'item'
+  return count === 1 ? noun : `${noun}s`
 }

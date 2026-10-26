@@ -1,4 +1,5 @@
 import { GROUP, upsertAsset } from './assets.ts'
+import { addedBuildings, applySourceRecords } from './intake/fusion.ts'
 import backBayBuildings from './fixtures/back-bay-buildings.geo.json'
 import type {
   Archetype,
@@ -55,7 +56,7 @@ function centroidOf(ring: LngLat[]): LngLat {
 }
 
 /** Planar polygon area in square meters; accurate enough at district scale. */
-function ringAreaM2(ring: LngLat[]): number {
+export function ringAreaM2(ring: LngLat[]): number {
   const [originLng, originLat] = ring[0] ?? [0, 0]
   const metersPerLng = METERS_PER_DEGREE * Math.cos((originLat * Math.PI) / 180)
   let sum = 0
@@ -85,7 +86,12 @@ const DISTRICT_FOOTPRINTS: DistrictFootprint[] = backBayBuildings.features.map(
   },
 )
 
-const DISTRICT_BOUNDS = DISTRICT_FOOTPRINTS.flatMap(
+/** Source references of the bundled footprints, in building order (B0001 first). */
+export const DISTRICT_SOURCE_REFS: readonly string[] = DISTRICT_FOOTPRINTS.map(
+  (footprint) => footprint.sourceRef,
+)
+
+export const DISTRICT_BOUNDS = DISTRICT_FOOTPRINTS.flatMap(
   (footprint) => footprint.ring,
 ).reduce(
   (bounds, [lng, lat]) => ({
@@ -147,14 +153,14 @@ const ARCHETYPES: Archetype[] = [
   },
 ]
 
-function unitRandom(index: number, salt: number): number {
+export function unitRandom(index: number, salt: number): number {
   let t = (index * 0x9e3779b1 + salt * 0x85ebca6b) >>> 0
   t = Math.imul(t ^ (t >>> 15), 1 | t)
   t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t
   return ((t ^ (t >>> 14)) >>> 0) / 4294967296
 }
 
-function round(value: number, digits = 0): number {
+export function round(value: number, digits = 0): number {
   const factor = 10 ** digits
   return Math.round(value * factor) / factor
 }
@@ -279,6 +285,12 @@ function captureFootprints(
     }
     buildingIds.push(id)
   })
+  // Buildings a fused dataset added come back with the captured footprints.
+  for (const building of addedBuildings(state)) {
+    if (buildings[building.id]) continue
+    buildings[building.id] = building
+    buildingIds.push(building.id)
+  }
   state.project.location = {
     name: 'Boston Back Bay (OpenStreetMap footprints, synthetic attributes)',
     center: DISTRICT_CENTER,
@@ -344,6 +356,8 @@ function enrichFootprints(
         ? 1 + Math.floor(unitRandom(index, 6) * 5)
         : 2 + Math.floor(unitRandom(index, 6) * 10)
   })
+  // Precedence: synthetic values, then fused source records, then manual overrides.
+  const imported = applySourceRecords(state)
   const kept = applyOverrides(state, 'floors')
 
   upsertAsset(state, {
@@ -358,7 +372,12 @@ function enrichFootprints(
   return {
     ok: true,
     summary: `Enriched ${state.buildingIds.length} buildings with use, construction year, and floors.`,
-    warnings: kept > 0 ? [`${kept} manual floor overrides were kept.`] : [],
+    warnings: [
+      ...(imported > 0
+        ? [`${imported} buildings kept attributes from fused datasets.`]
+        : []),
+      ...(kept > 0 ? [`${kept} manual floor overrides were kept.`] : []),
+    ],
   }
 }
 

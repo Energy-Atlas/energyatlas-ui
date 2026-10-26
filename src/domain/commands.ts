@@ -1,8 +1,16 @@
 import { z } from 'zod'
 import { GROUP, upsertAsset } from './assets.ts'
+import { findDataset } from './intake/datasets.ts'
+import {
+  fusionSubmitBlocker,
+  prepareDataset,
+  publishFusion,
+  validateFusion,
+} from './intake/fusion.ts'
 import {
   captureSignature,
   groupOf,
+  isItemGroup,
   isItemStage,
   outstandingItems,
   retryBlocker,
@@ -21,6 +29,9 @@ import type {
   CommandSource,
   EditValue,
   EditableBuildingField,
+  HeldFusionOutput,
+  HeldPreprocessingOutput,
+  RunGroup,
   StageRecord,
   Task,
   WorkbenchState,
@@ -90,6 +101,12 @@ function failRun(
   inputRevisions: Record<string, number>,
   context: CommandContext,
 ) {
+  task.status = 'failed'
+  task.message = message
+  task.updatedAt = context.now
+  task.log.push({ at: context.now, message: `Failed: ${message}` })
+  // A fusion runs beside its stage: it reports on its job, not the stage.
+  if (task.groupId && state.runGroups[task.groupId]?.kind === 'fusion') return
   stage.lastRun = {
     runId: task.runId,
     operationId: context.operationId,
@@ -106,10 +123,6 @@ function failRun(
     stageId: stage.id,
     createdAt: context.now,
   })
-  task.status = 'failed'
-  task.message = message
-  task.updatedAt = context.now
-  task.log.push({ at: context.now, message: `Failed: ${message}` })
 }
 
 function nextRevision(state: WorkbenchState): number {
@@ -170,6 +183,53 @@ function repeatedSubmission(
     : null
 }
 
+/** A fusion group's record plans by source key, prepared now; null for other groups. */
+function fusionPlans(
+  state: WorkbenchState,
+  group: RunGroup,
+): Map<string, HeldFusionOutput> | null {
+  if (group.kind !== 'fusion' || !group.fusion) return null
+  const dataset = findDataset(group.fusion.datasetId)
+  if (!dataset) return new Map()
+  const prepared = prepareDataset(state, dataset, group.fusion.mapping)
+  return new Map(prepared.plans.map((plan) => [plan.sourceKey, plan]))
+}
+
+/** Held outputs of one kind, for the publisher that understands them. */
+function heldOf<Output extends HeldPreprocessingOutput | HeldFusionOutput>(
+  group: RunGroup,
+  matches: (output: HeldPreprocessingOutput | HeldFusionOutput) => boolean,
+): Record<string, Output> {
+  return Object.fromEntries(
+    Object.entries(group.held).filter(([, output]) => matches(output)),
+  ) as Record<string, Output>
+}
+
+const isFusionOutput = (output: HeldPreprocessingOutput | HeldFusionOutput) =>
+  'kind' in output && output.kind === 'fusion'
+
+/** Closes a stage's open runs of one kind when a fresh run replaces them. */
+function supersedeOpenGroups(
+  state: WorkbenchState,
+  stageId: string,
+  kind: RunGroup['kind'],
+) {
+  for (const group of Object.values(state.runGroups)) {
+    if (
+      group.stageId === stageId &&
+      group.kind === kind &&
+      group.status === 'open'
+    ) {
+      group.status = 'superseded'
+      group.statusReason =
+        kind === 'fusion'
+          ? 'A newer data fusion replaced it.'
+          : 'A fresh run of this stage replaced it.'
+      group.held = {}
+    }
+  }
+}
+
 /** Adds a queued attempt to a run group. */
 function createAttempt(
   state: WorkbenchState,
@@ -183,14 +243,19 @@ function createAttempt(
   },
 ): Task {
   const group = state.runGroups[groupId]
-  stage.runCount += 1
+  const dataset =
+    group?.kind === 'fusion' && group.fusion
+      ? findDataset(group.fusion.datasetId)
+      : null
+  if (group?.kind !== 'fusion') stage.runCount += 1
   const taskId = allocateId(state, 'task')
   const runId = allocateId(state, 'run')
   const attempt = (group?.attemptIds.length ?? 0) + 1
   const { context, items } = options
+  const noun = dataset ? 'records' : 'items'
   const task: Task = {
     id: taskId,
-    label: stage.name,
+    label: dataset ? `Data fusion: ${dataset.label}` : stage.name,
     stageId: stage.id,
     runId,
     status: 'queued',
@@ -204,8 +269,8 @@ function createAttempt(
         at: context.now,
         message:
           attempt === 1
-            ? `Queued${items ? ` with ${items.length} items` : ''}.`
-            : `Queued as attempt ${attempt}${items ? ` for ${items.length} items` : ''}.`,
+            ? `Queued${items ? ` with ${items.length} ${noun}` : ''}.`
+            : `Queued as attempt ${attempt}${items ? ` for ${items.length} ${noun}` : ''}.`,
       },
     ],
     groupId,
@@ -298,19 +363,15 @@ export const commandDefinitions = {
       if (blocker || !stage) {
         return rejected(blocker ?? `Unknown stage "${stageId}".`, 'stageId')
       }
-      for (const group of Object.values(state.runGroups)) {
-        if (group.stageId === stageId && group.status === 'open') {
-          group.status = 'superseded'
-          group.statusReason = 'A fresh run of this stage replaced it.'
-          group.held = {}
-        }
-      }
+      supersedeOpenGroups(state, stageId, 'stage')
       const groupId = allocateId(state, 'group')
       const signature = captureSignature(state, stageId)
       state.runGroups[groupId] = {
         id: groupId,
+        kind: 'stage',
         stageId,
         signature,
+        fusion: null,
         attemptIds: [],
         held: {},
         status: 'open',
@@ -351,7 +412,7 @@ export const commandDefinitions = {
       if (!task || !group || !stage) return rejected('Unknown job.', 'taskId')
       const parent = state.tasks[group.attemptIds.at(-1) ?? ''] ?? task
       const scope = retryScope(group).toLowerCase()
-      const items = isItemStage(group.stageId) ? outstandingItems(group) : null
+      const items = isItemGroup(group) ? outstandingItems(group) : null
       const retry = createAttempt(state, stage, group.id, {
         items,
         parentTaskId: parent.id,
@@ -361,6 +422,70 @@ export const commandDefinitions = {
       state.workflow.currentStageId = stage.id
       return applied(
         `Queued attempt ${retry.attempt} of "${stage.name}": ${scope}.`,
+      )
+    },
+  }),
+
+  'intake.applyDataset': defineCommand({
+    title: 'Apply dataset',
+    description:
+      'Queue a data fusion job for a synthetic dataset with a field mapping. Records match buildings by their stable source ID; matched records update attributes, new records with footprints add buildings, unmatched buildings are kept, and manual overrides win. Mapping errors or duplicate IDs are rejected. Results publish together when every record succeeds.',
+    input: z.object({
+      datasetId: z.string().min(1, 'Choose a dataset.'),
+      mapping: z.record(
+        z.string(),
+        z
+          .enum(['sourceId', 'name', 'use', 'yearBuilt', 'floors', 'footprint'])
+          .nullable(),
+      ),
+      requestId: requestIdSchema,
+    }),
+    undoable: false,
+    run(state, { datasetId, mapping, requestId }, context) {
+      const repeated = repeatedSubmission(state, requestId)
+      if (repeated) return repeated
+      const dataset = findDataset(datasetId)
+      if (!dataset)
+        return rejected(`Unknown dataset "${datasetId}".`, 'datasetId')
+      const stage = state.workflow.stages[STAGE_IDS.schema]
+      if (!stage) return rejected('Schema matching is not in this workflow.')
+      const blocker = fusionSubmitBlocker(state)
+      if (blocker) return rejected(blocker, 'datasetId')
+      const prepared = prepareDataset(state, dataset, mapping)
+      if (prepared.schemaIssues.length > 0) {
+        return { status: 'rejected', issues: prepared.schemaIssues }
+      }
+      if (prepared.plans.length === 0) {
+        return rejected(
+          'No record is valid, so there is nothing to apply. Fix the mapping or choose another dataset.',
+          'mapping',
+        )
+      }
+      supersedeOpenGroups(state, stage.id, 'fusion')
+      const groupId = allocateId(state, 'group')
+      const fusion = { datasetId, mapping }
+      const signature = captureSignature(state, stage.id, fusion)
+      state.runGroups[groupId] = {
+        id: groupId,
+        kind: 'fusion',
+        stageId: stage.id,
+        signature,
+        fusion,
+        attemptIds: [],
+        held: {},
+        status: 'open',
+        statusReason: null,
+        createdAt: context.now,
+      }
+      state.runGroupIds.push(groupId)
+      createAttempt(state, stage, groupId, {
+        items: signature.membership,
+        parentTaskId: null,
+        requestId: requestId ?? null,
+        context,
+      })
+      return applied(
+        `Queued a data fusion of "${dataset.label}" for ${prepared.plans.length} valid records; ${prepared.counts.rejected} rejected records are not applied.`,
       )
     },
   }),
@@ -539,17 +664,24 @@ export const commandDefinitions = {
         return rejected('This job has no items to process.', 'taskId')
       }
       const batch = items.ids.slice(items.processed, items.processed + count)
+      const plans = fusionPlans(state, group)
       let failed = 0
       for (const id of batch) {
-        const building = state.buildings[id]
-        const output = building ? preprocessBuilding(building) : null
-        const reason =
-          failures[id] ??
-          (!building
+        let output: HeldPreprocessingOutput | HeldFusionOutput | null
+        let missing: string | null
+        if (plans) {
+          output = plans.get(id) ?? null
+          missing = output ? null : 'The record no longer validates.'
+        } else {
+          const building = state.buildings[id]
+          output = building ? preprocessBuilding(building) : null
+          missing = !building
             ? 'The building no longer exists.'
             : !output
               ? 'The floor count is missing.'
-              : null)
+              : null
+        }
+        const reason = failures[id] ?? missing
         if (reason || !output) {
           items.failures[id] = reason ?? 'No result.'
           failed += 1
@@ -612,7 +744,12 @@ export const commandDefinitions = {
         ]),
       )
       const group = groupOf(state, task)
-      state.issues = state.issues.filter((issue) => issue.stageId !== stage.id)
+      const isFusion = group?.kind === 'fusion'
+      if (!isFusion) {
+        state.issues = state.issues.filter(
+          (issue) => issue.stageId !== stage.id,
+        )
+      }
       task.updatedAt = context.now
 
       const changed = group ? signatureMismatch(state, group) : null
@@ -628,23 +765,64 @@ export const commandDefinitions = {
       let result: StageRunResult
       if (group && task.items) {
         const failures = Object.keys(task.items.failures).length
+        const noun = isFusion ? 'records' : 'items'
         if (failures > 0) {
           const held = Object.keys(group.held).length
-          const message = `${failures} of ${task.items.ids.length} items failed. ${held} successful results are held and not published until the failed items are retried.`
+          const message = `${failures} of ${task.items.ids.length} ${noun} failed. ${held} successful results are held and not published until the failed ${noun} are retried.`
           failRun(state, task, stage, message, inputRevisions, context)
-          return applied(`"${stage.name}" partly failed: ${message}`)
+          return applied(`"${task.label}" partly failed: ${message}`)
         }
         const membership = group.signature.membership
+        const fusionHeld = heldOf<HeldFusionOutput>(group, isFusionOutput)
+        const preprocessingHeld = heldOf<HeldPreprocessingOutput>(
+          group,
+          (output) => !isFusionOutput(output),
+        )
         const invalid =
           failPublication ??
-          validatePreprocessing(state, membership, group.held)
+          (isFusion
+            ? validateFusion(state, membership, fusionHeld)
+            : validatePreprocessing(state, membership, preprocessingHeld))
         if (invalid) {
           group.statusReason = `Publication failed: ${invalid}`
           const message = `Publication failed: ${invalid}. All ${membership.length} results stay held; retry publication once the cause is resolved.`
           failRun(state, task, stage, message, inputRevisions, context)
-          return applied(`"${stage.name}" was not published: ${invalid}.`)
+          return applied(`"${task.label}" was not published: ${invalid}.`)
         }
-        result = publishPreprocessing(state, membership, group.held, {
+        const dataset = group.fusion
+          ? findDataset(group.fusion.datasetId)
+          : null
+        if (isFusion && group.fusion && dataset) {
+          const published = publishFusion(
+            state,
+            dataset,
+            group.fusion.mapping,
+            membership,
+            fusionHeld,
+            context,
+          )
+          // New buildings change footprint capture's output; attributes change enrichment's.
+          if (published.added > 0) {
+            const location = state.workflow.stages[STAGE_IDS.location]
+            if (location) location.revision = nextRevision(state)
+          }
+          if (published.updated > 0) {
+            const enrichment = state.workflow.stages[STAGE_IDS.enrichment]
+            if (enrichment) enrichment.revision = nextRevision(state)
+          }
+          group.status = 'published'
+          group.statusReason = null
+          group.held = {}
+          task.status = 'succeeded'
+          task.progress = 1
+          task.message = published.summary
+          task.log.push({
+            at: context.now,
+            message: `Completed. ${published.summary}`,
+          })
+          return applied(published.summary)
+        }
+        result = publishPreprocessing(state, membership, preprocessingHeld, {
           runId: task.runId,
           operationId: context.operationId,
           attempt: stage.runCount,
@@ -720,9 +898,13 @@ export const commandDefinitions = {
           state.workflow.stages[id]?.revision ?? 0,
         ]),
       )
-      state.issues = state.issues.filter((issue) => issue.stageId !== stage.id)
+      if (groupOf(state, task)?.kind !== 'fusion') {
+        state.issues = state.issues.filter(
+          (issue) => issue.stageId !== stage.id,
+        )
+      }
       failRun(state, task, stage, message, inputRevisions, context)
-      return applied(`"${stage.name}" failed: ${message}`)
+      return applied(`"${task.label}" failed: ${message}`)
     },
   }),
 

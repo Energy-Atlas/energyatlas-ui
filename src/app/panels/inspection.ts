@@ -203,7 +203,17 @@ function inspectBuilding(
       (override) =>
         `${FIELD_LABELS[override.field]} set to ${formatEditValue(state, override.field, override.value)} by a ${override.source} edit (operation ${override.operationId}); it survives stage reruns.`,
     )
-  if (building.sourceRef) {
+  const imported = Object.values(state.sourceRecords).find(
+    (record) => record.buildingId === building.id,
+  )
+  if (imported) {
+    const dataset = state.datasets[imported.datasetId]
+    const fields = Object.keys(imported.fields).join(', ') || 'no attributes'
+    provenance.push(
+      `${imported.footprint ? 'Added' : 'Matched'} by source ID ${imported.sourceKey} from the synthetic dataset "${dataset?.label ?? imported.datasetId}" (${fields}; operation ${imported.operationId}). Manual edits win over imported values.`,
+    )
+  }
+  if (building.sourceRef?.startsWith('OpenStreetMap')) {
     provenance.push(
       `Footprint geometry from ${building.sourceRef} (© OpenStreetMap contributors, ODbL). Use, year, floors, and results are synthetic.`,
     )

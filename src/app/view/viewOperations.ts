@@ -1,6 +1,8 @@
 import { z } from 'zod'
 import type { ValidationIssue } from '../../domain/commands.ts'
-import type { WorkbenchState } from '../../domain/types.ts'
+import { findDataset } from '../../domain/intake/datasets.ts'
+import { TARGET_FIELDS, suggestMapping } from '../../domain/intake/fusion.ts'
+import type { FieldMapping, WorkbenchState } from '../../domain/types.ts'
 import { computeMetric, METRICS, type MetricId } from '../pages/mapMetrics.ts'
 import {
   createInitialLighting,
@@ -56,6 +58,8 @@ export type ViewState = {
   dashboard: { hiddenScenarioIds: string[]; charts: ChartSpec[] }
   /** The Jobs page's selected job and list filter; selecting never edits the project. */
   jobs: { selectedTaskId: string | null; filter: JobFilter }
+  /** The data intake draft: a dataset and its mapping, not sent until applied. */
+  intake: { datasetId: string | null; mapping: FieldMapping }
   nextChartNumber: number
 }
 
@@ -73,6 +77,7 @@ export function createInitialViewState(): ViewState {
     table: { view: 'buildings', quickFilter: '' },
     dashboard: { hiddenScenarioIds: [], charts: [] },
     jobs: { selectedTaskId: null, filter: 'all' },
+    intake: { datasetId: null, mapping: {} },
     nextChartNumber: 1,
   }
 }
@@ -402,6 +407,50 @@ export const viewOperationDefinitions = {
     run(view, { filter }) {
       view.jobs.filter = filter
       return applied(`Jobs list shows: ${JOB_FILTERS[filter].toLowerCase()}.`)
+    },
+  }),
+
+  'intake.chooseDataset': defineViewOperation({
+    title: 'Choose dataset',
+    description:
+      'Choose a synthetic dataset for data intake. Its fields get a suggested mapping to the model schema to review before applying.',
+    input: z.object({ datasetId: z.string().min(1, 'Choose a dataset.') }),
+    run(view, { datasetId }) {
+      const dataset = findDataset(datasetId)
+      if (!dataset) {
+        return rejected(`Unknown dataset "${datasetId}".`, 'datasetId')
+      }
+      view.intake = { datasetId, mapping: suggestMapping(dataset) }
+      return applied(
+        `Chose "${dataset.label}" and suggested a mapping for its ${dataset.fields.length} fields; review it before applying.`,
+      )
+    },
+  }),
+
+  'intake.mapField': defineViewOperation({
+    title: 'Map dataset field',
+    description:
+      'Map one field of the chosen dataset to a model field (sourceId, name, use, yearBuilt, floors, footprint), or to null to ignore it.',
+    input: z.object({
+      field: z.string().min(1, 'Choose a field.'),
+      target: z
+        .enum(['sourceId', 'name', 'use', 'yearBuilt', 'floors', 'footprint'])
+        .nullable(),
+    }),
+    run(view, { field, target }) {
+      const dataset = view.intake.datasetId
+        ? findDataset(view.intake.datasetId)
+        : null
+      if (!dataset) return rejected('Choose a dataset first.', 'field')
+      if (!dataset.fields.includes(field)) {
+        return rejected(`"${field}" is not a field of this dataset.`, 'field')
+      }
+      view.intake.mapping[field] = target
+      return applied(
+        target
+          ? `Mapped "${field}" to ${TARGET_FIELDS[target].label}.`
+          : `"${field}" is ignored.`,
+      )
     },
   }),
 

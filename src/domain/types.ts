@@ -221,6 +221,8 @@ export type InputSignature = {
   editRevision: number
   /** Item membership, in order; empty for whole-stage runs. */
   membership: string[]
+  /** Run options that change results, such as a fusion's dataset and mapping. */
+  options: string
 }
 
 /** A held item output from geospatial preprocessing, published only with the whole group. */
@@ -230,17 +232,78 @@ export type HeldPreprocessingOutput = {
   zoneCount: number
 }
 
+/** Attributes a dataset supplies for one building; absent fields are not supplied. */
+export type ImportedFields = {
+  name?: string
+  use?: BuildingUse
+  yearBuilt?: number
+  floors?: number
+}
+
+/** One record's held fusion result: update a matched building or add a new one. */
+export type HeldFusionOutput = {
+  kind: 'fusion'
+  action: 'update' | 'add'
+  /** The stable source ID the record carries, normalized. */
+  sourceKey: string
+  buildingId: string
+  /** Values the record changes; manual overrides are already left out. */
+  fields: ImportedFields
+  /** Fields where a manual override wins over the imported value. */
+  conflicts: { field: 'floors'; manual: number | null; imported: number }[]
+  footprint: LngLat[] | null
+}
+
+export type HeldOutput = HeldPreprocessingOutput | HeldFusionOutput
+
+/** Dataset field name to model field, or null to ignore the field. */
+export type FieldMapping = Record<string, TargetField | null>
+
+export type TargetField =
+  'sourceId' | 'name' | 'use' | 'yearBuilt' | 'floors' | 'footprint'
+
+/** What a fusion run applies: a synthetic dataset and the mapping chosen for it. */
+export type FusionInput = { datasetId: string; mapping: FieldMapping }
+
+/** A published source record; stage reruns reapply it under manual overrides. */
+export type SourceRecord = {
+  sourceKey: string
+  datasetId: string
+  buildingId: string
+  fields: ImportedFields
+  /** Geometry for a building the dataset added; null when it matched an existing one. */
+  footprint: LngLat[] | null
+  operationId: string
+  source: CommandSource
+}
+
+/** A dataset whose fusion was published into the project. */
+export type AppliedDataset = {
+  datasetId: string
+  label: string
+  mapping: FieldMapping
+  updated: number
+  added: number
+  conflicts: number
+  appliedAt: string
+  operationId: string
+}
+
 export type RunGroupStatus =
   'open' | 'published' | 'cancelled' | 'invalidated' | 'superseded'
 
 /** Every attempt at one stage run with one input context. */
 export type RunGroup = {
   id: string
+  /** A stage run, or a data fusion run shown under Schema matching. */
+  kind: 'stage' | 'fusion'
   stageId: string
   signature: InputSignature
+  /** The dataset and mapping a fusion run applies; null for stage runs. */
+  fusion: FusionInput | null
   attemptIds: string[]
   /** Successful item outputs, kept out of the project until the group publishes. */
-  held: Record<string, HeldPreprocessingOutput>
+  held: Record<string, HeldOutput>
   status: RunGroupStatus
   /** Why the group is closed, or why its last publication failed. */
   statusReason: string | null
@@ -306,6 +369,11 @@ export type WorkbenchState = {
   taskIds: string[]
   runGroups: Record<string, RunGroup>
   runGroupIds: string[]
+  /** Published source records by normalized source ID (decision D9). */
+  sourceRecords: Record<string, SourceRecord>
+  sourceRecordIds: string[]
+  /** Datasets fused into the project, by dataset ID. */
+  datasets: Record<string, AppliedDataset>
   issues: Issue[]
   selection: Selection
   pendingEdits: Record<string, PendingEdit>

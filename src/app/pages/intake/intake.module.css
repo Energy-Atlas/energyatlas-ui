@@ -1,0 +1,111 @@
+/* Data intake: dataset choice, mapping, validation, and fusion preview. */
+.header {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2) var(--space-3);
+}
+
+.header h2 {
+  margin: 0;
+}
+
+.section {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  margin-top: var(--space-3);
+}
+
+.section h3 {
+  margin: 0;
+  color: var(--color-text-muted);
+  font-family: var(--label-font);
+  font-size: var(--label-size);
+  font-weight: var(--label-weight);
+  letter-spacing: var(--label-tracking);
+  text-transform: var(--label-case);
+}
+
+.label {
+  color: var(--color-text-muted);
+  font-family: var(--label-font);
+  font-size: var(--label-size);
+  letter-spacing: var(--label-tracking);
+  text-transform: var(--label-case);
+}
+
+.datasets {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+}
+
+.dataset {
+  align-items: flex-start;
+}
+
+.description {
+  display: block;
+  color: var(--color-text-muted);
+  font-size: var(--font-size-small);
+}
+
+.upload {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.blocking {
+  margin: 0;
+  padding: var(--space-2) var(--space-3);
+  border: var(--rule);
+  border-left: 2px solid var(--tone-danger-text);
+  border-radius: var(--radius-sm);
+  background: var(--color-surface-raised);
+}
+
+.issue {
+  display: block;
+  color: var(--tone-danger-text);
+  font-size: var(--font-size-small);
+}
+
+.counts {
+  display: grid;
+  grid-template-columns: max-content minmax(0, 1fr);
+  gap: var(--space-1) var(--space-3);
+  margin: 0;
+}
+
+.counts dt {
+  color: var(--color-text-muted);
+  font-family: var(--label-font);
+  font-size: var(--label-size);
+  letter-spacing: var(--label-tracking);
+  text-transform: var(--label-case);
+}
+
+.counts dd {
+  margin: 0;
+  font-variant-numeric: tabular-nums;
+}
+
+.more {
+  margin: 0;
+  font-size: var(--font-size-small);
+}
+
+.apply {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2);
+  margin-top: var(--space-3);
+}
+
+.mapping th[scope='row'],
+.mapping td {
+  vertical-align: middle;
+}

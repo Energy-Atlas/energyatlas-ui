@@ -10,9 +10,12 @@ import styles from './jobs.module.css'
 export function JobList({
   jobs,
   selectedId,
+  nounOf,
 }: {
   jobs: Task[]
   selectedId: string | null
+  /** What each job's items are called, such as items or records. */
+  nounOf: (task: Task) => string
 }) {
   const { view } = useServices()
   return (
@@ -42,7 +45,7 @@ export function JobList({
           <span className={styles.rowMeta}>
             <JobStatusBadge status={task.status} />
             <span className={componentStyles.muted}>
-              Attempt {task.attempt} · {outcomeLabel(task)} ·{' '}
+              Attempt {task.attempt} · {outcomeLabel(task, nounOf(task))} ·{' '}
               <time dateTime={task.updatedAt}>
                 {new Date(task.updatedAt).toLocaleTimeString()}
               </time>

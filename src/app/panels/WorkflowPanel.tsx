@@ -6,7 +6,11 @@ import {
   retryBlocker,
   retryScope,
 } from '../../domain/jobs/runGroups.ts'
-import { hasActiveTask, stageRunBlocker } from '../../domain/workflow.ts'
+import {
+  STAGE_IDS,
+  hasActiveTask,
+  stageRunBlocker,
+} from '../../domain/workflow.ts'
 import {
   useClientSnapshot,
   useServices,
@@ -23,7 +27,7 @@ import styles from './panels.module.css'
 /** Compact workflow view (decision 0003): the same state as the Roadmap page. */
 export function WorkflowPanel() {
   const headingId = useId()
-  const { workbench, client } = useServices()
+  const { workbench, client, layout } = useServices()
   const pending = useClientSnapshot((snapshot) => snapshot.pending)
   const workflow = useWorkbenchSnapshot((snapshot) => snapshot.state.workflow)
   const tasks = useWorkbenchSnapshot((snapshot) => snapshot.state.tasks)
@@ -111,6 +115,15 @@ export function WorkflowPanel() {
                     </ActionButton>
                   )
                 })()}
+                {stageId === STAGE_IDS.schema ? (
+                  <ActionButton
+                    label="Open Data intake to map and fuse a dataset"
+                    disabledReason={null}
+                    onPress={() => layout.openPage('intake')}
+                  >
+                    Data intake
+                  </ActionButton>
+                ) : null}
                 {stage.skippable ? (
                   <ActionButton
                     label={`${stage.skipped ? 'Restore' : 'Skip'} ${stage.name}`}

@@ -28,6 +28,18 @@ export const capabilities = {
     explanation:
       'Runs are deterministic stand-ins that produce synthetic outputs; no engineering calculation is performed.',
   },
+  'intake.fusion': {
+    label: 'Data intake and fusion',
+    status: 'simulated',
+    explanation:
+      'Mapping, validation, stable-ID matching, and fusion jobs are real state transitions over synthetic datasets; files are not uploaded or parsed.',
+  },
+  'intake.upload': {
+    label: 'File upload',
+    status: 'planned',
+    explanation:
+      'Choosing a file from disk or a server is deferred; choose a synthetic dataset instead.',
+  },
   'workflow.freeformEditing': {
     label: 'Free-form graph editing',
     status: 'planned',

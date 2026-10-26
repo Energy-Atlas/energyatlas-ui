@@ -83,16 +83,16 @@ export function publicationLabel(
 }
 
 /** Short outcome for a list row. */
-export function outcomeLabel(task: Task): string {
+export function outcomeLabel(task: Task, plural = 'items'): string {
   const counts = itemCounts(task)
   if (!counts || counts.total === 0) return JOB_STATUS_LABELS[task.status]
   if (task.status === 'failed' && counts.failed > 0) {
-    return `${counts.failed} of ${counts.total} items failed`
+    return `${counts.failed} of ${counts.total} ${plural} failed`
   }
   if (isActiveStatus(task.status)) {
-    return `${counts.succeeded + counts.failed} of ${counts.total} items`
+    return `${counts.succeeded + counts.failed} of ${counts.total} ${plural}`
   }
-  return `${counts.total} items, ${JOB_STATUS_LABELS[task.status].toLowerCase()}`
+  return `${counts.total} ${plural}, ${JOB_STATUS_LABELS[task.status].toLowerCase()}`
 }
 
 export function cancelBlocker(

@@ -44,18 +44,55 @@ const taskStatus = z.enum([
   'cancelled',
   'invalidated',
 ])
+const targetField = z.enum([
+  'sourceId',
+  'name',
+  'use',
+  'yearBuilt',
+  'floors',
+  'footprint',
+])
+const mapping = z.record(text, targetField.nullable())
+const importedFields = z.object({
+  name: text.optional(),
+  use: use.optional(),
+  yearBuilt: number.optional(),
+  floors: number.optional(),
+})
+const ring = z.array(point)
+const heldFusion = z.object({
+  kind: z.literal('fusion'),
+  action: z.enum(['update', 'add']),
+  sourceKey: id,
+  buildingId: id,
+  fields: importedFields,
+  conflicts: z.array(
+    z.object({
+      field: z.literal('floors'),
+      manual: nullableNumber,
+      imported: number,
+    }),
+  ),
+  footprint: ring.nullable(),
+})
+const heldPreprocessing = z.object({
+  heightM: number,
+  floorAreaM2: number,
+  zoneCount: number,
+})
 const runGroup = z.object({
   id,
+  kind: z.enum(['stage', 'fusion']).default('stage'),
   stageId: id,
   signature: z.object({
     ancestors: record(number),
     editRevision: number,
     membership: ids,
+    options: text.default(''),
   }),
+  fusion: z.object({ datasetId: id, mapping }).nullable().default(null),
   attemptIds: ids,
-  held: record(
-    z.object({ heightM: number, floorAreaM2: number, zoneCount: number }),
-  ),
+  held: record(z.union([heldFusion, heldPreprocessing])),
   status: z.enum([
     'open',
     'published',
@@ -238,6 +275,30 @@ export const projectStateSchema: z.ZodType<WorkbenchState, unknown> = z
     taskIds: ids,
     runGroups: record(runGroup).default({}),
     runGroupIds: ids.default([]),
+    sourceRecords: record(
+      z.object({
+        sourceKey: id,
+        datasetId: id,
+        buildingId: id,
+        fields: importedFields,
+        footprint: ring.nullable(),
+        operationId: id,
+        source,
+      }),
+    ).default({}),
+    sourceRecordIds: ids.default([]),
+    datasets: record(
+      z.object({
+        datasetId: id,
+        label: text,
+        mapping,
+        updated: number,
+        added: number,
+        conflicts: number,
+        appliedAt: text,
+        operationId: id,
+      }),
+    ).default({}),
     issues: z.array(
       z.object({
         id,
@@ -271,6 +332,17 @@ export const projectStateSchema: z.ZodType<WorkbenchState, unknown> = z
     references(state.buildingIds, state.buildings)
     references(state.taskIds, state.tasks)
     references(state.runGroupIds, state.runGroups)
+    references(state.sourceRecordIds, state.sourceRecords)
+    for (const [key, sourceRecord] of Object.entries(state.sourceRecords)) {
+      if (sourceRecord.sourceKey !== key)
+        fail('A saved source record has the wrong identity.')
+      if (!(sourceRecord.buildingId in state.buildings))
+        fail('A source record refers to a missing building.')
+    }
+    for (const group of Object.values(state.runGroups)) {
+      if ((group.kind === 'fusion') !== (group.fusion !== null))
+        fail('A data fusion run is missing its dataset.')
+    }
     if (Object.keys(state.runGroups).length !== state.runGroupIds.length)
       fail('A run group is missing from the saved index.')
     for (const group of Object.values(state.runGroups)) {

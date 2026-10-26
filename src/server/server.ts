@@ -35,6 +35,7 @@ import {
 export const SERVER_COMMANDS: ReadonlySet<Command['type']> = new Set([
   'workflow.runStage',
   'job.retry',
+  'intake.applyDataset',
   'workflow.setStageSkipped',
   'workflow.insertStage',
   'task.cancel',
