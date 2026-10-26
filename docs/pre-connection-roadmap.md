@@ -78,5 +78,6 @@ the interfaces they plug into.
 
 Scale and accessibility checks run alongside every step.
 
-Step 3 is in [design discussion](jobs-discussion.md): extend the current Jobs monitor, give runs separate detail
-pages, or introduce a generic runner. No Jobs implementation decision has been accepted yet.
+Step 3 is in [design discussion](jobs-discussion.md): the owner chose a Jobs list and detail pane
+([decision 0025](decisions/0025-jobs-list-and-detail-pane.md)). Retry and partial-failure behavior must be
+discussed before implementation.

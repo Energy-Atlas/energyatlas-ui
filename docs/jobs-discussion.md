@@ -1,6 +1,7 @@
 # Jobs: roadmap step 3 discussion
 
-Date: 2026-10-26. Status: pending owner direction; no Jobs implementation is authorized by this record.
+Date: 2026-10-26. Status: direction A accepted ([decision 0025](decisions/0025-jobs-list-and-detail-pane.md));
+retry and partial failures are in discussion before implementation.
 The owner requested review/integration of project lifecycle, followed by discussion of Jobs.
 Decision 0022 keeps computation and transport mocked here; connections are built inside RC later.
 
@@ -43,7 +44,8 @@ They do not establish a required scheduler policy, retry policy, or partial-outp
 | B. List plus separate job detail page | Same lifecycle scope, with each selected run opening a detail page/tab that can be docked alongside other runs | Better comparison of two runs; more navigation, tab ownership, and restoration behavior |
 | C. Generic Job Runner first | A catalog of job types with inputs, validation, submission, outputs/artifacts, and the execution monitor | Closer to RC's general launcher surface, but substantially expands scope before data intake/archetype inputs exist |
 
-Recommendation is A, retaining stage runs as the entry point. This is a proposal, not an accepted decision.
+The owner chose A, retaining stage runs as the entry point, and requested retry/partial-failure discussion before
+implementation. The other directions remain recorded as alternatives.
 Do not infer a single-worker scheduler or batch prioritization from the current Created label.
 
 ## Proposed behavioral boundaries for the next design discussion
@@ -66,4 +68,23 @@ Real: job state transitions, guards, retry lineage, progress/log presentation, n
 Mocked: computation, item outcomes, queue timing, faults, storage, and transport. Deferred: HTTP/SignalR,
 real batch computation, native artifacts, sign-in/permissions, and a general job-schema editor.
 
-Next: owner chooses the surface direction; settle retry inputs, partial output, and queue policy before implementation.
+## Retry and partial-failure discussion, 2026-10-26
+
+Additional demo observations: `src/domain/commands.ts` applies stage outputs in `task.complete`; `task.fail`
+and `task.cancel` do not publish new stage outputs. `Task` in `src/domain/types.ts` has no per-item outcomes,
+attempt-parent link, or recorded input snapshot. Partial progress today does not imply retained item results.
+Input revision metadata is recorded when the run completes/fails, rather than being a submission snapshot.
+
+Candidate behavior, not yet accepted:
+
+- Retry is manual and creates a new linked attempt. Original status, log, and item outcomes remain available.
+- An execution-wide failure retries the run; an item-level failure can retry only failed items when their inputs
+  are still compatible with the successful items. Changed inputs require an explicit fresh run or a clearly
+  described rerun with current inputs; do not silently combine outputs from different input revisions.
+- For a partial run, retain successful item results and failed-item reasons in the job detail. Whether those
+  successes can enter the live project immediately or must wait for a complete result is the next owner choice.
+  That choice also determines downstream eligibility and what a failed-item retry may publish.
+- Distinguish transport submission failure from execution failure: a rejected submission must not invent a job
+  attempt, and any later retry must avoid duplicating an already accepted submission.
+
+Next: settle partial-output publication, then retry inputs/scope and queue policy before implementation.
