@@ -251,7 +251,8 @@ export function calibratedResult(
     id: 'result:baseline',
     label: 'Calibrated baseline',
     runId,
-    totalKwh: round(baseline.totalKwh * factor),
+    // The total is the sum of the rounded buildings, so exports add up.
+    totalKwh: Object.values(byBuildingKwh).reduce((sum, kwh) => sum + kwh, 0),
     peakKw: round(baseline.peakKw * factor),
     monthlyKwh: baseline.monthlyKwh.map((value) => round(value * factor)),
     byBuildingKwh,

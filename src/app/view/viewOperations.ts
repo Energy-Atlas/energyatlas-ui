@@ -478,6 +478,13 @@ export const viewOperationDefinitions = {
         )
       }
       view.results.resultId = resultId
+      if (
+        view.results.buildingId !== null &&
+        published.byBuildingKwh[view.results.buildingId] === undefined
+      ) {
+        view.results.buildingId = null
+        view.results.resolution = 'monthly'
+      }
       return applied(`Results show "${published.label}".`)
     },
   }),
@@ -490,6 +497,20 @@ export const viewOperationDefinitions = {
     run(view, { buildingId }, project) {
       if (buildingId !== null && !project.buildings[buildingId]) {
         return rejected(`Unknown building "${buildingId}".`, 'buildingId')
+      }
+      const shown =
+        (view.results.resultId === 'baseline'
+          ? project.results.baseline
+          : project.results.scenarios[view.results.resultId]) ??
+        project.results.baseline
+      if (
+        buildingId !== null &&
+        shown?.byBuildingKwh[buildingId] === undefined
+      ) {
+        return rejected(
+          `${buildingId} has no result in the shown result set; it was not modeled.`,
+          'buildingId',
+        )
       }
       view.results.buildingId = buildingId
       if (buildingId === null) view.results.resolution = 'monthly'

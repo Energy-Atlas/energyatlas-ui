@@ -84,8 +84,12 @@ function download(name: string, text: string) {
   const anchor = document.createElement('a')
   anchor.href = url
   anchor.download = name
+  anchor.hidden = true
+  document.body.append(anchor)
   anchor.click()
-  URL.revokeObjectURL(url)
+  anchor.remove()
+  // Revoke later so the browser has started the download.
+  window.setTimeout(() => URL.revokeObjectURL(url), 1000)
 }
 
 /**
@@ -124,7 +128,7 @@ export function ResultsPage() {
         categories: HOURS,
         values: profile.kw,
         unit: 'kW',
-        title: `Typical weekday, ${buildingId} (kW)`,
+        title: `Typical weekday, ${state.buildings[buildingId]?.name ?? buildingId} (kW)`,
         basis: profile.basis,
       }
     }
@@ -132,7 +136,7 @@ export function ResultsPage() {
       categories: MONTH_LABELS,
       values: monthlySeries(entry.result, buildingId),
       unit: 'kWh',
-      title: `Monthly demand, ${buildingId ?? 'district'} (kWh)`,
+      title: `Monthly demand, ${buildingId ? (state.buildings[buildingId]?.name ?? buildingId) : 'district'} (kWh)`,
       basis: buildingId
         ? 'The building’s share of the district’s monthly shape.'
         : 'District monthly totals of the published result.',
@@ -167,7 +171,6 @@ export function ResultsPage() {
   }
 
   const visibleRows = rows.slice(0, shown)
-  const label = (id: string) => (id === 'baseline' ? 'baseline' : id)
 
   return (
     <section
@@ -183,9 +186,10 @@ export function ResultsPage() {
         className={styles.results}
         orientation="horizontal"
         value={entry.id}
-        onChange={(resultId) =>
+        onChange={(resultId) => {
           view.execute({ type: 'results.select', input: { resultId } })
-        }
+          setShown(PAGE_SIZE)
+        }}
       >
         <Label className={styles.label}>Published result</Label>
         {entries.map((candidate) => (
@@ -228,7 +232,7 @@ export function ResultsPage() {
           <dd>
             {entry.current
               ? 'Current: produced with the present inputs.'
-              : 'Outdated: inputs changed after this run. Rerun its stage for current results.'}
+              : `${entry.currentness.charAt(0).toUpperCase()}${entry.currentness.slice(1)}.`}
           </dd>
           <dt>Source</dt>
           <dd>{entry.note}</dd>
@@ -253,7 +257,7 @@ export function ResultsPage() {
           <CapabilityBadge id="results.csv" />
           {!entry.current ? (
             <span className={styles.warning}>
-              The export is marked outdated in its header.
+              The export states this in its header: {entry.currentness}.
             </span>
           ) : null}
         </div>
@@ -344,7 +348,7 @@ export function ResultsPage() {
 
       <section aria-label="Buildings" className={styles.section}>
         <h3 className={styles.label}>
-          Buildings in {label(entry.label)}, highest demand first
+          Buildings in {entry.label}, highest demand first
         </h3>
         <div className={styles.tableWrap}>
           <table

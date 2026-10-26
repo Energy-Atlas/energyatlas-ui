@@ -3,6 +3,7 @@ import { finishJobNow } from '../../../domain/jobs/runNow.ts'
 import { createWorkbench } from '../../../domain/workbench.ts'
 import { STAGE_IDS, deriveStageStates } from '../../../domain/workflow.ts'
 import { buildFixture } from '../../../server/fixtures.ts'
+import { createViewStore } from '../../view/viewStore.ts'
 import {
   buildingRows,
   csvFileName,
@@ -69,10 +70,14 @@ describe('results view', () => {
     const lines = csv.trim().split('\n')
     expect(lines).toContain(`# run: ${baseline.result.runId}`)
     expect(lines).toContain('# currentness: current')
-    expect(lines[7]).toBe(
+    const header = lines.findIndex((text) => text.startsWith('building_id'))
+    expect(lines[header]).toBe(
       'building_id,name,use,archetype,floor_area[m2],annual_demand[kWh],eui[kWh/m2]',
     )
-    const rows = lines.slice(8, -1)
+    expect(lines.slice(0, header).every((text) => text.startsWith('#'))).toBe(
+      true,
+    )
+    const rows = lines.slice(header + 1, -1)
     const sum = rows.reduce((total, line) => total + Number(fields(line)[5]), 0)
     const totalLine = fields(lines.at(-1) ?? '')
     expect(totalLine[0]).toBe('total')
@@ -127,5 +132,64 @@ describe('results view', () => {
     expect(profile.kw).toHaveLength(24)
     expect(profile.basis).toMatch(/schedule/)
     expect(Math.max(...profile.kw)).toBeGreaterThan(0)
+  })
+
+  test('text that a spreadsheet would evaluate is neutralized', () => {
+    const workbench = complete()
+    const state = workbench.getState()
+    const [baseline] = entries(workbench)
+    if (!baseline) throw new Error('Missing baseline')
+    const id = Object.keys(baseline.result.byBuildingKwh)[0] ?? ''
+    const named = {
+      ...state,
+      buildings: {
+        ...state.buildings,
+        [id]: { ...state.buildings[id]!, name: '=HYPERLINK("x")' },
+      },
+    }
+    const csv = resultCsv(named, baseline, 'now')
+    expect(csv).toContain(`'=HYPERLINK(""x"")`)
+    expect(csv).not.toMatch(/,=HYPERLINK/)
+  })
+
+  test('drill-down refuses buildings the shown result did not model', () => {
+    const workbench = complete()
+    const view = createViewStore(workbench)
+    const state = workbench.getState()
+    const unmodeled = state.buildingIds.find(
+      (id) => state.results.baseline?.byBuildingKwh[id] === undefined,
+    )
+    if (!unmodeled) throw new Error('Expected an unmodeled building')
+    expect(
+      view.execute({
+        type: 'results.showBuilding',
+        input: { buildingId: unmodeled },
+      }).outcome,
+    ).toMatchObject({ status: 'rejected', issues: [{ path: 'buildingId' }] })
+    expect(
+      view.execute({
+        type: 'results.setResolution',
+        input: { resolution: 'hourly' },
+      }).outcome.status,
+    ).toBe('rejected')
+  })
+
+  test('an adopted calibrated baseline exports rows that add up to its total', () => {
+    const workbench = complete()
+    workbench.execute({
+      type: 'calibration.fit',
+      input: { meterId: 'meter:district-2025', unit: 'kWh' },
+    })
+    finishJobNow(workbench, workbench.getState().taskIds.at(-1) ?? '')
+    const variantId = workbench.getState().calibration.variantIds[0] ?? ''
+    workbench.execute({ type: 'calibration.adopt', input: { variantId } })
+    const [baseline] = entries(workbench)
+    if (!baseline) throw new Error('Missing baseline')
+    const sum = Object.values(baseline.result.byBuildingKwh).reduce(
+      (total, kwh) => total + kwh,
+      0,
+    )
+    expect(sum).toBe(baseline.result.totalKwh)
+    expect(baseline.stageName).toMatch(/adopted/)
   })
 })

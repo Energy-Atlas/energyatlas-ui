@@ -37,10 +37,11 @@ test('drills into a building and exports the published result as CSV', async ({
   await table
     .getByRole('button', { name: `Show results of ${firstId}` })
     .click()
-  await expect(results).toContainText(`Monthly demand, ${firstId} (kWh)`)
+  const name = `Building ${Number(firstId.slice(1))}`
+  await expect(results).toContainText(`Monthly demand, ${name} (kWh)`)
   await page.getByRole('radio', { name: 'Typical weekday (hourly)' }).focus()
   await page.keyboard.press('Space')
-  await expect(results).toContainText(`Typical weekday, ${firstId} (kW)`)
+  await expect(results).toContainText(`Typical weekday, ${name} (kW)`)
   await expect(results).toContainText('Weekday shape of the schedule')
 
   const downloading = page.waitForEvent('download')

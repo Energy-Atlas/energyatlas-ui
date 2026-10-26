@@ -36,12 +36,37 @@ export type ResultEntry = {
   stageName: string
   /** Published with the current inputs, or outdated by later changes. */
   current: boolean
-  /** When its stage last succeeded, if known. */
+  /** How the result relates to its stage now, in words for the page and the export. */
+  currentness: string
+  /** When the run that produced it finished, if known. */
   publishedAt: string | null
   /** For a scenario, its baseline to compare against. */
   compareTo: ResultSet | null
   /** How the working baseline came to be, for the baseline entry. */
   note: string | null
+}
+
+/** When the run that produced a result finished: its succeeded job's last update. */
+function finishedAt(state: WorkbenchState, runId: string): string | null {
+  const task = Object.values(state.tasks).find(
+    (candidate) =>
+      candidate.runId === runId && candidate.status === 'succeeded',
+  )
+  return task?.updatedAt ?? null
+}
+
+/** Currentness in words, from the publishing stage's derived state. */
+function describeCurrentness(stageState: StageState | undefined): string {
+  switch (stageState) {
+    case 'executed':
+      return 'current'
+    case 'running':
+      return 'a newer run is in progress; this is the last published result'
+    case 'failed':
+      return 'a newer run failed; this is the last published result'
+    default:
+      return 'outdated; inputs changed after this run'
+  }
 }
 
 /** Every published result set: the working baseline, then each modeled scenario. */
@@ -62,10 +87,14 @@ export function listResults(
       label: adopted ? `Baseline (${adopted.label})` : 'Baseline',
       result: baseline,
       stageId: STAGE_IDS.baseline,
-      stageName: baselineStage?.name ?? 'Baseline model setup',
+      stageName: adopted
+        ? 'Calibration fit, adopted as the working baseline'
+        : (baselineStage?.name ?? 'Baseline model setup'),
       current: states[STAGE_IDS.baseline] === 'executed',
-      publishedAt:
-        adopted?.createdAt ?? baselineStage?.lastRun?.finishedAt ?? null,
+      currentness: describeCurrentness(states[STAGE_IDS.baseline]),
+      publishedAt: adopted
+        ? adopted.createdAt
+        : finishedAt(state, baseline.runId),
       compareTo: null,
       note: adopted
         ? `Calibrated variant adopted as the working baseline (factor ${adopted.factor}).`
@@ -82,7 +111,8 @@ export function listResults(
       stageId: STAGE_IDS.scenarioModeling,
       stageName: modelingStage?.name ?? 'Scenario modeling',
       current: states[STAGE_IDS.scenarioModeling] === 'executed',
-      publishedAt: modelingStage?.lastRun?.finishedAt ?? null,
+      currentness: describeCurrentness(states[STAGE_IDS.scenarioModeling]),
+      publishedAt: finishedAt(state, result.runId),
       compareTo: baseline,
       note: `${scenario.measureIds.length} measure(s) at ${scenario.adoptionPercent}% adoption.`,
     })
@@ -181,7 +211,16 @@ export function hourlyProfile(
     }
   }
   const { annualHours } = scheduleStats(schedule)
-  const peak = annualHours > 0 ? annualKwh / annualHours : 0
+  if (!(annualHours > 0)) {
+    return {
+      kw: Array.from(
+        { length: 24 },
+        () => Math.round((annualKwh / 8760) * 10) / 10,
+      ),
+      basis: `Flat: the schedule "${schedule.name}" has no hours above zero.`,
+    }
+  }
+  const peak = annualKwh / annualHours
   return {
     kw: schedule.weekday.map(
       (fraction) => Math.round(fraction * peak * 10) / 10,
@@ -190,9 +229,17 @@ export function hourlyProfile(
   }
 }
 
+/**
+ * One CSV field. Text that a spreadsheet would read as a formula (starting
+ * with =, +, -, @, tab, or carriage return) is prefixed with an apostrophe;
+ * numbers are written as they are.
+ */
 function csvField(value: string | number | null): string {
   if (value === null) return ''
-  const text = String(value)
+  const text =
+    typeof value === 'string' && /^[=+\-@\t\r]/.test(value)
+      ? `'${value}`
+      : String(value)
   return /[",\n]/.test(text) ? `"${text.replace(/"/g, '""')}"` : text
 }
 
@@ -208,14 +255,26 @@ export function resultCsv(
 ): string {
   const rows = buildingRows(state, entry)
   const scenario = entry.compareTo !== null
+  // Header values are one line each: control characters become spaces.
+  const line = (text: string) =>
+    Array.from(text, (char) => {
+      const code = char.charCodeAt(0)
+      return code < 32 || code === 127 ? ' ' : char
+    }).join('')
   const lines = [
     `# EnergyAtlas UI demo export (synthetic results)`,
-    `# result: ${entry.label}`,
-    `# run: ${entry.result.runId}`,
-    `# published by: ${entry.stageName}${entry.publishedAt ? ` at ${entry.publishedAt}` : ''}`,
-    `# currentness: ${entry.current ? 'current' : 'outdated; inputs changed after this run'}`,
-    `# project: ${state.project.name}`,
-    `# exported at: ${exportedAt}`,
+    line(`# result: ${entry.label}`),
+    line(`# run: ${entry.result.runId}`),
+    line(
+      `# published by: ${entry.stageName}${entry.publishedAt ? ` at ${entry.publishedAt}` : ''}`,
+    ),
+    line(`# currentness: ${entry.currentness}`),
+    ...(entry.compareTo
+      ? [line(`# compared to baseline run: ${entry.compareTo.runId}`)]
+      : []),
+    `# building attributes: current project values; demand: this run`,
+    line(`# project: ${state.project.name}`),
+    line(`# exported at: ${exportedAt}`),
     [
       'building_id',
       'name',

@@ -159,7 +159,10 @@ rather than silently importing reference implementation or expanding scope.
 
 ## Current checkpoint
 
-Approved and ready for the next agent. No application code has changed during planning/preparation. The next agent
+2026-10-26: slices 3–8 are implemented, reviewed, verified, and merged into local `master`; see the
+[completion report](20261026_roadmap-completion.md). Nothing was pushed or deployed.
+
+Earlier checkpoint: approved and ready for the next agent. No application code has changed during planning/preparation. The next agent
 reads the [handoff](20261026_autonomous-roadmap-handoff.md), writes the detailed Jobs execution plan, and starts
 implementation without repeating these questions. This preparing agent does not start the implementation.
 
