@@ -26,7 +26,10 @@ export type Transport = {
   getConditions: () => DemoConditions
   setConditions: (conditions: DemoConditions) => void
   subscribeConditions: (listener: () => void) => () => void
-  request: (request: ServerRequest) => Promise<TransportReply>
+  request: (
+    request: ServerRequest,
+    projectGeneration: number,
+  ) => Promise<TransportReply>
   /** Pushed updates, in order, after the same delay as replies. */
   subscribe: (listener: (update: ServerUpdate) => void) => () => void
   dispose: () => void
@@ -166,7 +169,7 @@ export function createTransport(
         conditionListeners.delete(listener)
       }
     },
-    async request(request) {
+    async request(request, projectGeneration) {
       if (conditions.hold) {
         await new Promise<void>((resolve) => held.push(resolve))
       }
@@ -176,7 +179,7 @@ export function createTransport(
       }
       const fault = injectedFault(request)
       if (fault) return { ok: false, ...fault }
-      return server.handle(request)
+      return server.handle(request, projectGeneration)
     },
     subscribe(listener) {
       updateListeners.add(listener)

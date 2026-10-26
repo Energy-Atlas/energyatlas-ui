@@ -84,7 +84,11 @@ function nextRunnable(state: WorkbenchState): string | null {
 }
 
 export function buildFixture(id: FixtureId, now: () => Date): WorkbenchState {
-  const engine = createWorkbench({ initialState: createInitialState(), now })
+  const engine = createWorkbench({
+    initialState: createInitialState(),
+    operationIdPrefix: `fixture-${id}-op`,
+    now,
+  })
   const stop: Record<FixtureId, (state: WorkbenchState) => boolean> = {
     new: () => true,
     partway: (state) =>

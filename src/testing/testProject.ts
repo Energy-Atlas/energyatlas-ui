@@ -43,9 +43,11 @@ export function createTestProject(
   })
   const initial = server.current()
   const workbench = createWorkbench({
+    operationIdPrefix: 'ui-op',
     initialState: initial.state,
     isUndoable: (type) => DRAFT_COMMANDS.has(type),
-    refuse: refuseServerCommand,
+    refuse: (type) =>
+      refuseServerCommand(type, client.store.getState().pending),
   })
   const client = createProjectClient({
     workbench,

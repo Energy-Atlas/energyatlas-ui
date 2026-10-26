@@ -36,8 +36,21 @@ export function isServerCommand(type: Command['type']): boolean {
   return SERVER_COMMANDS.has(type)
 }
 
-/** The UI's workbench refuses server commands, so none can bypass the server. */
-export function refuseServerCommand(type: Command['type']): string | null {
+/** Prevents bypassing server commands or changing drafts while Apply is pending. */
+export function refuseServerCommand(
+  type: Command['type'] | 'history.undo' | 'history.redo',
+  pending: PendingRequest[] = [],
+): string | null {
+  if (
+    (type === 'edits.propose' ||
+      type === 'edits.discard' ||
+      type === 'history.undo' ||
+      type === 'history.redo') &&
+    pending.some((request) => request.type === 'edits.apply')
+  ) {
+    return 'Waiting for the server to answer Apply. Drafts can be changed or undone after it answers.'
+  }
+  if (type === 'history.undo' || type === 'history.redo') return null
   return isServerCommand(type)
     ? `"${commandDefinitions[type].title}" is a server request; send it through the project client.`
     : null
@@ -113,6 +126,7 @@ export function createProjectClient(options: {
 }): ProjectClient {
   const { workbench, transport, session } = options
   let applied = options.initial.sequence
+  let projectGeneration = options.initial.projectGeneration
   let nextRequestId = 1
   const waiters: { sequence: number; resolve: () => void }[] = []
   const store = createStore<ClientSnapshot>()(() => ({
@@ -126,10 +140,15 @@ export function createProjectClient(options: {
     const caughtUp =
       update.operations.length === 0 && update.sequence > applied + 1
     applied = update.sequence
+    const replaced = update.projectGeneration !== projectGeneration
+    projectGeneration = update.projectGeneration
     workbench.adopt(
-      mergeServerState(update.state, workbench.getState()),
+      replaced
+        ? update.state
+        : mergeServerState(update.state, workbench.getState()),
       update.operations,
     )
+    if (replaced) workbench.clearHistory()
     if (caughtUp) {
       workbench.record({
         type: 'service.resync',
@@ -169,7 +188,12 @@ export function createProjectClient(options: {
     input: unknown,
     source: CommandSource,
   ): Promise<
-    | { ok: true; summary: string; operationId: string }
+    | {
+        ok: true
+        summary: string
+        operationId: string
+        currentProject: boolean
+      }
     | { ok: false; result: ExecuteResult }
   > {
     const pending: PendingRequest = {
@@ -181,7 +205,10 @@ export function createProjectClient(options: {
     }
     store.setState({ pending: [...store.getState().pending, pending] })
     try {
-      const reply: TransportReply = await transport.request(request)
+      const reply: TransportReply = await transport.request(
+        request,
+        projectGeneration,
+      )
       if (!reply.ok) {
         const issues: ValidationIssue[] =
           'network' in reply
@@ -210,7 +237,12 @@ export function createProjectClient(options: {
             candidate.source === source &&
             candidate.status === 'applied',
         )
-      return { ok: true, summary: reply.summary, operationId: entry?.id ?? '' }
+      return {
+        ok: true,
+        summary: reply.summary,
+        operationId: entry?.id ?? '',
+        currentProject: reply.projectGeneration === projectGeneration,
+      }
     } finally {
       store.setState({
         pending: store
@@ -241,7 +273,7 @@ export function createProjectClient(options: {
       source,
     )
     if (!sent.ok) return sent.result
-    if (command.type === 'workflow.runStage') {
+    if (sent.currentProject && command.type === 'workflow.runStage') {
       // Focus follows a run, as it did when the UI ran stages itself.
       const { stageId } = command.input
       setLocal((state) => ({
@@ -249,8 +281,8 @@ export function createProjectClient(options: {
         workflow: { ...state.workflow, currentStageId: stageId },
       }))
     }
-    if (command.type === 'edits.apply' && drafts) {
-      // Sent drafts are applied; drafts changed meanwhile stay.
+    if (sent.currentProject && command.type === 'edits.apply' && drafts) {
+      // Draft changes are refused while Apply is pending.
       setLocal((state) => ({
         ...state,
         pendingEdits: Object.fromEntries(
@@ -298,14 +330,7 @@ export function createProjectClient(options: {
         source,
       )
       if (!sent.ok) return sent.result
-      // A different project: nothing selected, drafted, or focused carries over.
-      setLocal((state) => ({
-        ...state,
-        selection: { entityType: null, ids: [] },
-        pendingEdits: {},
-        workflow: { ...state.workflow, currentStageId: null },
-      }))
-      workbench.clearHistory()
+      // Adoption clears project-local state when the replacement arrives.
       return {
         operationId: sent.operationId,
         outcome: { status: 'applied', summary: sent.summary },

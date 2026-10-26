@@ -160,7 +160,9 @@ export function useAppActions(dialogs: ShellDialogs): AppAction[] {
         group: 'Edit',
         icon: Undo2,
         shortcut: 'Ctrl+Z',
-        disabledReason: canUndo ? null : 'Nothing to undo.',
+        disabledReason:
+          awaiting('edits.apply', 'drafts are being applied') ??
+          (canUndo ? null : 'Nothing to undo.'),
         perform: () => {
           workbench.undo()
         },
@@ -172,7 +174,9 @@ export function useAppActions(dialogs: ShellDialogs): AppAction[] {
         icon: Redo2,
         shortcut: 'Ctrl+Shift+Z',
         alternateShortcuts: ['Ctrl+Y'],
-        disabledReason: canRedo ? null : 'Nothing to redo.',
+        disabledReason:
+          awaiting('edits.apply', 'drafts are being applied') ??
+          (canRedo ? null : 'Nothing to redo.'),
         perform: () => {
           workbench.redo()
         },

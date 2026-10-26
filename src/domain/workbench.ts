@@ -45,6 +45,8 @@ export type ExecuteResult = { operationId: string; outcome: CommandOutcome }
 
 /** An operation outside the command registry, such as a layout change, save, or blocked action. */
 export type ExternalOperation = {
+  /** Stable identity from the owner of an imported operation. */
+  id?: string
   type: string
   title: string
   input?: unknown
@@ -97,10 +99,13 @@ export function createWorkbench(
   options: {
     initialState?: WorkbenchState
     now?: () => Date
+    operationIdPrefix?: string
     /** Overrides which commands are undoable; the registry decides by default. */
     isUndoable?: (type: Command['type']) => boolean
     /** Why this workbench refuses a command, or null to run it. */
-    refuse?: (type: Command['type']) => string | null
+    refuse?: (
+      type: Command['type'] | 'history.undo' | 'history.redo',
+    ) => string | null
   } = {},
 ): Workbench {
   const now = options.now ?? (() => new Date())
@@ -117,7 +122,11 @@ export function createWorkbench(
 
   function nextOperation() {
     const sequence = store.getState().log.length + 1
-    return { operationId: `op-${sequence}`, sequence, at: now().toISOString() }
+    return {
+      operationId: `${options.operationIdPrefix ?? 'op'}-${sequence}`,
+      sequence,
+      at: now().toISOString(),
+    }
   }
 
   function commit(state: WorkbenchState, entry: OperationEntry) {
@@ -236,7 +245,8 @@ export function createWorkbench(
     const from = kind === 'history.undo' ? undoStack : redoStack
     const to = kind === 'history.undo' ? redoStack : undoStack
     const title = kind === 'history.undo' ? 'Undo' : 'Redo'
-    const history = from.pop()
+    const refusal = options.refuse?.(kind) ?? null
+    const history = refusal ? undefined : from.pop()
     const base = {
       id: operationId,
       sequence,
@@ -252,7 +262,8 @@ export function createWorkbench(
         {
           path: '',
           message:
-            kind === 'history.undo' ? 'Nothing to undo.' : 'Nothing to redo.',
+            refusal ??
+            (kind === 'history.undo' ? 'Nothing to undo.' : 'Nothing to redo.'),
         },
       ]
       commit(current, {
@@ -290,7 +301,7 @@ export function createWorkbench(
     const { operationId, sequence, at } = nextOperation()
     const status = operation.status ?? 'applied'
     commit(state, {
-      id: operationId,
+      id: operation.id ?? operationId,
       sequence,
       type: operation.type,
       title: operation.title,
@@ -302,7 +313,7 @@ export function createWorkbench(
       summary: status === 'applied' ? operation.summary : null,
       issues: operation.issues ?? [],
     })
-    return operationId
+    return operation.id ?? operationId
   }
 
   return {

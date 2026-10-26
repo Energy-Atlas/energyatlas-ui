@@ -66,16 +66,18 @@ export type ServerMeta = {
 /** Everything the UI needs to follow the server: state, what changed it, and meta. */
 export type ServerUpdate = {
   sequence: number
+  projectGeneration: number
   state: WorkbenchState
   operations: ExternalOperation[]
   meta: ServerMeta
 }
 
 export type ServerReply =
-  { ok: true; summary: string; sequence: number } | ({ ok: false } & ApiFailure)
+  | { ok: true; summary: string; sequence: number; projectGeneration: number }
+  | ({ ok: false } & ApiFailure)
 
 export type MockServer = {
-  handle: (request: ServerRequest) => ServerReply
+  handle: (request: ServerRequest, expectedGeneration?: number) => ServerReply
   /** The latest state, for a client starting or catching up after being offline. */
   current: () => ServerUpdate
   subscribe: (listener: (update: ServerUpdate) => void) => () => void
@@ -96,6 +98,7 @@ export function createMockServer(options: {
   const now = options.now ?? (() => new Date())
   const saved = options.fixture ? null : loadProject(options.storage)
   const engine = createWorkbench({
+    operationIdPrefix: `server-${crypto.randomUUID()}-op`,
     initialState: options.fixture
       ? buildFixture(options.fixture, now)
       : (saved?.state ?? createInitialState()),
@@ -106,6 +109,7 @@ export function createMockServer(options: {
     savedAt: saved?.savedAt ?? null,
   }
   let sequence = 0
+  let projectGeneration = 0
   let forwarded = engine.store.getState().log.length
   let jobBehaviour: JobBehaviour = 'normal'
   const listeners = new Set<(update: ServerUpdate) => void>()
@@ -114,6 +118,7 @@ export function createMockServer(options: {
     sequence += 1
     const update: ServerUpdate = {
       sequence,
+      projectGeneration,
       state: engine.getState(),
       operations,
       meta,
@@ -131,6 +136,7 @@ export function createMockServer(options: {
         (entry) => entry.status === 'applied' && !DRAFT_TYPES.has(entry.type),
       )
       .map((entry): ExternalOperation => ({
+        id: entry.id,
         type: entry.type,
         title: entry.title,
         input: entry.input,
@@ -193,11 +199,23 @@ export function createMockServer(options: {
     if (outcome.status === 'rejected') {
       return { ok: false, ...invalidRequest(outcome.issues) }
     }
-    return { ok: true, summary: outcome.summary, sequence }
+    return { ok: true, summary: outcome.summary, sequence, projectGeneration }
   }
 
   return {
-    handle(request) {
+    handle(request, expectedGeneration = projectGeneration) {
+      if (expectedGeneration !== projectGeneration) {
+        return {
+          ok: false,
+          status: 409,
+          body: {
+            success: false,
+            code: 'project_changed',
+            message:
+              'The project changed while this request was waiting. The request was not applied; try again in the current project.',
+          },
+        }
+      }
       switch (request.type) {
         case 'command':
           return handleCommand(request)
@@ -214,9 +232,10 @@ export function createMockServer(options: {
             source: request.source,
             summary,
           })
-          return { ok: true, summary, sequence }
+          return { ok: true, summary, sequence, projectGeneration }
         }
         case 'project.replace': {
+          projectGeneration += 1
           const fixture = FIXTURES[request.fixture]
           const summary =
             request.fixture === 'new'
@@ -229,12 +248,13 @@ export function createMockServer(options: {
             source: request.source,
             summary,
           })
-          return { ok: true, summary, sequence }
+          return { ok: true, summary, sequence, projectGeneration }
         }
       }
     },
     current: () => ({
       sequence,
+      projectGeneration,
       state: engine.getState(),
       operations: [],
       meta,

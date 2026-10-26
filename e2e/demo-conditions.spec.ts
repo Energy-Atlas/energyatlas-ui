@@ -114,6 +114,37 @@ test('shows rejected input on its field and the edit lock as a reason', async ({
   await expect(measureForm).toContainText('A run is in progress')
 })
 
+test('keeps table drafts fixed while Apply waits, then makes cells editable again', async ({
+  page,
+}) => {
+  await page.goto('/?fixture=partway&hold=1&latency=none')
+  await page.getByRole('tab', { name: 'Table', exact: true }).click()
+  const floors = page.locator('[row-index="0"] [col-id="floors"]')
+  await floors.dblclick()
+  await page.keyboard.press('Control+a')
+  await page.keyboard.type('60')
+  await page.keyboard.press('Enter')
+  await page.getByRole('button', { name: 'Apply pending edits' }).click()
+  await expect(
+    page.getByText(
+      'Waiting for the server to answer Apply. Drafts can be changed or undone after it answers.',
+    ),
+  ).toBeVisible()
+  await floors.dblclick()
+  await expect(floors.locator('input')).toHaveCount(0)
+  await page.keyboard.press('Control+z')
+  await expect(page.getByTestId('pending-count')).toHaveText('1 pending edit')
+  await expect(floors).toHaveText('60')
+
+  const dialog = await openDemoConditions(page)
+  await dialog.getByText(/^Hold requests/).click()
+  await dialog.getByRole('button', { name: 'Done' }).click()
+  await expect(page.getByTestId('pending-count')).toHaveText('0 pending edits')
+  await floors.dblclick()
+  await expect(floors.locator('input')).toBeVisible()
+  await page.keyboard.press('Escape')
+})
+
 test('loads project fixtures through the server', async ({ page }) => {
   await page.goto('/?fixture=failed')
   await showWorkflow(page)

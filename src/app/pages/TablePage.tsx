@@ -218,8 +218,9 @@ function BuildingsTable() {
   )
 
   const archetypeIds = useMemo(() => Object.keys(archetypes), [archetypes])
-  const floorsEditable = rows.some((row) => row.floors !== null)
-  const archetypesEditable = archetypeIds.length > 0
+  const floorsEditable =
+    applying === null && rows.some((row) => row.floors !== null)
+  const archetypesEditable = applying === null && archetypeIds.length > 0
 
   const columns = useMemo<ColDef<BuildingRow>[]>(
     () => [
@@ -374,8 +375,9 @@ function BuildingsTable() {
         </p>
       ) : (
         <p className={styles.hint}>
-          Floors and archetype become editable once their stages have run. Edits
-          stay pending, highlighted, until applied.
+          {applying
+            ? 'Waiting for the server to answer Apply. Drafts can be changed or undone after it answers.'
+            : 'Floors and archetype become editable once their stages have run. Edits stay pending, highlighted, until applied.'}
         </p>
       )}
       <div className={styles.grid}>

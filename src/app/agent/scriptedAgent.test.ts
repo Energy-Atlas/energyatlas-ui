@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { createTestProject } from '../../testing/testProject.ts'
+import { DEFAULT_CONDITIONS } from '../../server/conditions.ts'
 import { createLayoutController } from '../layout/layoutController.ts'
 import { createViewStore } from '../view/viewStore.ts'
 import { createScriptedAgent } from './scriptedAgent.ts'
@@ -31,10 +32,42 @@ function setup() {
   }
   const agentEntries = () =>
     workbench.store.getState().log.filter((entry) => entry.source === 'agent')
-  return { workbench, manual, agent, transcript, lastApproval, agentEntries }
+  return {
+    workbench,
+    client,
+    manual,
+    agent,
+    transcript,
+    lastApproval,
+    agentEntries,
+  }
 }
 
 describe('scripted agent', () => {
+  it('ignores a stopped session reply while a new session runs', async () => {
+    const { client, manual, agent, agentEntries, transcript } = setup()
+    client.setConditions({ ...DEFAULT_CONDITIONS, latency: 'none', hold: true })
+    agent.setPermissionMode('bypass')
+    agent.startPreset('modelChange')
+    await manual.settle(50)
+    expect(client.store.getState().pending[0]?.type).toBe('measure.create')
+    agent.stop()
+    agent.startPreset('restore')
+    client.setConditions({
+      ...DEFAULT_CONDITIONS,
+      latency: 'none',
+      fault: 'everyRequest',
+    })
+    await manual.settle(100)
+    expect(agentEntries().map((entry) => entry.type)).toContain('layout.reset')
+    expect(
+      transcript()
+        .filter((item) => item.kind === 'tool')
+        .some((item) => item.title === 'Create measure'),
+    ).toBe(false)
+    expect(agent.store.getState().status).toBe('idle')
+  })
+
   it('answers free text without a matching script honestly', () => {
     const { agent, transcript, agentEntries } = setup()
     agent.send('What is the weather tomorrow?')

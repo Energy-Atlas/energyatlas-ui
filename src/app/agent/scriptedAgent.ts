@@ -68,6 +68,7 @@ export function createScriptedAgent(
   }))
 
   let itemCount = 0
+  let sessionGeneration = 0
   let queue: StepSource[] = []
   let approvedCalls: TitledCall[] = []
   let pending: { itemId: string; title: string; calls: TitledCall[] } | null =
@@ -120,6 +121,7 @@ export function createScriptedAgent(
   }
 
   function finish() {
+    sessionGeneration += 1
     cancelTimer?.()
     cancelTimer = null
     queue = []
@@ -161,6 +163,7 @@ export function createScriptedAgent(
 
   function start(session: ScriptedSession, prompt: string) {
     if (store.getState().status !== 'idle') return
+    sessionGeneration += 1
     push({ id: nextId(), kind: 'user', text: prompt })
     workbench.record({
       type: 'agent.startSession',
@@ -232,11 +235,12 @@ export function createScriptedAgent(
   }
 
   function runCall(titled: TitledCall, onDone: () => void) {
+    const generation = sessionGeneration
     const call: ToolCall =
       typeof titled.call === 'function' ? titled.call(context) : titled.call
     void executeToolCall(deps, call).then((result) => {
       // The session may have been stopped while the server answered.
-      if (!isRunning()) return
+      if (generation !== sessionGeneration || !isRunning()) return
       finishCall(titled, call, result, onDone)
     })
   }

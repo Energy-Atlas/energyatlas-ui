@@ -28,6 +28,155 @@ const runLocation = {
 } as const
 
 describe('project client and mock server', () => {
+  it('keeps fixture provenance separate from current UI operations', () => {
+    const { workbench } = createTestProject({ fixture: 'partway' })
+    for (let index = 0; index < 3; index += 1) {
+      workbench.record({
+        type: 'layout.openPage',
+        title: 'Open page',
+        summary: 'Opened a page.',
+      })
+    }
+    const operationIds = new Set(
+      workbench.store.getState().log.map((entry) => entry.id),
+    )
+    for (const asset of Object.values(workbench.getState().assets)) {
+      if (
+        asset.provenance.kind === 'stage' ||
+        asset.provenance.kind === 'operation'
+      ) {
+        expect(operationIds.has(asset.provenance.operationId)).toBe(false)
+      }
+    }
+  })
+
+  it('does not reuse saved provenance IDs after restarting the server', async () => {
+    const storage = memoryStorage()
+    const first = createTestProject({ storage })
+    const input = {
+      name: 'First measure',
+      kind: 'heating',
+      savingsPercent: 30,
+      appliesTo: 'all',
+    } as const
+    const created = first.client.execute({ type: 'measure.create', input })
+    await first.manual.settle()
+    const oldOperationId = (await created).operationId
+    const saved = first.client.save()
+    await first.manual.settle()
+    await saved
+    const second = createTestProject({ storage })
+    const next = second.client.execute({
+      type: 'measure.create',
+      input: { ...input, name: 'Second measure' },
+    })
+    await second.manual.settle()
+    expect((await next).operationId).not.toBe(oldOperationId)
+    expect(
+      second.workbench.store
+        .getState()
+        .log.some((entry) => entry.id === oldOperationId),
+    ).toBe(false)
+  })
+
+  it.each(['none', 'everyRequest'] as const)(
+    'keeps drafts fixed until Apply answers (%s)',
+    async (fault) => {
+      const { client, workbench, manual } = createTestProject({
+        fixture: 'partway',
+        conditions: { hold: true },
+      })
+      const buildingId = workbench.getState().buildingIds[0] ?? ''
+      await client.execute({
+        type: 'edits.propose',
+        input: { entityId: buildingId, field: 'floors', value: 60 },
+      })
+      const sent = client.execute({ type: 'edits.apply', input: {} })
+      expect(
+        workbench.execute({
+          type: 'edits.propose',
+          input: { entityId: buildingId, field: 'floors', value: 59 },
+        }).outcome.status,
+      ).toBe('rejected')
+      expect(workbench.undo().outcome.status).toBe('rejected')
+      expect(
+        workbench.getState().pendingEdits[`${buildingId}:floors`]?.to,
+      ).toBe(60)
+      client.setConditions({ ...DEFAULT_CONDITIONS, latency: 'none', fault })
+      await manual.settle()
+      const result = await sent
+      expect(result.outcome.status).toBe(
+        fault === 'none' ? 'applied' : 'rejected',
+      )
+      if (fault === 'none') {
+        expect(workbench.getState().buildings[buildingId]?.floors).toBe(60)
+        expect(workbench.getState().pendingEdits).toEqual({})
+        expect(workbench.store.getState().canUndo).toBe(false)
+      } else {
+        expect(workbench.store.getState().canUndo).toBe(true)
+        expect(workbench.undo().outcome.status).toBe('applied')
+        expect(workbench.getState().pendingEdits).toEqual({})
+      }
+    },
+  )
+
+  it('refuses an earlier request after the server replaces the project', async () => {
+    const { client, workbench, manual, server } = createTestProject({
+      conditions: { hold: true },
+    })
+    const sent = client.execute({
+      type: 'measure.create',
+      input: {
+        name: 'Old project measure',
+        kind: 'heating',
+        savingsPercent: 30,
+        appliesTo: 'all',
+      },
+    })
+    // A replacement overtakes the delayed command, as a no-delay request can.
+    server.handle({ type: 'project.replace', fixture: 'new', source: 'manual' })
+    client.setConditions({ ...DEFAULT_CONDITIONS, latency: 'none' })
+    await manual.settle()
+    expect((await sent).outcome.status).toBe('rejected')
+    expect(workbench.getState().measures).toEqual({})
+    expect(client.store.getState().pending).toEqual([])
+  })
+
+  it('keeps server provenance linked to its operation after local actions', async () => {
+    const { client, workbench, manual } = createTestProject()
+    workbench.record({
+      type: 'layout.openPage',
+      title: 'Open page',
+      summary: 'Opened Creator.',
+    })
+    const sent = client.execute({
+      type: 'measure.create',
+      input: {
+        name: 'Heat pumps',
+        kind: 'heating',
+        savingsPercent: 30,
+        appliesTo: 'all',
+      },
+    })
+    await manual.settle()
+    const result = await sent
+    const measure = Object.values(workbench.getState().assets).find(
+      (asset) => asset.kind === 'measure',
+    )
+    expect(measure?.provenance.kind).toBe('operation')
+    if (measure?.provenance.kind !== 'operation')
+      throw new Error('Missing provenance')
+    const operationId = measure.provenance.operationId
+    expect(
+      workbench.store.getState().log.find((entry) => entry.id === operationId)
+        ?.type,
+    ).toBe('measure.create')
+    expect(result.operationId).toBe(operationId)
+    expect(
+      new Set(workbench.store.getState().log.map((entry) => entry.id)).size,
+    ).toBe(workbench.store.getState().log.length)
+  })
+
   it('runs local commands at once and server commands after the reply', async () => {
     const { client, workbench, manual } = createTestProject({
       fixture: 'partway',
