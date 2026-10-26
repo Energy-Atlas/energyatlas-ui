@@ -57,7 +57,9 @@ Data flow is one-directional:
 1. A control, shortcut, palette entry, or agent tool call invokes `client.execute({ type, input }, source)`. Local commands (selection, drafts, the focused stage) run on the UI's workbench at once. Server commands (`SERVER_COMMANDS` in `src/server/server.ts`) go through the transport to the mock server and return a promise.
 2. On the server, the command's zod schema validates the input; the handler mutates an Immer draft and returns `applied` with a summary or `rejected` with per-field issues. A rejection reaches the UI as RC's error body (`src/server/apiError.ts`) and becomes per-field issues again; model changes during a run are refused with a 409 `run_in_progress`.
 3. The server pushes updates (state plus the operations that produced it, in order); the client merges them with the UI's own selection, drafts, and focus (`mergeServerState`), and the UI's store publishes `{ state, log, canUndo, canRedo }`. Components read it through `useWorkbenchSnapshot(selector)`, and requests in flight, the save state, and the demo conditions through `useClientSnapshot(selector)`. The job runner (`startTaskSimulator`) runs on the server as source `system`.
-4. Derived values (stage states, dashboard data, map metrics, asset tree rows, Inspection) are computed from state in pure functions, never stored.
+4. Requests carry the client's `projectGeneration`; a request delayed past project replacement gets a 409 `project_changed`. Adoption of a new generation clears selection, drafts, focus, and history. Imported operations keep stable server IDs, namespaced per server lifetime; local UI operations and fixture history have separate namespaces. Saved and fixture history is not restored as a log.
+5. Draft changes, discard, undo, and redo wait while Apply is pending. A failed Apply retains drafts and undo history. Agent tool continuations also check their session generation, so a stopped session cannot resume a later one.
+6. Derived values (stage states, dashboard data, map metrics, asset tree rows, Inspection) are computed from state in pure functions, never stored.
 
 View state that is not project state changes through the layout controller, the appearance service, or view operations (`src/app/view/`), and is recorded with `workbench.record`, so it appears in the operation log with its source. The agent uses exactly these paths through `src/app/agent/tools.ts`.
 
@@ -199,8 +201,8 @@ Only packages from decisions 0007, 0008, and 0010 are allowed. Record a reason i
 
 | Command | What it covers |
 | --- | --- |
-| `npm test` | 193 Vitest tests: commands, undo, outdated propagation, simulator, shortcuts, asset tree, map metrics, dashboard data, appearance contrast and preferences, Inspection view model, view operations and chart specifications, layout operations, stage planning, scripted agent sessions and tools, basemap recoloring and preference, 3D silhouette projection and terrain lift, terrain display helpers, project fixtures, and the mock server, transport, and project client under every demo condition |
-| `npm run test:e2e` | 59 Playwright tests in Edge at 1280x800 with 4 local workers and axe (no serious or critical violations allowed on product pages) |
+| `npm test` | 200 Vitest tests: commands, undo, outdated propagation, simulator, shortcuts, asset tree, map metrics, dashboard data, appearance contrast and preferences, Inspection view model, view operations and chart specifications, layout operations, stage planning, scripted agent sessions and tools, basemap recoloring and preference, 3D silhouette projection and terrain lift, terrain display helpers, project fixtures, and the mock server, transport, and project client under every demo condition, including stale requests, session isolation, draft submission, and provenance |
+| `npm run test:e2e` | 60 Playwright tests in Edge at 1280x800 with 4 local workers and axe (no serious or critical violations allowed on product pages) |
 | `npm run typecheck`, `npm run lint`, `npm run format:check` | Must be clean before committing |
 
 End-to-end specs:
@@ -219,6 +221,7 @@ End-to-end specs:
 
 Conventions and pitfalls found while building:
 
+- Run `npm run test:e2e` and `npm run test:e2e:preview` sequentially: both use `test-results/`, so concurrent runs can remove each other's trace files and fail during browser cleanup.
 - Playwright treats `aria-disabled` buttons and React Aria's hidden native checkbox and radio inputs as not actionable. Use `focus()` then `Enter` or `Space`.
 - Clicking an already selected border tab (Assets, Workflow, Reasoning, Inspection) closes that panel. Check `aria-selected` before clicking; the helper in `e2e/dashboard.spec.ts` shows how.
 - Stage runs take about 1.6 seconds each through the simulator; wait for the "Complete" state label rather than sleeping. Long flows set `test.setTimeout`.
@@ -266,7 +269,7 @@ Behavior promised by the plan or decisions but not built yet:
 - **View state:** layout, appearance, and view operations (context mode, map metric and overlay, map zoom, map 2D or 3D, terrain and its exaggeration, table view and filter, dashboard compare toggles, added charts) are logged. Dashboard what-if previews stay unlogged drafts, and view state resets on reload.
 - **Chart specs:** charts the agent adds use validated specifications (decision 0011); the Dashboard's built-in charts still build ECharts options directly in `dashboardCharts.ts`.
 - **Table:** no Zones view (zone counts are a Buildings column) and no column visibility menu.
-- **Fixture variants:** the plan lists switchable empty, warning, and error fixtures. States are reached by walking the workflow: schema matching always reports a warning, skipping shading warns at scenario definitions when a PV measure is used, and grid modeling fails on its first attempt. There is no fixture picker.
+- **Fixture variants:** Help > Demo conditions loads New, Partway, Failed stage, and Complete fixtures (decision 0023). Fixture provenance uses historical `fixture-…` operation IDs; the operations that built the fixture are not imported into the current UI log.
 - **Layout:** at 1280 px with both side panels open, the Settings tab moves into FlexLayout's overflow menu. Layout changes are logged but not undoable.
 - **Accessibility:** the map canvas is not screen-reader accessible (the Table page is the equivalent); automated axe runs cover 1280x800 only.
 - **3D buildings** ([decision 0013](decisions/0013-3d-building-extrusion.md)): heights are synthetic (floors × 3.2 m) and appear only after Geospatial preprocessing; the 2D/3D choice resets on reload with the rest of the view state; grid lines and points stay on the ground and can be hidden behind extrusions; the silhouette outline is drawn above the map, so it shows through taller buildings in front, and adjacent selected buildings share one outline; extrusion rendering is checked by screenshot review only.

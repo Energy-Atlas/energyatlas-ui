@@ -16,6 +16,10 @@ records. Real: request states, RC-shaped error display, the edit lock, the job l
 conditions picker. Mocked: the server, its storage, the delay, and the faults. Deferred: HTTP, SignalR, sign-in, and
 native file pickers.
 
+Reviewed and integrated into local `master` on 2026-10-25, with synchronization and provenance fixes; no push yet.
+See the [review and lifecycle discussion](20261025_review-and-project-lifecycle.md) for verification and the pending
+step 2 entry-flow alternatives. Discuss and resolve that design before building project lifecycle.
+
 - **Mock service layer.** Commands finish synchronously in memory today; RC is asynchronous and job-based. One
   interface between the UI and its data adds simulated latency, server errors, rejected input with field errors, and
   conflicts. Resources follow RC's names (project, workflow, jobs) and its error body (`{success, message, code}`

@@ -1,6 +1,7 @@
 # Documentation index
 
-- [Handoff, 2026-10-25](20261025_handoff.md): latest session state: branches, what was built, verification, next steps, and open questions.
+- [Review and project lifecycle discussion, 2026-10-25](20261025_review-and-project-lifecycle.md): local integration, review fixes, final verification, and pending directions for roadmap step 2.
+- [Handoff, 2026-10-25](20261025_handoff.md): session state before review: branches, what was built, verification, next steps, and open questions.
 - [Developer guide](developer-guide.md): start here to take over the code; architecture, extension recipes, test conventions, storage, and known gaps.
 - [Source handoff](20260913_product-ui-experiment-agent-handoff.md): complete initiation brief, preserved unchanged.
 - [UI design guidelines](20260915_energyatlas_ui_design_guidelines.md): current visual and interaction guidance supplied by the user on 2026-09-15 and maintained by the user (decision 0009); the Geist typeface was added at the user's request (decision 0010).
