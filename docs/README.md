@@ -1,5 +1,7 @@
 # Documentation index
 
+- [Project lifecycle design](project-lifecycle-design.md): accepted start screen and job confirmation (decision 0024), implemented behavior, boundaries, verification, and remaining limitations.
+- [Project lifecycle implementation plan](project-lifecycle-plan.md): service, shared guards, UI, and verification stages.
 - [Review and project lifecycle discussion, 2026-10-25](20261025_review-and-project-lifecycle.md): local integration, review fixes, final verification, and pending directions for roadmap step 2.
 - [Handoff, 2026-10-25](20261025_handoff.md): session state before review: branches, what was built, verification, next steps, and open questions.
 - [Developer guide](developer-guide.md): start here to take over the code; architecture, extension recipes, test conventions, storage, and known gaps.

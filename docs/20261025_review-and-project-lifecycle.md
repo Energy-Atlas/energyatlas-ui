@@ -73,6 +73,10 @@ and the existing shared command paths. Do not copy RC implementation or imply re
 These are pending alternatives, not accepted decisions. The owner was asked to choose the entry flow. No answer
 was available when this record was written; continue that discussion before implementation.
 
+Update, 2026-10-26: the owner chose A, the dedicated start screen. [Decision 0024](decisions/0024-dedicated-project-start-screen.md)
+records that choice and the subsequent acceptance of confirmation before cancelling active jobs. The
+[lifecycle design](project-lifecycle-design.md) records the implementation on `codex/project-lifecycle`.
+
 Proposed slice boundary for discussion: real start/open/create/close transitions, form validation, recent-list
 interaction, save status, failure recovery, and unsaved-changes protection; mocked project catalog, storage,
 locations/picker, latency, and faults; real RC connections, authentication, and native pickers deferred to RC.

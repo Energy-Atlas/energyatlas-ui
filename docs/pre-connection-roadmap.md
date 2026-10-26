@@ -18,7 +18,9 @@ native file pickers.
 
 Reviewed and integrated into local `master` on 2026-10-25, with synchronization and provenance fixes; no push yet.
 See the [review and lifecycle discussion](20261025_review-and-project-lifecycle.md) for verification and the pending
-step 2 entry-flow alternatives. Discuss and resolve that design before building project lifecycle.
+step 2 entry-flow alternatives. On 2026-10-26 the owner chose a dedicated start screen ([decision 0024](decisions/0024-dedicated-project-start-screen.md)).
+The owner also chose confirmation before cancelling active jobs. The [lifecycle design](project-lifecycle-design.md)
+records step 2, implemented on `codex/project-lifecycle` for review.
 
 - **Mock service layer.** Commands finish synchronously in memory today; RC is asynchronous and job-based. One
   interface between the UI and its data adds simulated latency, server errors, rejected input with field errors, and
@@ -33,7 +35,7 @@ step 2 entry-flow alternatives. Discuss and resolve that design before building 
 
 | Surface | RC counterpart (`EnergyAtlasWeb`) | Demo today |
 | --- | --- | --- |
-| Project lifecycle: start screen, open, create, recent, save status, unsaved-changes guard | `workflow-pages/setup/project-setup.html`, `ProjectController` | Save in this browser and "New empty project" |
+| Project lifecycle: start screen, open, create, recent, save status, unsaved-changes guard | `workflow-pages/setup/project-setup.html`, `ProjectController` | Implemented on `codex/project-lifecycle` (decision 0024), with browser-local catalog and confirmed job cancellation |
 | Data intake: upload, schema matching, data fusion, with one file-picking interface (browser upload or desktop native picker, both mocked) | `geospatial-data-upload-fusion`, `schema-match-compulsory`, `working-feature-collection`; `SchemaMatchingController`, `FusionController` | Schema matching as a simulated stage |
 | Archetypes: library, editor, assignment, schedules | `workflow-pages/model/*`, `archetypeEditor.html`, `templateAssignment.html`; `ScheduleRegistryController` | Planned creators on the Creator page |
 | Measures and scenarios: measure library and editor, scenario designer, comparison | `workflow-pages/retrofit-scenarios/*`, `measureEditor.html`, `scenarioDesigner.html` | Dashboard what-ifs |
