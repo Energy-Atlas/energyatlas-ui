@@ -5,6 +5,7 @@ import { ARCHETYPE_LIBRARY, SCHEDULE_LIBRARY } from './archetypes/library.ts'
 import {
   adoptBlocker,
   calibratedResult,
+  unitWarning,
   findMeter,
   fitBlocker,
   fitFactor,
@@ -406,7 +407,8 @@ function publishFit(
     meteredKwh: fit.metered,
     modeledKwh: fit.modeled,
     calibratedKwh: fit.calibrated,
-    baselineRevision: source.revision,
+    baselineRunId: source.result.runId,
+    unitMismatch: unitWarning(series, input.unit),
     result: calibratedResult(source.result, fit.factor, task.runId),
   }
   state.calibration.variantIds.push(id)
@@ -528,6 +530,7 @@ function createAttempt(
     items: items
       ? { ids: [...items], processed: 0, succeeded: 0, failures: {} }
       : null,
+    sideRun: group ? group.kind !== 'stage' : false,
   }
   state.tasks[taskId] = task
   state.taskIds.push(taskId)

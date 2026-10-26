@@ -156,4 +156,34 @@ describe('calibration jobs and adoption', () => {
     )
     expect(retryBlocker(state, taskId)).toBeNull()
   })
+
+  test('a reverted variant can be adopted again, and a fit leaves stage states alone while it runs', () => {
+    const workbench = complete()
+    fit(workbench)
+    const variantId = workbench.getState().calibration.variantIds[0] ?? ''
+    workbench.execute({ type: 'calibration.adopt', input: { variantId } })
+    workbench.execute({ type: 'calibration.revert', input: {} })
+    expect(adoptBlocker(workbench.getState(), variantId)).toBeNull()
+    expect(
+      workbench.execute({ type: 'calibration.adopt', input: { variantId } })
+        .outcome.status,
+    ).toBe('applied')
+    workbench.execute({ type: 'calibration.revert', input: {} })
+
+    const before = states(workbench)
+    workbench.execute({
+      type: 'calibration.fit',
+      input: { meterId: 'meter:district-2025', unit: 'kWh' },
+    })
+    expect(states(workbench)).toEqual(before)
+  })
+
+  test('a fit with a unit that contradicts the export cannot be adopted', () => {
+    const workbench = complete()
+    fit(workbench, 'meter:district-2025-mwh')
+    const variantId = workbench.getState().calibration.variantIds[0] ?? ''
+    expect(adoptBlocker(workbench.getState(), variantId)).toMatch(
+      /states MWh, but kWh is chosen/,
+    )
+  })
 })

@@ -153,13 +153,14 @@ const calibrationState = z.object({
       meteredKwh: z.array(number),
       modeledKwh: z.array(number),
       calibratedKwh: z.array(number),
-      baselineRevision: number,
+      baselineRunId: id,
+      unitMismatch: text.nullable(),
       result,
     }),
   ),
   variantIds: ids,
   adoptedVariantId: id.nullable(),
-  modeled: z.object({ result, revision: number }).nullable(),
+  modeled: z.object({ result }).nullable(),
 })
 const runGroup = z.object({
   id,
@@ -360,6 +361,7 @@ export const projectStateSchema: z.ZodType<WorkbenchState, unknown> = z
         attempt: number.int().positive().default(1),
         parentTaskId: id.nullable().default(null),
         requestId: text.nullable().default(null),
+        sideRun: z.boolean().default(false),
         items: z
           .object({
             ids,
@@ -423,6 +425,14 @@ export const projectStateSchema: z.ZodType<WorkbenchState, unknown> = z
     nextId: number.int().positive(),
   })
   .transform((state) => {
+    // Jobs of fusions saved before side runs were marked become side runs.
+    for (const group of Object.values(state.runGroups)) {
+      if (group.kind === 'stage') continue
+      for (const attemptId of group.attemptIds) {
+        const task = state.tasks[attemptId]
+        if (task) task.sideRun = true
+      }
+    }
     // Library archetypes migrated above bring the library schedule they use.
     for (const item of Object.values(state.archetypes)) {
       if (item.scheduleId === null || item.scheduleId in state.schedules)
@@ -473,11 +483,11 @@ export const projectStateSchema: z.ZodType<WorkbenchState, unknown> = z
     references(state.calibration.variantIds, state.calibration.variants)
     const adopted = state.calibration.adoptedVariantId
     if (
-      adopted !== null &&
-      (!(adopted in state.calibration.variants) ||
-        state.calibration.modeled === null)
+      (adopted !== null) !== (state.calibration.modeled !== null) ||
+      (adopted !== null && !(adopted in state.calibration.variants))
     )
-      fail('The adopted calibrated baseline is missing.')
+      fail('The adopted calibrated baseline is inconsistent.')
+
     if (Object.keys(state.runGroups).length !== state.runGroupIds.length)
       fail('A run group is missing from the saved index.')
     for (const group of Object.values(state.runGroups)) {

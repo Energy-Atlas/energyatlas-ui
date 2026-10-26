@@ -186,6 +186,7 @@ export function hasActiveTask(
   return Object.values(tasks).some(
     (task) =>
       task.stageId === stageId &&
+      !task.sideRun &&
       (task.status === 'queued' || task.status === 'running'),
   )
 }

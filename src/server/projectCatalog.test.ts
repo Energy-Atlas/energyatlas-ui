@@ -368,4 +368,40 @@ describe('project catalog', () => {
     ).toMatchObject({ yearTo: 1979, scheduleId: 'schedule:residential' })
     expect(Object.keys(migrated?.schedules ?? {})).toHaveLength(4)
   })
+
+  it('marks fusion jobs saved before side runs as side runs', () => {
+    const storage = memoryStorage()
+    const engine = createWorkbench({
+      initialState: buildFixture('partway', () => new Date()),
+    })
+    engine.execute({
+      type: 'intake.applyDataset',
+      input: {
+        datasetId: 'dataset:assessor',
+        mapping: suggestMapping(findDataset('dataset:assessor')!),
+      },
+    })
+    finishJobNow(engine, engine.getState().taskIds.at(-1) ?? '')
+    const saved = JSON.parse(JSON.stringify(engine.getState())) as Record<
+      string,
+      unknown
+    >
+    for (const task of Object.values(
+      saved.tasks as Record<string, Record<string, unknown>>,
+    ))
+      delete task.sideRun
+    const { id, name } = engine.getState().project
+    storage.setItem(
+      CATALOG_KEY,
+      JSON.stringify({
+        version: 1,
+        projects: [{ ...entry(id), name, state: saved }],
+      }),
+    )
+    const read = readProjectCatalog(storage)
+    expect(read.error).toBeNull()
+    const state = read.catalog.projects[0]!.state
+    const fusion = state.tasks[state.taskIds.at(-1) ?? '']
+    expect(fusion?.sideRun).toBe(true)
+  })
 })

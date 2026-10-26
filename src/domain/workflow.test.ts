@@ -114,6 +114,7 @@ describe('deriveStageStates', () => {
       parentTaskId: null,
       requestId: null,
       items: null,
+      sideRun: false,
     }
     expect(
       deriveStageStates(workflow, { 'task-1': runningTask })[

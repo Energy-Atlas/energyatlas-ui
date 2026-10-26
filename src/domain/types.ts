@@ -233,6 +233,11 @@ export type Task = {
   requestId: string | null
   /** Item-level work; null for whole-stage jobs. */
   items: TaskItems | null
+  /**
+   * A data fusion or calibration fit shown under a stage. It does not make the
+   * stage run, so the stage and its dependents keep their states meanwhile.
+   */
+  sideRun: boolean
 }
 
 /** What a run consumed when it was submitted; compared before start, retry, and publication. */
@@ -355,8 +360,10 @@ export type CalibratedVariant = {
   meteredKwh: number[]
   modeledKwh: number[]
   calibratedKwh: number[]
-  /** Revision of the modeled baseline the fit used. */
-  baselineRevision: number
+  /** Run ID of the modeled baseline the fit used; it identifies that baseline. */
+  baselineRunId: string
+  /** Why the chosen unit contradicts the export, when it does; such a fit cannot be adopted. */
+  unitMismatch: string | null
   result: ResultSet
 }
 
@@ -365,7 +372,7 @@ export type CalibrationState = {
   variantIds: string[]
   adoptedVariantId: string | null
   /** The modeled baseline kept while a calibrated variant is the working baseline. */
-  modeled: { result: ResultSet; revision: number } | null
+  modeled: { result: ResultSet } | null
 }
 
 export type RunGroupStatus =

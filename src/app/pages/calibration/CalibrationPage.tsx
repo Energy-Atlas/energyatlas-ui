@@ -12,6 +12,7 @@ import {
   meterIssues,
   meteredKwh,
   modeledSource,
+  runLockReason,
   unitWarning,
 } from '../../../domain/calibration/calibration.ts'
 import type {
@@ -307,7 +308,7 @@ export function CalibrationPage() {
                 const blocker = adoptBlocker(state, variant.id)
                 const isAdopted = calibration.adoptedVariantId === variant.id
                 const outdated =
-                  !isAdopted && source?.revision !== variant.baselineRevision
+                  !isAdopted && source?.result.runId !== variant.baselineRunId
                 return (
                   <tr key={variant.id}>
                     <th scope="row">
@@ -329,9 +330,11 @@ export function CalibrationPage() {
                     <td>
                       {isAdopted
                         ? 'Working baseline'
-                        : outdated
-                          ? 'Outdated: baseline changed'
-                          : 'Available'}
+                        : variant.unitMismatch
+                          ? 'Unit does not match the export'
+                          : outdated
+                            ? 'Outdated: baseline changed'
+                            : 'Available'}
                     </td>
                     <td>
                       {isAdopted ? (
@@ -342,7 +345,7 @@ export function CalibrationPage() {
                               pending,
                               'calibration.revert',
                               'the baseline is being reverted',
-                            ) ?? null
+                            ) ?? runLockReason(state)
                           }
                           onPress={() =>
                             void client.execute({
@@ -361,7 +364,9 @@ export function CalibrationPage() {
                               pending,
                               'calibration.adopt',
                               'the variant is being adopted',
-                            ) ?? blocker
+                            ) ??
+                            runLockReason(state) ??
+                            blocker
                           }
                           onPress={() =>
                             void client.execute({

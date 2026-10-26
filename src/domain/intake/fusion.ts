@@ -12,7 +12,7 @@ import type {
   TargetField,
   WorkbenchState,
 } from '../types.ts'
-import { STAGE_IDS, hasActiveTask, stageRunBlocker } from '../workflow.ts'
+import { STAGE_IDS, stageRunBlocker } from '../workflow.ts'
 import type { Dataset, DatasetRecord, DatasetValue } from './datasets.ts'
 
 // Schema mapping, validation, and stable-ID fusion (jobs rollout plan, D9).
@@ -666,7 +666,13 @@ export function fusionSubmitBlocker(state: WorkbenchState): string | null {
   if (state.buildingIds.length === 0) {
     return 'There are no buildings to match yet. Run "Location setup / footprint capturing" first.'
   }
-  if (hasActiveTask(state.tasks, STAGE_IDS.schema)) {
+  if (
+    Object.values(state.tasks).some(
+      (task) =>
+        task.stageId === STAGE_IDS.schema &&
+        (task.status === 'queued' || task.status === 'running'),
+    )
+  ) {
     return 'Schema matching or another data fusion is queued or running. Wait for it to finish.'
   }
   return stageRunBlocker(state.workflow, state.tasks, STAGE_IDS.schema)

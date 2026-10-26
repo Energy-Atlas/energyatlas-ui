@@ -9,6 +9,15 @@ import type {
 } from '../types.ts'
 import { STAGE_IDS } from '../workflow.ts'
 
+/** Why model changes are locked now, or null: queued or running jobs hold the project. */
+export function runLockReason(state: WorkbenchState): string | null {
+  return Object.values(state.tasks).some(
+    (task) => task.status === 'queued' || task.status === 'running',
+  )
+    ? 'Jobs are queued or running, so the project is locked. Wait for them to finish.'
+    : null
+}
+
 // Calibration (jobs rollout plan, slice 7; decision D10). Synthetic monthly
 // meter series stand in for live meters. The fit is one coupled whole-district
 // factor, run as one job; it is a stand-in, not a real calibration algorithm.
@@ -110,6 +119,9 @@ export function meterIssues(series: MeterSeries): ValidationIssue[] {
       message: 'The months span more than one calendar year.',
     })
   }
+  if (series.rows.length > 0 && series.rows.every((row) => row.value === 0)) {
+    issues.push({ path: 'meterId', message: 'Every month is zero.' })
+  }
   series.rows.forEach((row, index) => {
     if (row.value === null) {
       issues.push({
@@ -145,10 +157,18 @@ export function unitWarning(
     : `The export states ${series.statedUnit}, but ${unit} is chosen. Check the unit before fitting.`
 }
 
-/** CV(RMSE) and NMBE of modeled against metered values, in percent. */
-export function fitMetrics(modeled: number[], metered: number[]): FitMetrics {
+/**
+ * CV(RMSE) and NMBE of modeled against metered values, in percent, with the
+ * number of parameters fitted (0 before a fit, 1 after the one-factor fit).
+ */
+export function fitMetrics(
+  modeled: number[],
+  metered: number[],
+  parameters = 0,
+): FitMetrics {
   const count = metered.length
   const mean = metered.reduce((sum, value) => sum + value, 0) / count
+  if (!(mean > 0)) return { cvrmsePercent: 0, nmbePercent: 0 }
   let squared = 0
   let bias = 0
   metered.forEach((value, index) => {
@@ -156,8 +176,8 @@ export function fitMetrics(modeled: number[], metered: number[]): FitMetrics {
     squared += difference * difference
     bias += difference
   })
-  // ASHRAE Guideline 14 style, with one parameter fitted (count - 1).
-  const dof = Math.max(1, count - 1)
+  // ASHRAE Guideline 14 style: degrees of freedom are months minus parameters.
+  const dof = Math.max(1, count - parameters)
   return {
     cvrmsePercent: round((Math.sqrt(squared / dof) / mean) * 100, 1),
     nmbePercent: round((bias / (dof * mean)) * 100, 1),
@@ -177,11 +197,10 @@ export function meetsThresholds(metrics: FitMetrics): boolean {
 /** The modeled baseline a fit uses: the stored modeled one while a variant is adopted. */
 export function modeledSource(
   state: WorkbenchState,
-): { result: ResultSet; revision: number } | null {
+): { result: ResultSet } | null {
   if (state.calibration.modeled) return state.calibration.modeled
   const result = state.results.baseline
-  const revision = state.workflow.stages[STAGE_IDS.baseline]?.revision ?? 0
-  return result ? { result, revision } : null
+  return result ? { result } : null
 }
 
 export type FitOutcome = {
@@ -204,12 +223,12 @@ export function fitFactor(modeled: number[], metered: number[]): FitOutcome {
     0,
   )
   const denominator = modeled.reduce((sum, value) => sum + value * value, 0)
-  const factor = denominator > 0 ? round(numerator / denominator, 4) : 1
+  const factor = denominator > 0 ? round(numerator / denominator, 6) : 1
   const calibrated = modeled.map((value) => round(value * factor))
   return {
     factor,
-    before: fitMetrics(modeled, metered),
-    after: fitMetrics(calibrated, metered),
+    before: fitMetrics(modeled, metered, 0),
+    after: fitMetrics(calibrated, metered, 1),
     metered,
     modeled,
     calibrated,
@@ -247,7 +266,7 @@ export function calibrationOptions(
   return JSON.stringify({
     meterId: input.meterId,
     unit: input.unit,
-    modeledRevision: modeledSource(state)?.revision ?? null,
+    modeledRunId: modeledSource(state)?.result.runId ?? null,
   })
 }
 
@@ -287,8 +306,11 @@ export function adoptBlocker(
   if (state.calibration.adoptedVariantId === variantId) {
     return 'This variant is already the working baseline.'
   }
+  if (variant.unitMismatch) {
+    return `${variant.unitMismatch} Fit again with the unit the export states.`
+  }
   const source = modeledSource(state)
-  if (!source || source.revision !== variant.baselineRevision) {
+  if (!source || source.result.runId !== variant.baselineRunId) {
     return 'The modeled baseline changed after this fit. Run a new fit before adopting.'
   }
   return null

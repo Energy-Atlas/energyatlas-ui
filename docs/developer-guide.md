@@ -180,6 +180,14 @@ scenarios; `publishScenarioResults` replaces the published set at once and withd
 Input signatures record upstream `editRevision`s too (`ancestorEdits`), so edits to definitions owned by an upstream
 stage invalidate queued or running work even before that stage runs again.
 
+### Calibration
+
+`src/domain/calibration/calibration.ts` holds the synthetic meter series, validation, metrics, the one-factor fit, and
+the `fitBlocker`/`adoptBlocker` rules. `calibration.fit` queues a side run (run group kind `calibration` under
+Baseline model setup) that publishes a `CalibratedVariant`; `calibration.adopt` and `calibration.revert` change
+`results.baseline`, keep the modeled baseline in `state.calibration.modeled`, and bump Baseline model setup's revision.
+Side runs (fusions and fits) set `Task.sideRun`, so `hasActiveTask` and derived stage states ignore them.
+
 ### Add or change model behavior: a command
 
 1. Add the entity fields to `src/domain/types.ts` (and `initialState.ts`).
@@ -268,6 +276,7 @@ Only packages from decisions 0007, 0008, and 0010 are allowed. Record a reason i
 End-to-end specs:
 
 - `e2e/project-lifecycle.spec.ts`: start, named creation/validation, multi-project save/open/recent, equal names, draft and job guards, failed Save, malformed storage, held-request recovery, all six appearances at three sizes, axe, keyboard focus, and reproducible screenshots in `tmp/`.
+- `e2e/calibration.spec.ts`: series validation, unit choice and warning, a fit job with a notice, a published variant that leaves the working baseline alone, Adopt with outdated dependents, Revert, and light, dark, and 900 px rendering with axe.
 - `e2e/scenarios.spec.ts`: library copies, the one-measure-per-kind rule before sending, the live preview, editing inclusion, modeling a comparison set, the comparison table, and light and dark rendering with axe.
 - `e2e/archetypes.spec.ts`: library copy, coverage, assignment as a job with a notice, per-field archetype and schedule validation, and light, dark, and 900 px rendering with axe.
 - `e2e/intake.spec.ts`: suggested mapping, row validation, ambiguity and unmatched rejection, the schema-wide block and its explained Apply, fusion as a job with a notice, held records with failed-record retry, and light, dark, and 900 px rendering with axe.

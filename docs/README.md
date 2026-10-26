@@ -1,6 +1,7 @@
 # Documentation index
 
 - [Autonomous implementation handoff, 2026-10-26](20261026_autonomous-roadmap-handoff.md): next agent starts here; approved scope through Results, local-merge authority, kickoff message, repository/worktree locations, and verification baseline.
+- [Calibration plan and status](calibration.md): roadmap step 7 as built: meter validation, fit jobs, calibrated variants, explicit adoption.
 - [Measures and scenarios plan and status](measures-scenarios.md): roadmap step 6 as built: measure library, editing, composition rule, comparison sets, modeled comparison.
 - [Archetypes and schedules plan and status](archetypes-schedules.md): roadmap step 5 as built: definitions, schedules, library, coverage, assignment jobs.
 - [Data intake plan and status](data-intake.md): roadmap step 4 as built: synthetic datasets, mapping, validation, stable-ID fusion jobs.
