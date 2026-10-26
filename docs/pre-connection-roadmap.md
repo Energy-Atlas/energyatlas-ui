@@ -80,7 +80,8 @@ Scale and accessibility checks run alongside every step.
 
 Step 3, Jobs, is built and merged into local `master` (2026-10-26); see the
 [Jobs execution plan and status](jobs-execution-plan.md). Step 4, Data intake, follows in
-[data intake](data-intake.md), and step 5 in [archetypes and schedules](archetypes-schedules.md). Before it, the owner chose a Jobs list and detail pane
+[data intake](data-intake.md), step 5 in [archetypes and schedules](archetypes-schedules.md), and step 6 in
+[measures and scenarios](measures-scenarios.md). Before it, the owner chose a Jobs list and detail pane
 ([decision 0025](decisions/0025-jobs-list-and-detail-pane.md)), held successful results until failures are resolved,
 and failed-item retry only when inputs are unchanged. The owner approved the [rollout defaults](jobs-rollout-plan.md)
 through Results (steps 3–8), with local merges after review and checks pass and no implementation pushes/deployments

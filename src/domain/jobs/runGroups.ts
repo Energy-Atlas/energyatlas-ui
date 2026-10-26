@@ -91,6 +91,11 @@ export function captureSignature(
         .sort()
         .map((id) => [id, workflow.stages[id]?.revision ?? 0]),
     ),
+    ancestorEdits: Object.fromEntries(
+      ancestorIds(workflow, stageId)
+        .sort()
+        .map((id) => [id, workflow.stages[id]?.editRevision ?? 0]),
+    ),
     editRevision: workflow.stages[stageId]?.editRevision ?? 0,
     membership: fusion
       ? dataset
@@ -122,6 +127,15 @@ export function signatureMismatch(
       return `the outputs of "${name}" changed`
     }
   }
+  // Saves from before edit revisions were recorded have none to compare.
+  if (Object.keys(before.ancestorEdits).length > 0) {
+    for (const id of keys) {
+      if (now.ancestorEdits[id] !== before.ancestorEdits[id]) {
+        const name = state.workflow.stages[id]?.name ?? id
+        return `the inputs owned by "${name}" changed`
+      }
+    }
+  }
   if (now.editRevision !== before.editRevision) {
     return `the inputs owned by "${stage.name}" changed`
   }
@@ -131,7 +145,9 @@ export function signatureMismatch(
   ) {
     return group.kind === 'fusion'
       ? 'the records that validate changed'
-      : 'the set of buildings changed'
+      : group.stageId === STAGE_IDS.scenarioModeling
+        ? 'the scenarios in the comparison set changed'
+        : 'the set of buildings changed'
   }
   // Retries reuse the group's own dataset and mapping, so this guards only
   // against a group whose saved options no longer match its input.

@@ -265,7 +265,8 @@ const modelChangeSession: ScriptedSession = {
     ),
     (context) => {
       const state = context.state()
-      const scenario = Object.values(state.scenarios)[0]
+      const scenarios = Object.values(state.scenarios)
+      const scenario = scenarios.find((item) => item.included) ?? scenarios[0]
       if (!scenario) {
         const measure = Object.values(state.measures)[0]
         const calls: TitledCall[] = []
@@ -371,7 +372,9 @@ const modelChangeSession: ScriptedSession = {
       const scenario =
         Object.values(state.scenarios).find(
           (item) => item.name === context.memory.scenarioName,
-        ) ?? Object.values(state.scenarios)[0]
+        ) ??
+        Object.values(state.scenarios).find((item) => item.included) ??
+        Object.values(state.scenarios)[0]
       const baseline = state.results.baseline
       const result = scenario ? state.results.scenarios[scenario.id] : undefined
       if (!scenario || !baseline || !result || baseline.totalKwh <= 0) {

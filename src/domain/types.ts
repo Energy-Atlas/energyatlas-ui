@@ -239,6 +239,11 @@ export type Task = {
 export type InputSignature = {
   /** Revisions of every stage upstream of the run's stage, transitively. */
   ancestors: Record<string, number>
+  /**
+   * Edit revisions of the same upstream stages: inputs they own, such as
+   * scenario or archetype definitions, change before those stages run again.
+   */
+  ancestorEdits: Record<string, number>
   /** The stage's own edit revision. */
   editRevision: number
   /** Item membership, in order; empty for whole-stage runs. */

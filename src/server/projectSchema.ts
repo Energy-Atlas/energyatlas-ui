@@ -141,6 +141,7 @@ const runGroup = z.object({
   stageId: id,
   signature: z.object({
     ancestors: record(number),
+    ancestorEdits: record(number).default({}),
     editRevision: number,
     membership: ids,
     options: text.default(''),

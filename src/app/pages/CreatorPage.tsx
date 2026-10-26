@@ -138,22 +138,27 @@ export function CreatorPage() {
   const scenarioList = Object.values(scenarios)
   const [editingMeasure, setEditingMeasure] = useState<string | null>(null)
   const [editingScenario, setEditingScenario] = useState<string | null>(null)
+  // An item removed while edited (for example by undo) returns the form to create mode.
+  const measureEditing = editingMeasure
+    ? (measures[editingMeasure] ?? null)
+    : null
+  const scenarioEditing = editingScenario
+    ? (scenarios[editingScenario] ?? null)
+    : null
 
   return (
     <section className={componentStyles.page} aria-labelledby={headingId}>
       <h2 id={headingId}>Creator</h2>
       <div className={styles.creators}>
         <MeasureCreator
-          key={editingMeasure ?? 'new'}
-          editing={editingMeasure ? (measures[editingMeasure] ?? null) : null}
+          key={measureEditing?.id ?? 'new'}
+          editing={measureEditing}
           onDone={() => setEditingMeasure(null)}
         />
         <ScenarioCreator
-          key={editingScenario ?? 'new'}
+          key={scenarioEditing?.id ?? 'new'}
           measures={measureList}
-          editing={
-            editingScenario ? (scenarios[editingScenario] ?? null) : null
-          }
+          editing={scenarioEditing}
           onDone={() => setEditingScenario(null)}
         />
         <MeasureLibrary />

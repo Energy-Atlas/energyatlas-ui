@@ -65,7 +65,10 @@ export function previewScenario(
     const measure = state.measures[id]
     return measure ? [measure] : []
   })
-  const modeled = baseline ? Object.keys(baseline.byBuildingKwh) : []
+  // With results, the buildings a measure changes; before, every building it applies to.
+  const modeled = baseline
+    ? Object.keys(baseline.byBuildingKwh)
+    : state.buildingIds
   const applies = (measure: Measure, buildingId: string) =>
     measure.appliesTo === 'all' ||
     state.buildings[buildingId]?.use === measure.appliesTo

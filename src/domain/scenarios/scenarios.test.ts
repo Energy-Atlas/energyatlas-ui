@@ -208,4 +208,29 @@ describe('scenario modeling as a comparison set', () => {
       workbench.getState().results.scenarios[scenario.id]?.totalKwh,
     ).toBeGreaterThan(0)
   })
+
+  test('an edit to a scenario during modeling stops the set from publishing', () => {
+    const workbench = complete()
+    const scenario = Object.values(workbench.getState().scenarios)[0]
+    if (!scenario) throw new Error('Missing scenario')
+    workbench.execute({
+      type: 'workflow.runStage',
+      input: { stageId: S.scenarioModeling },
+    })
+    const taskId = workbench.getState().taskIds.at(-1) ?? ''
+    const before = workbench.getState().results.scenarios
+    workbench.execute({ type: 'task.start', input: { taskId } }, 'system')
+    // The domain applies the edit; the server's edit lock would refuse it.
+    workbench.execute({
+      type: 'scenario.setAdoption',
+      input: { scenarioId: scenario.id, adoptionPercent: 10 },
+    })
+    finishJobNow(workbench, taskId)
+    const state = workbench.getState()
+    expect(state.tasks[taskId]?.status).toBe('failed')
+    expect(state.tasks[taskId]?.message).toMatch(
+      /inputs owned by "Scenario definitions" changed/,
+    )
+    expect(state.results.scenarios).toEqual(before)
+  })
 })

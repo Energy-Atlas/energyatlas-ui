@@ -1662,6 +1662,7 @@ export const commandDefinitions = {
       'Change a scenario by id: name, measures (at most one of each kind), adoption, and whether Scenario modeling includes it in the comparison set. Scenario definitions and results become outdated.',
     input: scenarioInputSchema.extend({
       id: z.string().min(1, 'Choose a scenario.'),
+      included: z.boolean(),
     }),
     undoable: true,
     run(state, { id, ...input }, context) {
@@ -1694,7 +1695,7 @@ export const commandDefinitions = {
         .max(100, 'Adoption must be at most 100%.'),
     }),
     undoable: true,
-    run(state, { scenarioId, adoptionPercent }) {
+    run(state, { scenarioId, adoptionPercent }, context) {
       const scenario = state.scenarios[scenarioId]
       if (!scenario) {
         return rejected(`Unknown scenario "${scenarioId}".`, 'scenarioId')
@@ -1707,12 +1708,8 @@ export const commandDefinitions = {
       }
       const previous = scenario.adoptionPercent
       scenario.adoptionPercent = adoptionPercent
-      const asset = state.assets[`asset:${scenarioId}`]
-      if (asset) {
-        asset.summary = `${scenario.measureIds.length} measure(s) at ${adoptionPercent}% adoption`
-      }
-      const definitions = state.workflow.stages[STAGE_IDS.scenarioDefinitions]
-      if (definitions) definitions.editRevision = nextRevision(state)
+      upsertScenarioAsset(state, scenario, context)
+      touchScenarioInputs(state)
       return applied(
         `Set adoption for "${scenario.name}" from ${previous}% to ${adoptionPercent}%.`,
       )

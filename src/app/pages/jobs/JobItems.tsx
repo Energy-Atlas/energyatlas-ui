@@ -6,6 +6,7 @@ import {
   itemNoun,
 } from '../../../domain/jobs/runGroups.ts'
 import type { Task, WorkbenchState } from '../../../domain/types.ts'
+import { STAGE_IDS } from '../../../domain/workflow.ts'
 import { useServices } from '../../WorkbenchContext.tsx'
 import componentStyles from '../../components/components.module.css'
 import styles from './jobs.module.css'
@@ -89,7 +90,11 @@ export function JobItems({
             const building = buildingOf(id)
             return (
               <tr key={id}>
-                <td>{id}</td>
+                <td>
+                  {group?.stageId === STAGE_IDS.scenarioModeling
+                    ? (state.scenarios[id]?.name ?? id)
+                    : id}
+                </td>
                 <td>{reason}</td>
                 <td>
                   {building ? (
