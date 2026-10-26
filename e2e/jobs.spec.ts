@@ -52,11 +52,11 @@ test('holds partial results, opens the job from its notice, and retries only fai
   // The workflow offers the retry beside a fresh rerun.
   await expect(
     stageRow(page, PREPROCESSING).getByRole('button', {
-      name: new RegExp(`^Retry \d+ failed items? of ${PREPROCESSING}`),
+      name: new RegExp(`^Retry \\d+ failed items? of ${PREPROCESSING}`),
     }),
   ).toBeVisible()
 
-  const notices = page.getByRole('status', { name: 'Job notices' })
+  const notices = page.getByRole('region', { name: 'Job notices' })
   await expect(notices).toContainText(
     /Geospatial preprocessing partly failed: \d+ of 464 items failed; successful results are held/,
   )
@@ -69,6 +69,8 @@ test('holds partial results, opens the job from its notice, and retries only fai
   await expect(
     page.getByRole('tab', { name: 'Jobs', exact: true }),
   ).toHaveAttribute('aria-selected', 'true')
+  // Opening the job is a choice, so focus follows it to the list.
+  await expect(page.getByRole('listbox', { name: 'Jobs' })).toBeFocused()
 
   const detail = page.getByRole('article')
   await expect(detail).toContainText('attempt 1')
@@ -102,6 +104,11 @@ test('holds partial results, opens the job from its notice, and retries only fai
   await expect(notices).toContainText(
     'Geospatial preprocessing completed on attempt 2.',
   )
+  // Dismissing by keyboard never strands focus on a removed button.
+  await notices.getByRole('button', { name: /^Dismiss notice/ }).focus()
+  await page.keyboard.press('Enter')
+  await expect(notices).toBeHidden()
+  await expect(page.getByRole('main', { name: 'Workspace' })).toBeFocused()
   await showWorkflow(page)
   await expect(stageRow(page, PREPROCESSING)).toContainText('Complete')
 })

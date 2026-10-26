@@ -177,10 +177,11 @@ export function retryBlocker(
       break
   }
   const latest = latestAttempt(state, group)
-  if (latest && isActiveStatus(latest.status)) {
+  if (!latest) return 'This run has no attempt to retry. Start a fresh run.'
+  if (isActiveStatus(latest.status)) {
     return 'An attempt of this run is still queued or running.'
   }
-  if (latest && latest.status !== 'failed') {
+  if (latest.status !== 'failed') {
     return 'Only a failed run can be retried.'
   }
   const changed = signatureMismatch(state, group)
@@ -192,7 +193,7 @@ export function retryBlocker(
 
 /** What a retry of the group would do, for buttons and confirmations. */
 export function retryScope(group: RunGroup): string {
-  if (group.signature.membership.length === 0) return 'Retry the whole run'
+  if (!isItemStage(group.stageId)) return 'Retry the whole run'
   const outstanding = outstandingItems(group).length
   return outstanding === 0
     ? 'Retry publication of held results'
@@ -211,4 +212,23 @@ export function openFailedAttempt(
     return latest?.status === 'failed' ? latest : null
   }
   return null
+}
+
+/** Results held by a stage's open run, which a fresh run would discard. */
+export function heldCount(state: WorkbenchState, stageId: string): number {
+  let held = 0
+  for (const group of Object.values(state.runGroups)) {
+    if (group.stageId === stageId && group.status === 'open') {
+      held += Object.keys(group.held).length
+    }
+  }
+  return held
+}
+
+/** Accessible-name suffix warning that a fresh run discards held results. */
+export function discardNote(state: WorkbenchState, stageId: string): string {
+  const held = heldCount(state, stageId)
+  return held > 0
+    ? `, discarding ${held} held result${held === 1 ? '' : 's'}`
+    : ''
 }

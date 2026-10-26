@@ -70,3 +70,23 @@ test('serves the EnergyAtlas favicons and mark under the base path', async ({
     expect(response.headers()['content-type'] ?? '').toMatch(/^image\//)
   }
 })
+
+// Jobs (decision 0025) in the built bundle: a partial failure, its notice,
+// and a failed-item retry under the base path.
+test('runs, holds, and retries a partial job in the built bundle', async ({
+  page,
+}) => {
+  test.setTimeout(60_000)
+  await page.goto(`${BASE_PATH}?fixture=partway&jobs=itemFailures`)
+  await page.getByRole('tab', { name: 'Workflow', exact: true }).click()
+  await page
+    .getByRole('region', { name: 'Workflow' })
+    .getByRole('button', { name: /^Rerun Geospatial preprocessing/ })
+    .click()
+  const notices = page.getByRole('region', { name: 'Job notices' })
+  await expect(notices).toContainText('partly failed', { timeout: 20_000 })
+  await notices.getByRole('button', { name: 'Open job' }).click()
+  const detail = page.getByRole('article')
+  await detail.getByRole('button', { name: /^Retry \d+ failed items?/ }).click()
+  await expect(detail).toContainText('Published', { timeout: 20_000 })
+})

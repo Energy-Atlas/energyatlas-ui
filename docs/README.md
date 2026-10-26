@@ -1,6 +1,7 @@
 # Documentation index
 
 - [Autonomous implementation handoff, 2026-10-26](20261026_autonomous-roadmap-handoff.md): next agent starts here; approved scope through Results, local-merge authority, kickoff message, repository/worktree locations, and verification baseline.
+- [Jobs execution plan and status](jobs-execution-plan.md): roadmap step 3 as built: run groups, held item results, retry rules, FIFO runner, UI, verification.
 - [Jobs rollout plan](jobs-rollout-plan.md): bundled cross-stage decisions, bounded slices through Results, and proposed autonomous execution scope.
 - [Jobs discussion](jobs-discussion.md): read-only RC observations, accepted list/detail pane and held-result retry rules (decision 0025), and remaining cross-stage choices.
 - [Project lifecycle design](project-lifecycle-design.md): accepted start screen and job confirmation (decision 0024), implemented behavior, boundaries, verification, and remaining limitations.

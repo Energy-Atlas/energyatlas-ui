@@ -1,6 +1,6 @@
 .shell {
   display: grid;
-  grid-template-rows: auto minmax(0, 1fr) auto;
+  grid-template-rows: auto minmax(0, 1fr) auto auto;
   height: 100%;
   background: var(--color-bg);
   color: var(--color-text);
@@ -541,34 +541,17 @@
   margin-top: var(--space-3);
 }
 
-/* Job notices (jobs rollout plan, D6): nonmodal, above the status bar, and
-   never focused automatically. */
-.noticeTray {
-  position: fixed;
-  right: var(--space-3);
-  bottom: 2.25rem;
-  z-index: 20;
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-1);
-  width: min(26rem, calc(100vw - 2 * var(--space-3)));
-  margin: 0;
-  padding: 0;
-  list-style: none;
-  pointer-events: none;
-}
-
+/* Job notices (jobs rollout plan, D6): a strip above the status bar that
+   never covers content and is never focused automatically. */
 .jobNotice {
   display: flex;
-  align-items: flex-start;
-  gap: var(--space-2);
-  padding: var(--space-2) var(--space-3);
-  border: var(--rule);
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-1) var(--space-2);
+  padding: var(--space-1) var(--space-3);
+  border-top: var(--rule);
   border-left: 2px solid var(--tone-info-text);
-  border-radius: var(--radius-sm);
   background: var(--color-surface);
-  box-shadow: var(--shadow-popover);
-  pointer-events: auto;
 }
 
 .jobNoticeWarning {
@@ -581,10 +564,11 @@
 
 .jobNoticeText {
   flex: 1;
-  min-width: 0;
+  min-width: 12rem;
 }
 
 .jobNoticeActions {
   display: flex;
+  align-items: center;
   gap: var(--space-1);
 }

@@ -1,5 +1,6 @@
 import { useId } from 'react'
 import {
+  discardNote,
   groupOf,
   openFailedAttempt,
   retryBlocker,
@@ -67,7 +68,7 @@ export function WorkflowPanel() {
               </div>
               <div className={styles.stageActions}>
                 <ActionButton
-                  label={`${hasRun ? 'Rerun' : 'Run'} ${stage.name}`}
+                  label={`${hasRun ? 'Rerun' : 'Run'} ${stage.name}${discardNote(project, stageId)}`}
                   disabledReason={
                     waitingReason(
                       pending,

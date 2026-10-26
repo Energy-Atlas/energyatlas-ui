@@ -46,7 +46,6 @@ import {
   cancelBlocker,
   freshRunBlocker,
   retryActionBlocker,
-  shownJob,
 } from './pages/jobs/jobView.ts'
 import { DEFAULT_PAGES, PAGES, type PageId } from './layout/layoutController.ts'
 
@@ -457,7 +456,10 @@ export function useAppActions(dialogs: ShellDialogs): AppAction[] {
         },
       },
       ...(() => {
-        const job = shownJob(state, jobsView.selectedTaskId, jobsView.filter)
+        // Only a job someone selected; the page's default view is not a choice.
+        const job = jobsView.selectedTaskId
+          ? (state.tasks[jobsView.selectedTaskId] ?? null)
+          : null
         const none = 'No job is selected. Open Jobs and select one.'
         const services = { client, workbench, view }
         return [

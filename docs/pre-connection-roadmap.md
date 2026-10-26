@@ -78,7 +78,8 @@ the interfaces they plug into.
 
 Scale and accessibility checks run alongside every step.
 
-Step 3 is in [design discussion](jobs-discussion.md): the owner chose a Jobs list and detail pane
+Step 3, Jobs, is built and merged into local `master` (2026-10-26); see the
+[Jobs execution plan and status](jobs-execution-plan.md). Before it, the owner chose a Jobs list and detail pane
 ([decision 0025](decisions/0025-jobs-list-and-detail-pane.md)), held successful results until failures are resolved,
 and failed-item retry only when inputs are unchanged. The owner approved the [rollout defaults](jobs-rollout-plan.md)
 through Results (steps 3–8), with local merges after review and checks pass and no implementation pushes/deployments

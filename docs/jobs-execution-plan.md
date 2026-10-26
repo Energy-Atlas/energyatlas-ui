@@ -61,3 +61,37 @@ membership change, publish failure and publish-only retry, cancellation, idempot
 manual overrides preserved. Server: FIFO, races, old-generation delivery. Catalog: legacy saves, held round trip,
 interrupted groups. View/notices/tools. Browser: partial failure → retry → publish, keyboard list/detail,
 notices, narrow layout, appearances, preview base path.
+
+## Implementation status (2026-10-26)
+
+Built on `claude/slice-3-jobs`. Real: job state transitions, run groups and input signatures, held item outputs and
+atomic publication, failed-item and publication-only retry with attempt lineage, changed-input refusal, invalidated
+queued attempts, FIFO single runner, edit lock, cancellation that publishes nothing, idempotent submission keys,
+save/reopen migration and interruption, list/detail UI, notices, actions, and agent tools. Mocked: computation
+(synthetic per-building preprocessing), item faults (demo conditions *Some items fail*, *Publication fails*,
+*Fail partway*, *Stall*), timing, storage, and transport. Deferred: HTTP/SignalR, real computation, concurrent
+writers, priorities, a generic job-schema runner, and item-level jobs for stages other than preprocessing.
+
+Behavior notes:
+
+- Partial failure leaves the stage Failed with earlier published outputs in place; held results never reach the
+  Table, Map, or results. Retry runs only failed or unprocessed members; the publication retry runs no items.
+- Workflow panel and Jobs detail offer Retry beside Rerun/Fresh run. A fresh run while results are held says in
+  its accessible name and tooltip how many held results it discards.
+- Preprocessing refuses submission when any building lacks floors: missing data is not a transient fault a retry
+  could fix. Correcting data is an input change and needs a fresh run.
+- Notices sit in a strip above the status bar, announce only their message through a polite live region, never
+  take focus, and clear on project identity or session generation change. Open job moves focus to the Jobs list;
+  dismissing moves focus to the next notice or the workspace.
+- Palette and menu actions (Retry/Cancel/Fresh run selected job) act only on an explicitly selected job.
+
+Review: an independent review of the branch found no data-loss, held-output isolation, or scheduler defects and six
+lower-severity issues, all fixed: item-mode retry decided by stage, not membership; discard warning on fresh runs;
+missing-floor fast rejection; notice focus and live region scope; palette actions requiring explicit selection;
+stricter saved run-group cross-checks (index, attempt membership, open group without attempts).
+
+Verification on the final slice commit (2026-10-26, Edge, 4 workers): `npm run typecheck`, `npm run lint`,
+`npm run format:check` clean; `npm test` 255 passed (29 files); `npm run test:e2e` 74 passed; `npm run
+test:e2e:preview` 3 passed (adds a held-retry job check under the Pages base path). Screenshots of the Jobs page
+in all six appearances at 1280 px and at 900 px were reviewed from ignored `tmp/jobs-*.png`. Known warnings are
+unchanged: bundle-size warning and MapLibre style-diff console warnings.

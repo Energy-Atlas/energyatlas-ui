@@ -136,6 +136,24 @@ const JOB_STATUS_WORDS: Record<Task['status'], string> = {
   invalidated: 'finished without running',
 }
 
+/**
+ * Why an item stage's inputs cannot produce results at all. Missing data is
+ * not a transient fault, so it rejects the run instead of failing items that
+ * a retry with the same inputs could never fix.
+ */
+function itemInputBlocker(
+  state: WorkbenchState,
+  stageId: string,
+): string | null {
+  if (stageId !== STAGE_IDS.preprocessing) return null
+  const missing = state.buildingIds.filter(
+    (id) => (state.buildings[id]?.floors ?? null) === null,
+  ).length
+  return missing > 0
+    ? `Floor counts are missing for ${missing} building${missing === 1 ? '' : 's'}. Run "Geospatial data enriching" first.`
+    : null
+}
+
 /** An earlier submission with the same key, answered again without creating a job. */
 function repeatedSubmission(
   state: WorkbenchState,
@@ -273,7 +291,9 @@ export const commandDefinitions = {
     run(state, { stageId, requestId }, context) {
       const repeated = repeatedSubmission(state, requestId)
       if (repeated) return repeated
-      const blocker = stageRunBlocker(state.workflow, state.tasks, stageId)
+      const blocker =
+        stageRunBlocker(state.workflow, state.tasks, stageId) ??
+        itemInputBlocker(state, stageId)
       const stage = state.workflow.stages[stageId]
       if (blocker || !stage) {
         return rejected(blocker ?? `Unknown stage "${stageId}".`, 'stageId')
@@ -331,8 +351,7 @@ export const commandDefinitions = {
       if (!task || !group || !stage) return rejected('Unknown job.', 'taskId')
       const parent = state.tasks[group.attemptIds.at(-1) ?? ''] ?? task
       const scope = retryScope(group).toLowerCase()
-      const items =
-        group.signature.membership.length > 0 ? outstandingItems(group) : null
+      const items = isItemStage(group.stageId) ? outstandingItems(group) : null
       const retry = createAttempt(state, stage, group.id, {
         items,
         parentTaskId: parent.id,

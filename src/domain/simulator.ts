@@ -29,7 +29,7 @@ export type JobBehaviour =
   'normal' | 'failPartway' | 'stall' | 'itemFailures' | 'publishFails'
 
 export const PARTWAY_FAILURE =
-  'The server reported an error partway through the run (demo condition: jobs fail partway). Run the stage again to continue.'
+  'The server reported an error partway through the run (demo condition: jobs fail partway). Retry to continue; items already computed stay held.'
 
 export const ITEM_FAILURE =
   'Transient worker fault while deriving this building (demo condition: some items fail). Retry the failed items.'

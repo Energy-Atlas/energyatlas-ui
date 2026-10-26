@@ -246,4 +246,33 @@ describe('project catalog', () => {
     expect(readProjectCatalog(storage).error).toBeTruthy()
     expect(storage.getItem(CATALOG_KEY)).toBe(raw)
   })
+
+  it('rejects an open run group without attempts', () => {
+    const storage = memoryStorage()
+    const state = buildFixture('partway', () => new Date())
+    const broken = JSON.parse(JSON.stringify(state)) as typeof state
+    const group = Object.values(broken.runGroups)[0]
+    if (group) {
+      for (const id of group.attemptIds) {
+        const task = broken.tasks[id]
+        if (task) task.groupId = null
+      }
+      group.attemptIds = []
+      group.status = 'open'
+    }
+    storage.setItem(
+      CATALOG_KEY,
+      JSON.stringify({
+        version: 1,
+        projects: [
+          {
+            ...entry(state.project.id),
+            name: state.project.name,
+            state: broken,
+          },
+        ],
+      }),
+    )
+    expect(readProjectCatalog(storage).error).toBeTruthy()
+  })
 })

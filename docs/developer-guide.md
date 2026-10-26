@@ -2,6 +2,8 @@
 
 Date: 2026-09-15, after first-slice stage 4 (scripted agent) on the `feature/agentic` branch and the OpenFreeMap basemap over Back Bay footprints ([decision 0012](decisions/0012-openfreemap-basemap-back-bay.md)) on the `feature/basemap` branch.
 
+Updated 2026-10-26 for Jobs, roadmap step 3 ([decision 0025](decisions/0025-jobs-list-and-detail-pane.md), [execution plan and status](jobs-execution-plan.md)).
+
 Updated 2026-10-26 for project lifecycle ([decision 0024](decisions/0024-dedicated-project-start-screen.md)), reviewed and integrated into local `master`; not pushed. The [lifecycle record](project-lifecycle-design.md) contains its verification and limits. [Jobs](jobs-discussion.md) is the next design discussion.
 
 This guide is for a developer or agent taking over without the original conversation. It describes the code as built, how to extend it without breaking the accepted rules, how it is tested, and what is still missing. Product intent and accepted choices live in the [decision records](decisions/README.md); evidence lives in the [first-slice implementation status](first-slice-proposal.md#implementation-status) and the [design alignment record](design-alignment.md#implementation-status).
@@ -133,6 +135,21 @@ Agent `project.*` tools use the same controller and offer list results as struct
 
 These restate [AGENTS.md](../AGENTS.md) as concrete steps.
 
+### Jobs: run groups, held results, and retries
+
+A stage run is a run group (`state.runGroups`) with immutable attempts (`state.tasks`). `workflow.runStage` captures
+the group's input signature (`captureSignature` in `src/domain/jobs/runGroups.ts`: every transitive upstream revision,
+the stage's `editRevision`, and item membership) and supersedes open groups of the stage. `task.start`, `job.retry`,
+and `task.complete` compare it with `signatureMismatch`; a change invalidates the run and requires a fresh run.
+Item stages (`ITEM_STAGES`, currently only geospatial preprocessing) process items with `task.processItems`, which
+writes only `group.held`; `task.complete` publishes held output once through `validatePreprocessing` and
+`publishPreprocessing` when every member succeeded. `retryBlocker` is the single eligibility check for the command,
+Jobs page, Workflow panel, actions, and agent. The runner in `src/domain/simulator.ts` starts the oldest queued job
+when none runs. To give another stage items, add it to `ITEM_STAGES`, give it a per-item runner, validator, and
+publisher, and keep held output out of the live model. Fixtures and tests run jobs with `runStageNow`/`finishJobNow`
+(`src/domain/jobs/runNow.ts`). New persisted fields need defaults in `projectSchema.ts`, whose parsed output (not the
+stored value) is what the catalog keeps.
+
 ### Add or change model behavior: a command
 
 1. Add the entity fields to `src/domain/types.ts` (and `initialState.ts`).
@@ -214,13 +231,14 @@ Only packages from decisions 0007, 0008, and 0010 are allowed. Record a reason i
 
 | Command | What it covers |
 | --- | --- |
-| `npm test` | 224 Vitest tests: domain/views/agent, appearance contrast, spatial helpers, fixtures and service conditions, plus catalog migration/validation, explicit sessions, shared lifecycle guards, mutation fencing, project tool parity, and queued-agent resets |
+| `npm test` | 255 Vitest tests, including Jobs run groups, the FIFO runner, server job round trips, notices, and run-group save migration; earlier: 224 Vitest tests: domain/views/agent, appearance contrast, spatial helpers, fixtures and service conditions, plus catalog migration/validation, explicit sessions, shared lifecycle guards, mutation fencing, project tool parity, and queued-agent resets |
 | `npm run test:e2e` | 68 Playwright tests in Edge with 4 local workers and axe; default 1280x800, plus lifecycle appearance captures at 1600x1000 and 900x700 (no serious or critical violations allowed) |
 | `npm run typecheck`, `npm run lint`, `npm run format:check` | Must be clean before committing |
 
 End-to-end specs:
 
 - `e2e/project-lifecycle.spec.ts`: start, named creation/validation, multi-project save/open/recent, equal names, draft and job guards, failed Save, malformed storage, held-request recovery, all six appearances at three sizes, axe, keyboard focus, and reproducible screenshots in `tmp/`.
+- `e2e/jobs.spec.ts`: partial preprocessing failure with held results, notice to job, failed-item retry and publication, Workflow Retry, changed-input refusal, cancelled stall with fresh run only, keyboard list/detail and filters, notice focus, all six appearances with axe, and a 900 px layout.
 - `e2e/smoke.spec.ts`: renders with no serious or critical axe violations.
 - `e2e/workbench.spec.ts`: shell regions, no visible Working labels, the Run split button and menu, placing pages side by side and moving tabs from the palette, background task progress, explained blocked actions, palette and panel shortcuts, undo, save and layout persistence across reloads, narrow-window overlays, reset layout.
 - `e2e/pages.spec.ts`: Assets provenance, Creator validation and creation, Roadmap focus and custom stage insertion.
@@ -279,6 +297,7 @@ Behavior promised by the plan or decisions but not built yet:
 
 - **Mock server (decisions 0023/0024):** it restarts with every page load and shows the start screen; browser unload prompts protect unsaved work but cannot finish asynchronous saves. It serves one tab with no coordination between writers. Catalog corruption blocks saving until it is resolved/retried rather than erasing stored projects. While offline, missed updates are caught up as one snapshot without listing the operations between. Layout, view, and appearance changes stay in the UI; only drafts can be undone. Open is a browser-local catalog, with real folder pickers/import/export deferred.
 
+- **Jobs:** only geospatial preprocessing has item-level work; other stages are whole-stage jobs. Notices show the newest only and are not saved. Job history is saved in full (logs included), with no pruning yet.
 - **Agent (stage 4):** scripted sessions only. Free text starts a session only when it matches a session's keywords, and otherwise the agent says so. Transcripts, view state, and added charts are not saved with the project, and a stage failure during an approved run ends the session. See [stage 4 status](first-slice-proposal.md#stage-4-scripted-agent-2026-09-15).
 - **Design alignment:** the six-appearance reading of the palette answer is unconfirmed, axe runs in non-Light appearances on the default workbench only, the context mode resets on reload, and Inspection is read-only. See [remaining gaps](design-alignment.md#remaining-gaps).
 - **Keyboard docking:** the command palette splits the active tab and moves it to the next tab group; there is no keyboard way to pick a specific target group or side.

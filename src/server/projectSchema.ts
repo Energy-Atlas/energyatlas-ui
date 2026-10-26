@@ -271,14 +271,29 @@ export const projectStateSchema: z.ZodType<WorkbenchState, unknown> = z
     references(state.buildingIds, state.buildings)
     references(state.taskIds, state.tasks)
     references(state.runGroupIds, state.runGroups)
+    if (Object.keys(state.runGroups).length !== state.runGroupIds.length)
+      fail('A run group is missing from the saved index.')
     for (const group of Object.values(state.runGroups)) {
       references(group.attemptIds, state.tasks)
       if (!(group.stageId in state.workflow.stages))
         fail('A run group stage is missing.')
+      if (group.status === 'open' && group.attemptIds.length === 0)
+        fail('An open run group has no attempts.')
+      for (const attemptId of group.attemptIds) {
+        const attempt = state.tasks[attemptId]
+        if (
+          attempt &&
+          (attempt.groupId !== group.id || attempt.stageId !== group.stageId)
+        )
+          fail('A run group lists a job of another run.')
+      }
     }
     for (const task of Object.values(state.tasks)) {
-      if (task.groupId !== null && !(task.groupId in state.runGroups))
+      const group = task.groupId ? state.runGroups[task.groupId] : undefined
+      if (task.groupId !== null && !group)
         fail('A job refers to a missing run group.')
+      if (group && !group.attemptIds.includes(task.id))
+        fail('A run group does not list one of its jobs.')
       if (task.items && task.items.processed > task.items.ids.length)
         fail('A job processed more items than it has.')
     }

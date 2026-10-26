@@ -1,5 +1,6 @@
 import { ProgressBar } from 'react-aria-components'
 import {
+  discardNote,
   groupOf,
   itemCounts,
   signatureMismatch,
@@ -83,7 +84,7 @@ export function JobDetail({
           {retryLabel(state, task)}
         </ActionButton>
         <ActionButton
-          label={`Fresh run of ${stageName}`}
+          label={`Fresh run of ${stageName}${discardNote(state, task.stageId)}`}
           disabledReason={freshRunBlocker(state, task, pending)}
           onPress={() => void freshRunAndSelect(services, task.stageId)}
         >
