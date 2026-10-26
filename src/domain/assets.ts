@@ -181,6 +181,15 @@ export function upsertAsset(state: WorkbenchState, input: AssetInput): void {
   }
 }
 
+/** Removes a derived asset and its link from its parent; children are not expected. */
+export function removeAsset(state: WorkbenchState, assetId: string): void {
+  const asset = state.assets[assetId]
+  if (!asset) return
+  const parent = asset.parentId ? state.assets[asset.parentId] : undefined
+  if (parent) parent.childIds = parent.childIds.filter((id) => id !== assetId)
+  delete state.assets[assetId]
+}
+
 /** Ancestors from the root down to the asset itself, for breadcrumbs. */
 export function assetPath(state: WorkbenchState, assetId: string): Asset[] {
   const path: Asset[] = []

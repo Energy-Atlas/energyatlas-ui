@@ -83,6 +83,10 @@ const heldAssignment = z.object({
   kind: z.literal('assignment'),
   archetypeId: id.nullable(),
 })
+const heldScenario = z.object({
+  kind: z.literal('scenarioResult'),
+  result,
+})
 const heldPreprocessing = z.object({
   heightM: number,
   floorAreaM2: number,
@@ -143,7 +147,9 @@ const runGroup = z.object({
   }),
   fusion: z.object({ datasetId: id, mapping }).nullable().default(null),
   attemptIds: ids,
-  held: record(z.union([heldFusion, heldAssignment, heldPreprocessing])),
+  held: record(
+    z.union([heldFusion, heldAssignment, heldScenario, heldPreprocessing]),
+  ),
   status: z.enum([
     'open',
     'published',
@@ -244,10 +250,20 @@ export const projectStateSchema: z.ZodType<WorkbenchState, unknown> = z
           'school',
           'mixed',
         ]),
+        source: definitionSource.default({
+          kind: 'project',
+          operationId: 'saved-before-library',
+        }),
       }),
     ),
     scenarios: record(
-      z.object({ id, name: text, measureIds: ids, adoptionPercent: number }),
+      z.object({
+        id,
+        name: text,
+        measureIds: ids,
+        adoptionPercent: number,
+        included: z.boolean().default(true),
+      }),
     ),
     results: z.object({
       baseline: result.nullable(),

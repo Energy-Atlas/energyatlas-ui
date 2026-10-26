@@ -1,4 +1,4 @@
-import { GROUP, upsertAsset } from './assets.ts'
+import { GROUP, removeAsset, upsertAsset } from './assets.ts'
 import { addedBuildings, applySourceRecords } from './intake/fusion.ts'
 import backBayBuildings from './fixtures/back-bay-buildings.geo.json'
 import type {
@@ -8,6 +8,7 @@ import type {
   GridElement,
   HeldAssignmentOutput,
   HeldPreprocessingOutput,
+  HeldScenarioOutput,
   LngLat,
   Provenance,
   ResultSet,
@@ -659,6 +660,13 @@ function confirmScenarioDefinitions(state: WorkbenchState): StageRunResult {
         'Define at least one scenario before confirming definitions. Open Creator to add a measure and a scenario.',
     }
   }
+  if (!scenarios.some((scenario) => scenario.included)) {
+    return {
+      ok: false,
+      message:
+        'Include at least one scenario in the comparison set. Open Creator to include one.',
+    }
+  }
   const warnings = usesPvWithoutYield(state)
     ? [
         'PV measures will have no effect because shading and PV yield were not estimated.',
@@ -722,8 +730,28 @@ export function computeScenarioResult(
   )
 }
 
-function modelScenarios(
+/** Why held scenario results cannot be published together, or null. */
+export function validateScenarioResults(
   state: WorkbenchState,
+  membership: string[],
+  held: Record<string, HeldScenarioOutput>,
+): string | null {
+  if (!state.results.baseline) return 'there are no baseline results'
+  for (const id of membership) {
+    if (!state.scenarios[id]) return `scenario ${id} no longer exists`
+    if (!held[id]) return `scenario ${id} has no held result`
+  }
+  return null
+}
+
+/**
+ * Publishes a requested comparison set at once: the modeled scenarios replace
+ * the earlier set, and results of scenarios left out of it are withdrawn.
+ */
+export function publishScenarioResults(
+  state: WorkbenchState,
+  membership: string[],
+  held: Record<string, HeldScenarioOutput>,
   context: StageRunContext,
 ): StageRunResult {
   const baseline = state.results.baseline
@@ -733,37 +761,36 @@ function modelScenarios(
       message: 'No baseline results. Run "Baseline model setup".',
     }
   }
-  const scenarios = Object.values(state.scenarios)
-  if (scenarios.length === 0) {
-    return { ok: false, message: 'No scenarios are defined.' }
-  }
   const provenance = fromStage(STAGE_IDS.scenarioModeling, context)
+  for (const id of Object.keys(state.results.scenarios)) {
+    if (!membership.includes(id)) removeAsset(state, `asset:result-${id}`)
+  }
   state.results.scenarios = {}
   let bestReduction = 0
-  for (const scenario of scenarios) {
-    const result = computeScenarioResult(state, scenario, {
-      runId: context.runId,
-    })
-    if (!result) continue
-    state.results.scenarios[scenario.id] = result
+  for (const id of membership) {
+    const scenario = state.scenarios[id]
+    const output = held[id]
+    if (!scenario || !output) continue
+    const result = { ...output.result, runId: context.runId }
+    state.results.scenarios[id] = result
     bestReduction = Math.max(
       bestReduction,
       1 - result.totalKwh / baseline.totalKwh,
     )
     upsertAsset(state, {
-      id: `asset:result-${scenario.id}`,
+      id: `asset:result-${id}`,
       kind: 'energyResult',
       name: `${scenario.name} results`,
       parentId: GROUP.energyResults,
       provenance,
       capability: 'dashboard.comparison',
       summary: `${megawattHours(result.totalKwh)}/yr (synthetic)`,
-      entityIds: [scenario.id],
+      entityIds: [id],
     })
   }
   return {
     ok: true,
-    summary: `Modeled ${scenarios.length} scenario(s); largest reduction ${round(bestReduction * 100, 1)}%.`,
+    summary: `Modeled ${membership.length} scenario(s) as one comparison set; largest reduction ${round(bestReduction * 100, 1)}%.`,
     warnings: usesPvWithoutYield(state)
       ? ['PV measures had no effect because PV yield was not estimated.']
       : [],
@@ -1002,7 +1029,6 @@ const STAGE_RUNNERS: Record<
   [STAGE_IDS.shading]: estimateShadingAndPv,
   [STAGE_IDS.baseline]: setUpBaseline,
   [STAGE_IDS.scenarioDefinitions]: confirmScenarioDefinitions,
-  [STAGE_IDS.scenarioModeling]: modelScenarios,
   [STAGE_IDS.gridDefinitions]: defineGrid,
   [STAGE_IDS.gridModeling]: modelGrid,
   [STAGE_IDS.dashboard]: assembleDashboard,

@@ -3,6 +3,8 @@ import { GROUP, upsertAsset } from './assets.ts'
 import { matchArchetype, missingDefaults } from './archetypes/assignment.ts'
 import { ARCHETYPE_LIBRARY, SCHEDULE_LIBRARY } from './archetypes/library.ts'
 import { findDataset } from './intake/datasets.ts'
+import { compositionConflict } from './scenarios/comparison.ts'
+import { MEASURE_LIBRARY } from './scenarios/library.ts'
 import {
   fusionSubmitBlocker,
   prepareDataset,
@@ -20,10 +22,13 @@ import {
   signatureMismatch,
 } from './jobs/runGroups.ts'
 import {
+  computeScenarioResult,
   preprocessBuilding,
   publishAssignment,
   publishPreprocessing,
+  publishScenarioResults,
   validateAssignment,
+  validateScenarioResults,
   runSimulatedStage,
   validatePreprocessing,
   type StageRunResult,
@@ -38,8 +43,11 @@ import type {
   HeldAssignmentOutput,
   HeldFusionOutput,
   HeldOutput,
+  HeldScenarioOutput,
+  Measure,
   HeldPreprocessingOutput,
   RunGroup,
+  Scenario,
   StageRecord,
   Task,
   WorkbenchState,
@@ -167,6 +175,11 @@ function itemInputBlocker(
   stageId: string,
 ): string | null {
   if (stageId === STAGE_IDS.archetypes) return definitionsBlocker(state)
+  if (stageId === STAGE_IDS.scenarioModeling) {
+    return Object.values(state.scenarios).some((scenario) => scenario.included)
+      ? null
+      : 'Include at least one scenario in the comparison set. Open Creator to include one.'
+  }
   if (stageId !== STAGE_IDS.preprocessing) return null
   const missing = state.buildingIds.filter(
     (id) => (state.buildings[id]?.floors ?? null) === null,
@@ -243,12 +256,29 @@ const isFusionOutput = (output: HeldOutput) =>
 const isAssignmentOutput = (output: HeldOutput) =>
   'kind' in output && output.kind === 'assignment'
 
+const isScenarioOutput = (output: HeldOutput) =>
+  'kind' in output && output.kind === 'scenarioResult'
+
 /** One building's held item output for an item stage, or why it has none. */
 function stageItem(
   state: WorkbenchState,
   stageId: string,
   buildingId: string,
 ): { output: HeldOutput | null; missing: string | null } {
+  if (stageId === STAGE_IDS.scenarioModeling) {
+    const scenario = state.scenarios[buildingId]
+    const result = scenario
+      ? computeScenarioResult(state, scenario, { runId: 'held' })
+      : null
+    return result
+      ? { output: { kind: 'scenarioResult', result }, missing: null }
+      : {
+          output: null,
+          missing: scenario
+            ? 'There are no baseline results to model against.'
+            : 'The scenario no longer exists.',
+        }
+  }
   const building = state.buildings[buildingId]
   if (!building) {
     return { output: null, missing: 'The building no longer exists.' }
@@ -424,6 +454,120 @@ const buildingUseSchema = z.enum([
   'school',
   'mixed',
 ])
+
+const measureInputSchema = z.object({
+  name: nameSchema,
+  kind: z.enum(['envelope', 'heating', 'lighting', 'pv']),
+  savingsPercent: z
+    .number({ error: 'Enter savings as a number.' })
+    .min(0, 'Savings cannot be negative.')
+    .max(60, 'Savings must be at most 60%.'),
+  appliesTo: z.enum([...buildingUseSchema.options, 'all']),
+})
+
+const scenarioInputSchema = z.object({
+  name: nameSchema,
+  measureIds: z.array(z.string().min(1)).min(1, 'Choose at least one measure.'),
+  adoptionPercent: z
+    .number({ error: 'Enter adoption as a number.' })
+    .min(0, 'Adoption cannot be negative.')
+    .max(100, 'Adoption must be at most 100%.'),
+  included: z.boolean().default(true),
+})
+
+/** A measure input's problem, or null; `id` is the measure being changed. */
+function measureIssue(
+  state: WorkbenchState,
+  input: z.output<typeof measureInputSchema>,
+  id: string | null,
+): CommandOutcome | null {
+  const others = Object.values(state.measures).filter(
+    (measure) => measure.id !== id,
+  )
+  if (!uniqueName(others, input.name)) {
+    return rejected(`A measure named "${input.name}" already exists.`, 'name')
+  }
+  if (input.kind === 'pv' && input.savingsPercent !== 0) {
+    return rejected(
+      'PV measures use estimated PV yield; set savings to 0%.',
+      'savingsPercent',
+    )
+  }
+  return null
+}
+
+/** A scenario input's problem, or null; `id` is the scenario being changed. */
+function scenarioIssue(
+  state: WorkbenchState,
+  input: z.output<typeof scenarioInputSchema>,
+  id: string | null,
+): CommandOutcome | null {
+  const others = Object.values(state.scenarios).filter(
+    (scenario) => scenario.id !== id,
+  )
+  if (!uniqueName(others, input.name)) {
+    return rejected(`A scenario named "${input.name}" already exists.`, 'name')
+  }
+  const unknown = input.measureIds.filter(
+    (measureId) => !state.measures[measureId],
+  )
+  if (unknown.length > 0) {
+    return rejected(`Unknown measure(s): ${unknown.join(', ')}.`, 'measureIds')
+  }
+  const conflict = compositionConflict(state.measures, input.measureIds)
+  return conflict ? rejected(conflict, 'measureIds') : null
+}
+
+function upsertMeasureAsset(
+  state: WorkbenchState,
+  measure: Measure,
+  context: CommandContext,
+) {
+  upsertAsset(state, {
+    id: `asset:${measure.id}`,
+    kind: 'measure',
+    name: measure.name,
+    parentId: GROUP.measures,
+    provenance: {
+      kind: 'operation',
+      source: context.source,
+      operationId: context.operationId,
+    },
+    capability: 'creator.measure',
+    summary:
+      measure.kind === 'pv'
+        ? `PV from estimated yield; applies to ${measure.appliesTo}`
+        : `${measure.kind}, ${measure.savingsPercent}% savings; applies to ${measure.appliesTo}`,
+    entityIds: [measure.id],
+  })
+}
+
+function upsertScenarioAsset(
+  state: WorkbenchState,
+  scenario: Scenario,
+  context: CommandContext,
+) {
+  upsertAsset(state, {
+    id: `asset:${scenario.id}`,
+    kind: 'scenario',
+    name: scenario.name,
+    parentId: GROUP.scenarios,
+    provenance: {
+      kind: 'operation',
+      source: context.source,
+      operationId: context.operationId,
+    },
+    capability: 'creator.scenario',
+    summary: `${scenario.measureIds.length} measure(s) at ${scenario.adoptionPercent}% adoption${scenario.included ? '' : '; left out of the comparison'}`,
+    entityIds: [scenario.id, ...scenario.measureIds],
+  })
+}
+
+/** Bumps the inputs Scenario definitions owns, so definitions and results become outdated. */
+function touchScenarioInputs(state: WorkbenchState) {
+  const definitions = state.workflow.stages[STAGE_IDS.scenarioDefinitions]
+  if (definitions) definitions.editRevision = nextRevision(state)
+}
 
 function pendingKey(entityId: string, field: EditableBuildingField): string {
   return `${entityId}:${field}`
@@ -1059,18 +1203,23 @@ export const commandDefinitions = {
           group,
           isAssignmentOutput,
         )
+        const scenarioHeld = heldOf<HeldScenarioOutput>(group, isScenarioOutput)
         const preprocessingHeld = heldOf<HeldPreprocessingOutput>(
           group,
-          (output) => !isFusionOutput(output) && !isAssignmentOutput(output),
+          (output) => !('kind' in output),
         )
         const isAssignment = group.stageId === STAGE_IDS.archetypes && !isFusion
+        const isScenarioSet =
+          group.stageId === STAGE_IDS.scenarioModeling && !isFusion
         const invalid =
           failPublication ??
           (isFusion
             ? validateFusion(state, membership, fusionHeld)
             : isAssignment
               ? validateAssignment(state, membership, assignmentHeld)
-              : validatePreprocessing(state, membership, preprocessingHeld))
+              : isScenarioSet
+                ? validateScenarioResults(state, membership, scenarioHeld)
+                : validatePreprocessing(state, membership, preprocessingHeld))
         if (invalid) {
           group.statusReason = `Publication failed: ${invalid}`
           const message = `Publication failed: ${invalid}. All ${membership.length} results stay held; retry publication once the cause is resolved.`
@@ -1117,12 +1266,19 @@ export const commandDefinitions = {
         }
         result = isAssignment
           ? publishAssignment(state, membership, assignmentHeld, runContext)
-          : publishPreprocessing(
-              state,
-              membership,
-              preprocessingHeld,
-              runContext,
-            )
+          : isScenarioSet
+            ? publishScenarioResults(
+                state,
+                membership,
+                scenarioHeld,
+                runContext,
+              )
+            : publishPreprocessing(
+                state,
+                membership,
+                preprocessingHeld,
+                runContext,
+              )
       } else {
         result = runSimulatedStage(state, stage.id, {
           runId: task.runId,
@@ -1392,110 +1548,140 @@ export const commandDefinitions = {
     title: 'Create measure',
     description:
       'Create a retrofit measure. PV measures use estimated PV yield instead of a savings percentage.',
-    input: z.object({
-      name: nameSchema,
-      kind: z.enum(['envelope', 'heating', 'lighting', 'pv']),
-      savingsPercent: z
-        .number()
-        .min(0, 'Savings cannot be negative.')
-        .max(60, 'Savings must be at most 60%.'),
-      appliesTo: z.enum([...buildingUseSchema.options, 'all']),
-    }),
+    input: measureInputSchema,
     undoable: true,
     run(state, input, context) {
-      if (!uniqueName(Object.values(state.measures), input.name)) {
-        return rejected(
-          `A measure named "${input.name}" already exists.`,
-          'name',
-        )
+      const invalid = measureIssue(state, input, null)
+      if (invalid) return invalid
+      const id = allocateId(state, 'measure')
+      state.measures[id] = {
+        id,
+        ...input,
+        source: { kind: 'project', operationId: context.operationId },
       }
-      if (input.kind === 'pv' && input.savingsPercent !== 0) {
+      upsertMeasureAsset(state, state.measures[id], context)
+      touchScenarioInputs(state)
+      return applied(`Created measure "${input.name}".`)
+    },
+  }),
+
+  'measure.update': defineCommand({
+    title: 'Change measure',
+    description:
+      'Change a measure by id: name, kind, savings, and the building use it applies to. Scenario definitions and results become outdated. A change that would give a scenario two measures of one kind is rejected.',
+    input: measureInputSchema.extend({
+      id: z.string().min(1, 'Choose a measure.'),
+    }),
+    undoable: true,
+    run(state, { id, ...input }, context) {
+      const existing = state.measures[id]
+      if (!existing) return rejected(`Unknown measure "${id}".`, 'id')
+      const invalid = measureIssue(state, input, id)
+      if (invalid) return invalid
+      const next = { ...state.measures, [id]: { ...existing, ...input } }
+      for (const scenario of Object.values(state.scenarios)) {
+        if (!scenario.measureIds.includes(id)) continue
+        const conflict = compositionConflict(next, scenario.measureIds)
+        if (conflict) {
+          return rejected(`In "${scenario.name}": ${conflict}`, 'kind')
+        }
+      }
+      state.measures[id] = {
+        ...existing,
+        ...input,
+        source: editedSource(existing.source, context.operationId),
+      }
+      upsertMeasureAsset(state, state.measures[id], context)
+      touchScenarioInputs(state)
+      return applied(`Changed measure "${input.name}".`)
+    },
+  }),
+
+  'measure.addFromLibrary': defineCommand({
+    title: 'Add measure from library',
+    description:
+      'Copy a measure from the synthetic measure library into the project, keeping its library provenance.',
+    input: z.object({
+      libraryId: z.string().min(1, 'Choose a library measure.'),
+    }),
+    undoable: true,
+    run(state, { libraryId }, context) {
+      const entry = MEASURE_LIBRARY.find(
+        (candidate) => candidate.libraryId === libraryId,
+      )
+      if (!entry) {
+        return rejected(`Unknown library measure "${libraryId}".`, 'libraryId')
+      }
+      if (!uniqueName(Object.values(state.measures), entry.name)) {
         return rejected(
-          'PV measures use estimated PV yield; set savings to 0%.',
-          'savingsPercent',
+          `A measure named "${entry.name}" already exists.`,
+          'libraryId',
         )
       }
       const id = allocateId(state, 'measure')
-      state.measures[id] = { id, ...input }
-      upsertAsset(state, {
-        id: `asset:${id}`,
-        kind: 'measure',
-        name: input.name,
-        parentId: GROUP.measures,
-        provenance: {
-          kind: 'operation',
-          source: context.source,
-          operationId: context.operationId,
-        },
-        capability: 'creator.measure',
-        summary:
-          input.kind === 'pv'
-            ? `PV from estimated yield; applies to ${input.appliesTo}`
-            : `${input.kind}, ${input.savingsPercent}% savings; applies to ${input.appliesTo}`,
-        entityIds: [id],
-      })
-      const definitions = state.workflow.stages[STAGE_IDS.scenarioDefinitions]
-      if (definitions) definitions.editRevision = nextRevision(state)
-      return applied(`Created measure "${input.name}".`)
+      state.measures[id] = {
+        id,
+        name: entry.name,
+        kind: entry.kind,
+        savingsPercent: entry.savingsPercent,
+        appliesTo: entry.appliesTo,
+        source: { kind: 'library', libraryId: entry.libraryId },
+      }
+      upsertMeasureAsset(state, state.measures[id], context)
+      touchScenarioInputs(state)
+      return applied(`Added "${entry.name}" from the synthetic library.`)
     },
   }),
 
   'scenario.create': defineCommand({
     title: 'Create scenario',
     description:
-      'Create a scenario from existing measures and an adoption rate.',
-    input: z.object({
-      name: nameSchema,
-      measureIds: z
-        .array(z.string().min(1))
-        .min(1, 'Choose at least one measure.'),
-      adoptionPercent: z
-        .number()
-        .min(0, 'Adoption cannot be negative.')
-        .max(100, 'Adoption must be at most 100%.'),
-    }),
+      'Create a scenario from existing measures (at most one of each kind) and an adoption rate. New scenarios are included in the comparison set.',
+    input: scenarioInputSchema,
     undoable: true,
     run(state, input, context) {
-      if (!uniqueName(Object.values(state.scenarios), input.name)) {
-        return rejected(
-          `A scenario named "${input.name}" already exists.`,
-          'name',
-        )
-      }
-      const unknown = input.measureIds.filter((id) => !state.measures[id])
-      if (unknown.length > 0) {
-        return rejected(
-          `Unknown measure(s): ${unknown.join(', ')}.`,
-          'measureIds',
-        )
-      }
+      const invalid = scenarioIssue(state, input, null)
+      if (invalid) return invalid
       const id = allocateId(state, 'scenario')
-      const measureIds = [...new Set(input.measureIds)]
       state.scenarios[id] = {
         id,
         name: input.name,
-        measureIds,
+        measureIds: [...new Set(input.measureIds)],
         adoptionPercent: input.adoptionPercent,
+        included: input.included,
       }
-      upsertAsset(state, {
-        id: `asset:${id}`,
-        kind: 'scenario',
-        name: input.name,
-        parentId: GROUP.scenarios,
-        provenance: {
-          kind: 'operation',
-          source: context.source,
-          operationId: context.operationId,
-        },
-        capability: 'creator.scenario',
-        summary: `${measureIds.length} measure(s) at ${input.adoptionPercent}% adoption`,
-        entityIds: [id, ...measureIds],
-      })
-      const definitions = state.workflow.stages[STAGE_IDS.scenarioDefinitions]
-      if (definitions) definitions.editRevision = nextRevision(state)
+      upsertScenarioAsset(state, state.scenarios[id], context)
+      touchScenarioInputs(state)
       return applied(`Created scenario "${input.name}".`)
     },
   }),
+
+  'scenario.update': defineCommand({
+    title: 'Change scenario',
+    description:
+      'Change a scenario by id: name, measures (at most one of each kind), adoption, and whether Scenario modeling includes it in the comparison set. Scenario definitions and results become outdated.',
+    input: scenarioInputSchema.extend({
+      id: z.string().min(1, 'Choose a scenario.'),
+    }),
+    undoable: true,
+    run(state, { id, ...input }, context) {
+      const existing = state.scenarios[id]
+      if (!existing) return rejected(`Unknown scenario "${id}".`, 'id')
+      const invalid = scenarioIssue(state, input, id)
+      if (invalid) return invalid
+      state.scenarios[id] = {
+        id,
+        name: input.name,
+        measureIds: [...new Set(input.measureIds)],
+        adoptionPercent: input.adoptionPercent,
+        included: input.included,
+      }
+      upsertScenarioAsset(state, state.scenarios[id], context)
+      touchScenarioInputs(state)
+      return applied(`Changed scenario "${input.name}".`)
+    },
+  }),
+
   'scenario.setAdoption': defineCommand({
     title: 'Set scenario adoption',
     description:

@@ -1,6 +1,10 @@
 import { useState } from 'react'
 import { sourceKey } from '../../../domain/intake/fusion.ts'
-import { groupOf, itemNoun } from '../../../domain/jobs/runGroups.ts'
+import {
+  BUILDING_ITEM_STAGES,
+  groupOf,
+  itemNoun,
+} from '../../../domain/jobs/runGroups.ts'
 import type { Task, WorkbenchState } from '../../../domain/types.ts'
 import { useServices } from '../../WorkbenchContext.tsx'
 import componentStyles from '../../components/components.module.css'
@@ -33,7 +37,9 @@ export function JobItems({
       if (ref) bySource.set(sourceKey(ref), id)
     }
   }
-  const buildingOf = (id: string) => (fusion ? (bySource.get(id) ?? null) : id)
+  const buildings = group ? BUILDING_ITEM_STAGES.has(group.stageId) : false
+  const buildingOf = (id: string) =>
+    fusion ? (bySource.get(id) ?? null) : buildings ? id : null
   const selectable = failures.flatMap(([id]) => {
     const building = buildingOf(id)
     return building ? [building] : []
@@ -69,7 +75,9 @@ export function JobItems({
       <table className={componentStyles.table} aria-label={title}>
         <thead>
           <tr>
-            <th scope="col">{fusion ? 'Source ID' : 'Building'}</th>
+            <th scope="col">
+              {fusion ? 'Source ID' : buildings ? 'Building' : 'Item'}
+            </th>
             <th scope="col">Reason</th>
             <th scope="col">
               <span className="visually-hidden">Actions</span>

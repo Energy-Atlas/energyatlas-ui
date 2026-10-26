@@ -98,6 +98,7 @@ export type Measure = {
   kind: MeasureKind
   savingsPercent: number
   appliesTo: BuildingUse | 'all'
+  source: DefinitionSource
 }
 
 export type Scenario = {
@@ -105,6 +106,8 @@ export type Scenario = {
   name: string
   measureIds: string[]
   adoptionPercent: number
+  /** Whether Scenario modeling includes it in the requested comparison set. */
+  included: boolean
 }
 
 export type ResultSet = {
@@ -279,8 +282,17 @@ export type HeldAssignmentOutput = {
   archetypeId: string | null
 }
 
+/** One scenario's held result, published with the whole comparison set. */
+export type HeldScenarioOutput = {
+  kind: 'scenarioResult'
+  result: ResultSet
+}
+
 export type HeldOutput =
-  HeldPreprocessingOutput | HeldFusionOutput | HeldAssignmentOutput
+  | HeldPreprocessingOutput
+  | HeldFusionOutput
+  | HeldAssignmentOutput
+  | HeldScenarioOutput
 
 /** Dataset field name to model field, or null to ignore the field. */
 export type FieldMapping = Record<string, TargetField | null>

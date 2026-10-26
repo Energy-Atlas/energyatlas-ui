@@ -51,6 +51,7 @@ const modeled: Partial<WorkbenchState> = {
       name: 'Half retrofitted',
       measureIds: ['measure-1'],
       adoptionPercent: 50,
+      included: true,
     },
   },
   results: {

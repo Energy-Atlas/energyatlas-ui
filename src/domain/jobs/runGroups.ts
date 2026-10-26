@@ -20,6 +20,13 @@ import { STAGE_IDS, stageRunBlocker, upstreamIds } from '../workflow.ts'
 export const ITEM_STAGES: ReadonlySet<string> = new Set([
   STAGE_IDS.preprocessing,
   STAGE_IDS.archetypes,
+  STAGE_IDS.scenarioModeling,
+])
+
+/** Item stages whose items are buildings, which can be selected on the map and table. */
+export const BUILDING_ITEM_STAGES: ReadonlySet<string> = new Set([
+  STAGE_IDS.preprocessing,
+  STAGE_IDS.archetypes,
 ])
 
 export function isItemStage(stageId: string): boolean {
@@ -58,6 +65,12 @@ export function currentMembership(
   state: WorkbenchState,
   stageId: string,
 ): string[] {
+  if (stageId === STAGE_IDS.scenarioModeling) {
+    // The requested comparison set: included scenarios, in creation order.
+    return Object.values(state.scenarios)
+      .filter((scenario) => scenario.included)
+      .map((scenario) => scenario.id)
+  }
   return isItemStage(stageId) ? [...state.buildingIds] : []
 }
 
@@ -226,7 +239,7 @@ export function retryBlocker(
 export function retryScope(group: RunGroup): string {
   if (!isItemGroup(group)) return 'Retry the whole run'
   const outstanding = outstandingItems(group).length
-  const noun = group.kind === 'fusion' ? 'record' : 'item'
+  const noun = itemNoun(group, 1)
   return outstanding === 0
     ? 'Retry publication of held results'
     : `Retry ${outstanding} failed ${noun}${outstanding === 1 ? '' : 's'}`
@@ -285,9 +298,14 @@ export function discardNote(
 
 /** What a job's items are called: fusion records or building items. */
 export function itemNoun(
-  group: Pick<RunGroup, 'kind'> | null,
+  group: Pick<RunGroup, 'kind' | 'stageId'> | null,
   count = 2,
 ): string {
-  const noun = group?.kind === 'fusion' ? 'record' : 'item'
+  const noun =
+    group?.kind === 'fusion'
+      ? 'record'
+      : group?.stageId === STAGE_IDS.scenarioModeling
+        ? 'scenario'
+        : 'item'
   return count === 1 ? noun : `${noun}s`
 }
