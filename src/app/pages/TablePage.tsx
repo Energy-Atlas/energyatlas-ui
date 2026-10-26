@@ -30,6 +30,7 @@ import { ActionButton } from '../components/ActionButton.tsx'
 import { CapabilityBadge } from '../components/CapabilityBadge.tsx'
 import { EmptyState } from '../components/EmptyState.tsx'
 import formStyles from '../components/forms.module.css'
+import { usePendingReason } from '../service/usePendingReason.ts'
 import { workbenchColumnDefaults, workbenchGridTheme } from '../grid/agGrid.ts'
 import styles from './table.module.css'
 
@@ -145,7 +146,11 @@ export function TablePage() {
 }
 
 function BuildingsTable() {
-  const { workbench, view } = useServices()
+  const { workbench, client, view } = useServices()
+  const applying = usePendingReason(
+    'edits.apply',
+    'the edits are being applied',
+  )
   const buildings = useWorkbenchSnapshot((snapshot) => snapshot.state.buildings)
   const buildingIds = useWorkbenchSnapshot(
     (snapshot) => snapshot.state.buildingIds,
@@ -318,11 +323,24 @@ function BuildingsTable() {
           label="Apply pending edits"
           variant="primary"
           disabledReason={
-            pendingCount > 0 ? null : 'There are no pending edits.'
+            pendingCount > 0 ? applying : 'There are no pending edits.'
           }
           onPress={() => {
-            workbench.execute({ type: 'edits.apply', input: {} })
             setEditError(null)
+            void client
+              .execute({
+                type: 'edits.apply',
+                input: {},
+              })
+              .then((result) => {
+                if (result.outcome.status === 'rejected') {
+                  setEditError(
+                    result.outcome.issues
+                      .map((issue) => issue.message)
+                      .join(' '),
+                  )
+                }
+              })
           }}
         >
           Apply
@@ -330,7 +348,7 @@ function BuildingsTable() {
         <ActionButton
           label="Discard pending edits"
           disabledReason={
-            pendingCount > 0 ? null : 'There are no pending edits.'
+            pendingCount > 0 ? applying : 'There are no pending edits.'
           }
           onPress={() => {
             workbench.execute({ type: 'edits.discard', input: {} })

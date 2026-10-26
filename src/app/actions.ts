@@ -5,6 +5,7 @@ import {
   Command,
   FilePlus,
   FolderTree,
+  FlaskConical,
   Info,
   ListChecks,
   LogOut,
@@ -32,13 +33,13 @@ import { capabilities } from '../domain/capabilities.ts'
 import { stageRunBlocker } from '../domain/workflow.ts'
 import { APPEARANCE_LIST } from './appearance/appearances.ts'
 import {
+  useClientSnapshot,
   useLayoutVersion,
   useServices,
   useStageStates,
   useWorkbenchSnapshot,
 } from './WorkbenchContext.tsx'
 import { DEFAULT_PAGES, PAGES, type PageId } from './layout/layoutController.ts'
-import { saveProject } from './persistence.ts'
 
 // One registry of app actions drives the ribbon menus, quick buttons, command
 // palette, and keyboard shortcuts, so they cannot drift apart. A disabled or
@@ -85,6 +86,7 @@ export type ShellDialogs = {
   openShortcuts: () => void
   openCapabilities: () => void
   openNewProject: () => void
+  openDemoConditions: () => void
 }
 
 const PAGE_SHORTCUTS: Partial<Record<PageId, string>> = Object.fromEntries(
@@ -94,6 +96,7 @@ const PAGE_SHORTCUTS: Partial<Record<PageId, string>> = Object.fromEntries(
 export function useAppActions(dialogs: ShellDialogs): AppAction[] {
   const {
     workbench,
+    client,
     layout,
     storage,
     appearancePreference,
@@ -101,6 +104,7 @@ export function useAppActions(dialogs: ShellDialogs): AppAction[] {
     showInspection,
   } = useServices()
   const snapshot = useWorkbenchSnapshot((current) => current)
+  const pending = useClientSnapshot((current) => current.pending)
   const stageStates = useStageStates()
   const layoutVersion = useLayoutVersion()
 
@@ -121,6 +125,11 @@ export function useAppActions(dialogs: ShellDialogs): AppAction[] {
     })
     const fullScreenAvailable =
       typeof document !== 'undefined' && document.fullscreenEnabled
+    /** Why a request of this type must wait for the previous one, or null. */
+    const awaiting = (type: string, what: string): string | null =>
+      pending.some((request) => request.type === type)
+        ? `Waiting for the server to answer: ${what}.`
+        : null
 
     const actions: AppAction[] = [
       {
@@ -131,25 +140,10 @@ export function useAppActions(dialogs: ShellDialogs): AppAction[] {
         shortcut: 'Ctrl+S',
         allowInEditable: true,
         disabledReason: storage
-          ? null
+          ? awaiting('project.save', 'the project is being saved')
           : 'Browser storage is unavailable, so the project cannot be saved here.',
         perform: () => {
-          const result = saveProject(storage, workbench.getState(), new Date())
-          if (result.ok) {
-            workbench.record({
-              type: 'project.save',
-              title: 'Save project',
-              summary: `Saved the project in this browser at ${new Date(result.savedAt).toLocaleTimeString()}.`,
-            })
-          } else {
-            workbench.record({
-              type: 'project.save',
-              title: 'Save project',
-              status: 'rejected',
-              summary: '',
-              issues: [{ path: '', message: result.message }],
-            })
-          }
+          void client.save()
         },
       },
       {
@@ -187,18 +181,24 @@ export function useAppActions(dialogs: ShellDialogs): AppAction[] {
         id: 'edit.applyEdits',
         label: `Apply pending edits (${pendingCount})`,
         group: 'Edit',
-        disabledReason: pendingCount > 0 ? null : 'There are no pending edits.',
+        disabledReason:
+          pendingCount > 0
+            ? awaiting('edits.apply', 'the edits are being applied')
+            : 'There are no pending edits.',
         perform: () => {
-          workbench.execute({ type: 'edits.apply', input: {} })
+          void client.execute({ type: 'edits.apply', input: {} })
         },
       },
       {
         id: 'edit.discardEdits',
         label: 'Discard pending edits',
         group: 'Edit',
-        disabledReason: pendingCount > 0 ? null : 'There are no pending edits.',
+        disabledReason:
+          pendingCount > 0
+            ? awaiting('edits.apply', 'the edits are being applied')
+            : 'There are no pending edits.',
         perform: () => {
-          workbench.execute({ type: 'edits.discard', input: {} })
+          void client.execute({ type: 'edits.discard', input: {} })
         },
       },
       ...(Object.keys(PAGES) as PageId[]).map((page): AppAction => ({
@@ -382,7 +382,7 @@ export function useAppActions(dialogs: ShellDialogs): AppAction[] {
         disabledReason: currentBlocker,
         perform: () => {
           if (currentStageId) {
-            workbench.execute({
+            void client.execute({
               type: 'workflow.runStage',
               input: { stageId: currentStageId },
             })
@@ -397,7 +397,7 @@ export function useAppActions(dialogs: ShellDialogs): AppAction[] {
         disabledReason: nextReady ? null : 'No stage is ready to run.',
         perform: () => {
           if (nextReady) {
-            workbench.execute({
+            void client.execute({
               type: 'workflow.runStage',
               input: { stageId: nextReady },
             })
@@ -406,14 +406,14 @@ export function useAppActions(dialogs: ShellDialogs): AppAction[] {
       },
       {
         id: 'run.cancelTasks',
-        label: 'Cancel running tasks',
+        label: 'Cancel running jobs',
         group: 'Run',
         icon: Ban,
         disabledReason:
-          activeTaskIds.length > 0 ? null : 'No task is queued or running.',
+          activeTaskIds.length > 0 ? null : 'No job is created or running.',
         perform: () => {
           for (const taskId of activeTaskIds) {
-            workbench.execute({ type: 'task.cancel', input: { taskId } })
+            void client.execute({ type: 'task.cancel', input: { taskId } })
           }
         },
       },
@@ -441,6 +441,14 @@ export function useAppActions(dialogs: ShellDialogs): AppAction[] {
         icon: Info,
         disabledReason: null,
         perform: dialogs.openCapabilities,
+      },
+      {
+        id: 'help.demoConditions',
+        label: 'Demo conditions…',
+        group: 'Help',
+        icon: FlaskConical,
+        disabledReason: null,
+        perform: dialogs.openDemoConditions,
       },
       {
         id: 'help.comments',
@@ -493,6 +501,8 @@ export function useAppActions(dialogs: ShellDialogs): AppAction[] {
     appearancePreference,
     setAppearance,
     showInspection,
+    client,
+    pending,
     dialogs,
   ])
 }

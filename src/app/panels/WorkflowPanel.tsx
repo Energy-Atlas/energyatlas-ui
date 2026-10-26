@@ -1,6 +1,7 @@
 import { useId } from 'react'
 import { hasActiveTask, stageRunBlocker } from '../../domain/workflow.ts'
 import {
+  useClientSnapshot,
   useServices,
   useStageStates,
   useWorkbenchSnapshot,
@@ -9,12 +10,14 @@ import { ActionButton } from '../components/ActionButton.tsx'
 import { CapabilityBadge } from '../components/CapabilityBadge.tsx'
 import { StateBadge } from '../components/StateBadge.tsx'
 import { cx } from '../cx.ts'
+import { forStage, waitingReason } from '../service/usePendingReason.ts'
 import styles from './panels.module.css'
 
 /** Compact workflow view (decision 0003): the same state as the Roadmap page. */
 export function WorkflowPanel() {
   const headingId = useId()
-  const { workbench } = useServices()
+  const { workbench, client } = useServices()
+  const pending = useClientSnapshot((snapshot) => snapshot.pending)
   const workflow = useWorkbenchSnapshot((snapshot) => snapshot.state.workflow)
   const tasks = useWorkbenchSnapshot((snapshot) => snapshot.state.tasks)
   const states = useStageStates()
@@ -58,9 +61,16 @@ export function WorkflowPanel() {
               <div className={styles.stageActions}>
                 <ActionButton
                   label={`${hasRun ? 'Rerun' : 'Run'} ${stage.name}`}
-                  disabledReason={stageRunBlocker(workflow, tasks, stageId)}
+                  disabledReason={
+                    waitingReason(
+                      pending,
+                      'workflow.runStage',
+                      'the run was requested',
+                      forStage(stageId),
+                    ) ?? stageRunBlocker(workflow, tasks, stageId)
+                  }
                   onPress={() =>
-                    workbench.execute({
+                    void client.execute({
                       type: 'workflow.runStage',
                       input: { stageId },
                     })
@@ -72,10 +82,19 @@ export function WorkflowPanel() {
                   <ActionButton
                     label={`${stage.skipped ? 'Restore' : 'Skip'} ${stage.name}`}
                     disabledReason={
-                      running ? `"${stage.name}" is running.` : null
+                      running
+                        ? `"${stage.name}" is running.`
+                        : waitingReason(
+                            pending,
+                            'workflow.setStageSkipped',
+                            stage.skipped
+                              ? 'the stage is being restored'
+                              : 'the stage is being skipped',
+                            forStage(stageId),
+                          )
                     }
                     onPress={() =>
-                      workbench.execute({
+                      void client.execute({
                         type: 'workflow.setStageSkipped',
                         input: { stageId, skipped: !stage.skipped },
                       })

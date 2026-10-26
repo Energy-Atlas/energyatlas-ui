@@ -1,7 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { startTaskSimulator } from '../../domain/simulator.ts'
-import { createWorkbench } from '../../domain/workbench.ts'
-import { manualScheduler } from '../../testing/manualScheduler.ts'
+import { createTestProject } from '../../testing/testProject.ts'
 import { createLayoutController } from '../layout/layoutController.ts'
 import { createViewStore } from '../view/viewStore.ts'
 import { createScriptedAgent } from './scriptedAgent.ts'
@@ -10,13 +8,12 @@ import { command, describeAgentTools, requiresApproval } from './tools.ts'
 import type { TranscriptItem } from './types.ts'
 
 function setup() {
-  const workbench = createWorkbench()
-  const manual = manualScheduler()
-  startTaskSimulator(workbench, { scheduler: manual.scheduler })
+  const { workbench, client, manual } = createTestProject()
   const layout = createLayoutController(workbench, null)
   const view = createViewStore(workbench)
   const agent = createScriptedAgent({
     workbench,
+    client,
     layout,
     view,
     scheduler: manual.scheduler,
@@ -56,18 +53,18 @@ describe('scripted agent', () => {
     expect(matchSession('Pick a preset')).toBeNull()
   })
 
-  it('proposes missing stages, runs them after approval, and arranges the workbench', () => {
+  it('proposes missing stages, runs them after approval, and arranges the workbench', async () => {
     const { workbench, manual, agent, lastApproval, agentEntries, transcript } =
       setup()
     agent.startPreset('layout')
-    manual.runAll(50)
+    await manual.settle(50)
     expect(agent.store.getState().status).toBe('awaitingApproval')
     const approval = lastApproval()
     expect(approval.title).toBe('Run 2 missing stages')
     expect(agentEntries()).toEqual([])
 
     agent.approve(approval.id)
-    manual.runAll(5000)
+    await manual.settle(5000)
     expect(agent.store.getState().status).toBe('idle')
     expect(
       agentEntries().map((entry) => `${entry.type}:${entry.status}`),
@@ -90,10 +87,10 @@ describe('scripted agent', () => {
     }
   })
 
-  it('records a rejected proposal and changes nothing when the user rejects it', () => {
+  it('records a rejected proposal and changes nothing when the user rejects it', async () => {
     const { workbench, manual, agent, lastApproval, agentEntries } = setup()
     agent.startPreset('modelChange')
-    manual.runAll(50)
+    await manual.settle(50)
     const approval = lastApproval()
     expect(approval.title).toBe('Create a measure and a scenario')
 
@@ -108,13 +105,13 @@ describe('scripted agent', () => {
     })
   })
 
-  it('applies an approved model change as the agent, then reruns stages with a second approval', () => {
+  it('applies an approved model change as the agent, then reruns stages with a second approval', async () => {
     const { workbench, manual, agent, lastApproval, agentEntries, transcript } =
       setup()
     agent.startPreset('modelChange')
-    manual.runAll(50)
+    await manual.settle(50)
     agent.approve(lastApproval().id)
-    manual.runAll(200)
+    await manual.settle(200)
     expect(
       agentEntries().map((entry) => `${entry.type}:${entry.status}`),
     ).toEqual(['measure.create:applied', 'scenario.create:applied'])
@@ -123,17 +120,17 @@ describe('scripted agent', () => {
     const rerun = lastApproval()
     expect(rerun.title).toBe('Run 9 outdated or missing stages')
     agent.approve(rerun.id)
-    manual.runAll(20000)
+    await manual.settle(20000)
     expect(agent.store.getState().status).toBe('idle')
     const last = transcript().at(-2)
     expect(last?.kind).toBe('agent')
     expect(JSON.stringify(last)).toContain('reduces annual demand by')
   })
 
-  it('stops a session and leaves applied changes in place', () => {
+  it('stops a session and leaves applied changes in place', async () => {
     const { manual, agent, lastApproval, transcript } = setup()
     agent.startPreset('layout')
-    manual.runAll(50)
+    await manual.settle(50)
     agent.stop()
     expect(agent.store.getState().status).toBe('idle')
     expect(lastApproval().status).toBe('declined')
@@ -144,11 +141,11 @@ describe('scripted agent', () => {
 // Permission modes act on the approval gate; send modes decide when a typed
 // message reaches the agent (decision 0016).
 describe('agent permission modes', () => {
-  it('runs stages without asking in Automatic mode', () => {
+  it('runs stages without asking in Automatic mode', async () => {
     const { manual, agent, lastApproval, agentEntries } = setup()
     agent.setPermissionMode('automatic')
     agent.startPreset('layout')
-    manual.runAll(20000)
+    await manual.settle(20000)
     expect(agent.store.getState().status).toBe('idle')
     expect(lastApproval()).toMatchObject({
       status: 'approved',
@@ -159,29 +156,29 @@ describe('agent permission modes', () => {
     )
   })
 
-  it('still asks for a project model change in Automatic mode', () => {
+  it('still asks for a project model change in Automatic mode', async () => {
     const { manual, agent, lastApproval } = setup()
     agent.setPermissionMode('automatic')
     agent.startPreset('modelChange')
-    manual.runAll(50)
+    await manual.settle(50)
     expect(agent.store.getState().status).toBe('awaitingApproval')
     expect(lastApproval().decidedBy).toBeNull()
   })
 
-  it('applies a model change without asking in Bypass approval mode', () => {
+  it('applies a model change without asking in Bypass approval mode', async () => {
     const { workbench, manual, agent, lastApproval } = setup()
     agent.setPermissionMode('bypass')
     agent.startPreset('modelChange')
-    manual.runAll(200)
+    await manual.settle(200)
     expect(lastApproval().decidedBy).toBe('bypass')
     expect(Object.values(workbench.getState().scenarios)).toHaveLength(1)
   })
 
-  it('lists what it would do and changes nothing in Plan mode', () => {
+  it('lists what it would do and changes nothing in Plan mode', async () => {
     const { workbench, manual, agent, transcript } = setup()
     agent.setPermissionMode('plan')
     agent.startPreset('modelChange')
-    manual.runAll(200)
+    await manual.settle(200)
     expect(agent.store.getState().status).toBe('idle')
     expect(workbench.getState().measures).toEqual({})
     expect(transcript().some((item) => item.kind === 'approval')).toBe(false)
@@ -190,10 +187,10 @@ describe('agent permission modes', () => {
 })
 
 describe('agent send modes', () => {
-  it('queues a message while a session runs and answers it afterwards', () => {
+  it('queues a message while a session runs and answers it afterwards', async () => {
     const { manual, agent, lastApproval, transcript } = setup()
     agent.startPreset('layout')
-    manual.runAll(50)
+    await manual.settle(50)
     expect(agent.sendBlocker('send', 'reset the layout')).toContain(
       'waiting for your approval',
     )
@@ -201,7 +198,7 @@ describe('agent send modes', () => {
     agent.send('reset the layout', 'queue')
     expect(agent.store.getState().queued).toEqual(['reset the layout'])
     agent.approve(lastApproval().id)
-    manual.runAll(20000)
+    await manual.settle(20000)
     expect(agent.store.getState().queued).toEqual([])
     expect(agent.store.getState().ranSessionIds).toEqual(['layout', 'restore'])
     expect(JSON.stringify(transcript())).toContain('default layout is back')
@@ -215,21 +212,21 @@ describe('agent send modes', () => {
     expect(transcript()).toEqual([])
   })
 
-  it('records a stirred message and says a scripted session cannot change course', () => {
+  it('records a stirred message and says a scripted session cannot change course', async () => {
     const { manual, agent, lastApproval, transcript } = setup()
     agent.startPreset('layout')
-    manual.runAll(50)
+    await manual.settle(50)
     agent.send('reset the layout', 'stir')
     expect(JSON.stringify(transcript())).toContain('cannot change course')
     agent.approve(lastApproval().id)
-    manual.runAll(20000)
+    await manual.settle(20000)
     expect(agent.store.getState().ranSessionIds).toEqual(['layout', 'restore'])
   })
 
-  it('discards queued messages when the session is stopped', () => {
+  it('discards queued messages when the session is stopped', async () => {
     const { manual, agent, transcript } = setup()
     agent.startPreset('layout')
-    manual.runAll(50)
+    await manual.settle(50)
     agent.send('reset the layout', 'queue')
     agent.stop()
     expect(agent.store.getState().queued).toEqual([])

@@ -29,6 +29,7 @@ import {
   upstreamIds,
 } from '../../domain/workflow.ts'
 import {
+  useClientSnapshot,
   useServices,
   useStageStates,
   useWorkbenchSnapshot,
@@ -40,6 +41,7 @@ import { StateBadge } from '../components/StateBadge.tsx'
 import componentStyles from '../components/components.module.css'
 import formStyles from '../components/forms.module.css'
 import { cx } from '../cx.ts'
+import { forStage, waitingReason } from '../service/usePendingReason.ts'
 import styles from './roadmap.module.css'
 
 const NODE_WIDTH = 210
@@ -209,7 +211,8 @@ export function RoadmapPage() {
 }
 
 function StageDetails() {
-  const { workbench } = useServices()
+  const { workbench, client } = useServices()
+  const pending = useClientSnapshot((snapshot) => snapshot.pending)
   const workflow = useWorkbenchSnapshot((snapshot) => snapshot.state.workflow)
   const tasks = useWorkbenchSnapshot((snapshot) => snapshot.state.tasks)
   const states = useStageStates()
@@ -258,9 +261,19 @@ function StageDetails() {
         <ActionButton
           label={`${hasRun ? 'Rerun' : 'Run'} ${stage.name}`}
           variant="primary"
-          disabledReason={stageRunBlocker(workflow, tasks, stageId)}
+          disabledReason={
+            waitingReason(
+              pending,
+              'workflow.runStage',
+              'the run was requested',
+              forStage(stageId),
+            ) ?? stageRunBlocker(workflow, tasks, stageId)
+          }
           onPress={() =>
-            workbench.execute({ type: 'workflow.runStage', input: { stageId } })
+            void client.execute({
+              type: 'workflow.runStage',
+              input: { stageId },
+            })
           }
         >
           {hasRun ? 'Rerun' : 'Run'}
@@ -271,10 +284,17 @@ function StageDetails() {
             disabledReason={
               hasActiveTask(tasks, stageId)
                 ? `"${stage.name}" is running.`
-                : null
+                : waitingReason(
+                    pending,
+                    'workflow.setStageSkipped',
+                    stage.skipped
+                      ? 'the stage is being restored'
+                      : 'the stage is being skipped',
+                    forStage(stageId),
+                  )
             }
             onPress={() =>
-              workbench.execute({
+              void client.execute({
                 type: 'workflow.setStageSkipped',
                 input: { stageId, skipped: !stage.skipped },
               })
@@ -310,7 +330,8 @@ function StageDetails() {
 }
 
 function InsertStageForm({ afterStageId }: { afterStageId: string }) {
-  const { workbench } = useServices()
+  const { client } = useServices()
+  const [sending, setSending] = useState(false)
   const [name, setName] = useState('')
   const [nameError, setNameError] = useState<string | null>(null)
   const [general, setGeneral] = useState<string | null>(null)
@@ -321,23 +342,29 @@ function InsertStageForm({ afterStageId }: { afterStageId: string }) {
       validationBehavior="aria"
       onSubmit={(event) => {
         event.preventDefault()
-        const result = workbench.execute({
-          type: 'workflow.insertStage',
-          input: { afterStageId, name },
-        })
-        if (result.outcome.status === 'applied') {
-          setName('')
-          setNameError(null)
-          setGeneral(null)
-          return
-        }
-        const split = splitIssues(result.outcome.issues)
-        setNameError(split.fieldErrors.name ?? null)
-        setGeneral(
-          [split.general, split.fieldErrors.afterStageId]
-            .filter(Boolean)
-            .join(' ') || null,
-        )
+        if (sending) return
+        setSending(true)
+        void client
+          .execute({
+            type: 'workflow.insertStage',
+            input: { afterStageId, name },
+          })
+          .then((result) => {
+            setSending(false)
+            if (result.outcome.status === 'applied') {
+              setName('')
+              setNameError(null)
+              setGeneral(null)
+              return
+            }
+            const split = splitIssues(result.outcome.issues)
+            setNameError(split.fieldErrors.name ?? null)
+            setGeneral(
+              [split.general, split.fieldErrors.afterStageId]
+                .filter(Boolean)
+                .join(' ') || null,
+            )
+          })
       }}
     >
       <TextField
@@ -361,8 +388,12 @@ function InsertStageForm({ afterStageId }: { afterStageId: string }) {
           {general}
         </p>
       ) : null}
-      <Button type="submit" className={componentStyles.button}>
-        Insert stage
+      <Button
+        type="submit"
+        className={componentStyles.button}
+        isPending={sending}
+      >
+        {sending ? 'Sending…' : 'Insert stage'}
       </Button>
     </Form>
   )

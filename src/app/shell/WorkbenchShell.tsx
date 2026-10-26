@@ -17,7 +17,6 @@ import {
   type LucideIcon,
 } from 'lucide-react'
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import { createInitialState } from '../../domain/initialState.ts'
 import { useLayoutVersion, useServices } from '../WorkbenchContext.tsx'
 import {
   useAppActions,
@@ -29,6 +28,7 @@ import '../global.css'
 import '../layout/flexlayout-theme.css'
 import { AccountPage } from '../pages/AccountPage.tsx'
 import { CreatorPage } from '../pages/CreatorPage.tsx'
+import { DemoConditionsDialog } from './DemoConditionsDialog.tsx'
 import { DashboardPage } from '../pages/DashboardPage.tsx'
 import { IssuesPage } from '../pages/IssuesPage.tsx'
 import { MapPage } from '../pages/MapPage.tsx'
@@ -51,7 +51,13 @@ import { Ribbon } from './Ribbon.tsx'
 import { StatusBar } from './StatusBar.tsx'
 import styles from './shell.module.css'
 
-type OpenDialog = 'palette' | 'shortcuts' | 'capabilities' | 'newProject' | null
+type OpenDialog =
+  | 'palette'
+  | 'shortcuts'
+  | 'capabilities'
+  | 'newProject'
+  | 'demoConditions'
+  | null
 
 const TAB_ICONS: Record<string, LucideIcon> = {
   'panel.assets': FolderTree,
@@ -123,7 +129,7 @@ function renderTabContent(node: TabNode) {
 }
 
 export function WorkbenchShell() {
-  const { workbench, layout } = useServices()
+  const { client, layout } = useServices()
   const [openDialog, setOpenDialog] = useState<OpenDialog>(null)
   const dialogs = useMemo<ShellDialogs>(
     () => ({
@@ -131,6 +137,7 @@ export function WorkbenchShell() {
       openShortcuts: () => setOpenDialog('shortcuts'),
       openCapabilities: () => setOpenDialog('capabilities'),
       openNewProject: () => setOpenDialog('newProject'),
+      openDemoConditions: () => setOpenDialog('demoConditions'),
     }),
     [],
   )
@@ -164,7 +171,10 @@ export function WorkbenchShell() {
           keyMap={KEY_MAP}
         />
       </main>
-      <StatusBar onOpenPage={(page) => layout.openPage(page)} />
+      <StatusBar
+        onOpenPage={(page) => layout.openPage(page)}
+        onOpenDemoConditions={() => setOpenDialog('demoConditions')}
+      />
       <CommandPalette
         isOpen={openDialog === 'palette'}
         onOpenChange={handleDialogChange}
@@ -183,14 +193,11 @@ export function WorkbenchShell() {
       <NewProjectDialog
         isOpen={openDialog === 'newProject'}
         onOpenChange={handleDialogChange}
-        onConfirm={() =>
-          workbench.load(createInitialState(), {
-            type: 'project.new',
-            title: 'New project',
-            summary:
-              'Started a new empty synthetic project. The copy saved in this browser is unchanged until you save.',
-          })
-        }
+        onConfirm={() => void client.replaceProject('new')}
+      />
+      <DemoConditionsDialog
+        isOpen={openDialog === 'demoConditions'}
+        onOpenChange={handleDialogChange}
       />
     </div>
   )

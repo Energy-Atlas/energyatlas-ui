@@ -170,6 +170,12 @@ export const capabilities = {
     explanation:
       'Signing in is planned; this demo has no account to log out of.',
   },
+  'service.mockServer': {
+    label: 'Server',
+    status: 'simulated',
+    explanation:
+      'The project lives on a mock server inside this page, reached through a simulated connection with delay and demo faults; it restarts with each page load and restores the saved project.',
+  },
   'status.compute': {
     label: 'Computing resources',
     status: 'simulated',

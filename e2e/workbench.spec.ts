@@ -165,7 +165,7 @@ test.describe('workbench shell', () => {
     // React Aria names the menu after its trigger button.
     const menu = page.getByRole('menu', { name: 'More run options' })
     await expect(
-      menu.getByRole('menuitem', { name: /Cancel running tasks/ }),
+      menu.getByRole('menuitem', { name: /Cancel running jobs/ }),
     ).toHaveAttribute('aria-disabled', 'true')
     await menu.getByRole('menuitem', { name: /Run next ready stage/ }).click()
     await expect(
@@ -188,13 +188,19 @@ test.describe('workbench shell', () => {
       workflowPanel(page).getByRole('listitem').first(),
     ).toContainText('Complete', { timeout: 10_000 })
 
-    await page.getByRole('button', { name: /Open Tasks/ }).click()
+    await page.getByRole('button', { name: /Open Jobs/ }).click()
     await expect(
-      page.getByRole('tab', { name: 'Tasks', exact: true }),
+      page.getByRole('tab', { name: 'Jobs', exact: true }),
     ).toHaveAttribute('aria-selected', 'true')
-    await expect(page.getByRole('table', { name: 'Tasks' })).toContainText(
-      'Succeeded',
-    )
+    const jobs = page.getByRole('table', { name: 'Jobs' })
+    await expect(jobs).toContainText('Completed')
+    // Each job keeps a log, as RC's jobs do (decision 0023).
+    await jobs.locator('summary').first().click()
+    await expect(
+      jobs.getByRole('list', {
+        name: 'Log of Location setup / footprint capturing',
+      }),
+    ).toContainText('Started.')
   })
 
   test('explains blocked and planned actions instead of doing nothing', async ({
@@ -222,11 +228,11 @@ test.describe('workbench shell', () => {
     await page.keyboard.press('Control+k')
     const palette = page.getByRole('dialog', { name: 'Command palette' })
     await expect(palette).toBeVisible()
-    await page.keyboard.type('tasks')
+    await page.keyboard.type('jobs')
     await page.keyboard.press('Enter')
     await expect(palette).toBeHidden()
     await expect(
-      page.getByRole('tab', { name: 'Tasks', exact: true }),
+      page.getByRole('tab', { name: 'Jobs', exact: true }),
     ).toHaveAttribute('aria-selected', 'true')
 
     const assetsTab = page.getByRole('tab', { name: 'Assets', exact: true })
@@ -237,7 +243,27 @@ test.describe('workbench shell', () => {
     await expect(assetsTab).toHaveAttribute('aria-selected', 'true')
   })
 
-  test('undoes a skipped stage with Ctrl+Z', async ({ page }) => {
+  test('undoes draft edits with Ctrl+Z, but not changes the server applied', async ({
+    page,
+  }) => {
+    // Decision 0023: only unsent drafts can be undone.
+    await page.goto('/?fixture=partway')
+    await page.getByRole('tab', { name: 'Table', exact: true }).click()
+    const floors = page.locator('[row-index="0"] [col-id="floors"]')
+    const original = (await floors.innerText()).trim()
+    const edited = original === '11' ? '10' : String(Number(original) + 1)
+    await floors.dblclick()
+    await page.keyboard.press('ControlOrMeta+a')
+    await page.keyboard.type(edited)
+    await page.keyboard.press('Enter')
+    await expect(page.getByTestId('pending-count')).toHaveText('1 pending edit')
+
+    await page.keyboard.press('Control+z')
+    await expect(page.getByTestId('pending-count')).toHaveText(
+      '0 pending edits',
+    )
+    await expect(floors).toHaveText(original)
+
     await showWorkflow(page)
     const shading = workflowPanel(page)
       .getByRole('listitem')
@@ -248,10 +274,11 @@ test.describe('workbench shell', () => {
       })
       .click()
     await expect(shading).toContainText('Skipped')
-
     await page.keyboard.press('Control+z')
-    await expect(shading).toContainText('Not started')
-    await expect(page.getByTestId('status-notice')).toContainText('Undo')
+    await expect(page.getByTestId('status-notice')).toContainText(
+      'Nothing to undo.',
+    )
+    await expect(shading).toContainText('Skipped')
   })
 
   test('keeps a saved project and the layout across reloads', async ({

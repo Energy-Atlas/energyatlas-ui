@@ -20,5 +20,17 @@ export function manualScheduler() {
     for (let count = 0; queue.length > 0 && count < limit; count++) runNext()
   }
   const pending = () => queue.filter((job) => !job.cancelled).length
-  return { scheduler, runNext, runAll, pending }
+  /** Lets promise continuations run, as the event loop would between timers. */
+  const flush = async () => {
+    for (let hop = 0; hop < 25; hop++) await Promise.resolve()
+  }
+  /** Like runAll, but for code that awaits between scheduled steps. */
+  const settle = async (limit = 100) => {
+    await flush()
+    for (let count = 0; queue.length > 0 && count < limit; count++) {
+      runNext()
+      await flush()
+    }
+  }
+  return { scheduler, runNext, runAll, pending, flush, settle }
 }

@@ -6,6 +6,8 @@ import type {
   CommandSource,
   EditValue,
   EditableBuildingField,
+  StageRecord,
+  Task,
   WorkbenchState,
 } from './types.ts'
 import {
@@ -62,6 +64,37 @@ export function allocateId(state: WorkbenchState, prefix: string): string {
   const id = `${prefix}-${state.nextId}`
   state.nextId += 1
   return id
+}
+
+/** Records a failed run on its stage, task, log, and issues. */
+function failRun(
+  state: WorkbenchState,
+  task: Task,
+  stage: StageRecord,
+  message: string,
+  inputRevisions: Record<string, number>,
+  context: CommandContext,
+) {
+  stage.lastRun = {
+    runId: task.runId,
+    operationId: context.operationId,
+    outcome: 'failed',
+    message,
+    inputRevisions,
+    inputEditRevision: stage.editRevision,
+    finishedAt: context.now,
+  }
+  state.issues.push({
+    id: allocateId(state, 'issue'),
+    severity: 'error',
+    message,
+    stageId: stage.id,
+    createdAt: context.now,
+  })
+  task.status = 'failed'
+  task.message = message
+  task.updatedAt = context.now
+  task.log.push({ at: context.now, message: `Failed: ${message}` })
 }
 
 function nextRevision(state: WorkbenchState): number {
@@ -153,6 +186,7 @@ export const commandDefinitions = {
         source: context.source,
         createdAt: context.now,
         updatedAt: context.now,
+        log: [{ at: context.now, message: 'Queued.' }],
       }
       state.taskIds.push(taskId)
       state.workflow.currentStageId = stageId
@@ -263,6 +297,7 @@ export const commandDefinitions = {
       }
       task.status = 'running'
       task.updatedAt = context.now
+      task.log.push({ at: context.now, message: 'Started.' })
       return applied(`Started "${task.label}".`)
     },
   }),
@@ -286,6 +321,10 @@ export const commandDefinitions = {
       }
       task.progress = progress
       task.updatedAt = context.now
+      task.log.push({
+        at: context.now,
+        message: `${Math.round(progress * 100)}% complete.`,
+      })
       return applied(
         `"${task.label}" is ${Math.round(progress * 100)}% complete.`,
       )
@@ -309,6 +348,10 @@ export const commandDefinitions = {
         task.status = 'failed'
         task.message = 'The stage no longer exists.'
         task.updatedAt = context.now
+        task.log.push({
+          at: context.now,
+          message: 'Failed: the stage no longer exists.',
+        })
         return applied('Task failed because its stage no longer exists.')
       }
       const inputRevisions = Object.fromEntries(
@@ -326,24 +369,7 @@ export const commandDefinitions = {
       task.updatedAt = context.now
 
       if (!result.ok) {
-        stage.lastRun = {
-          runId: task.runId,
-          operationId: context.operationId,
-          outcome: 'failed',
-          message: result.message,
-          inputRevisions,
-          inputEditRevision: stage.editRevision,
-          finishedAt: context.now,
-        }
-        state.issues.push({
-          id: allocateId(state, 'issue'),
-          severity: 'error',
-          message: result.message,
-          stageId: stage.id,
-          createdAt: context.now,
-        })
-        task.status = 'failed'
-        task.message = result.message
+        failRun(state, task, stage, result.message, inputRevisions, context)
         return applied(`"${stage.name}" failed: ${result.message}`)
       }
 
@@ -369,7 +395,40 @@ export const commandDefinitions = {
       task.status = 'succeeded'
       task.progress = 1
       task.message = result.summary
+      task.log.push({
+        at: context.now,
+        message: `Completed. ${result.summary}`,
+      })
       return applied(`"${stage.name}" finished. ${result.summary}`)
+    },
+  }),
+
+  'task.fail': defineCommand({
+    title: 'Fail task',
+    description:
+      'Fail a running stage task without outputs, as when the server reports an error partway.',
+    input: z.object({
+      taskId: z.string().min(1),
+      message: z.string().min(1, 'Give a reason.'),
+    }),
+    undoable: false,
+    run(state, { taskId, message }, context) {
+      const task = state.tasks[taskId]
+      if (!task) return rejected(`Unknown task "${taskId}".`, 'taskId')
+      if (task.status !== 'running') {
+        return rejected(`Task is ${task.status}, not running.`, 'taskId')
+      }
+      const stage = state.workflow.stages[task.stageId]
+      if (!stage) return rejected('The stage no longer exists.', 'taskId')
+      const inputRevisions = Object.fromEntries(
+        upstreamIds(state.workflow, stage.id).map((id) => [
+          id,
+          state.workflow.stages[id]?.revision ?? 0,
+        ]),
+      )
+      state.issues = state.issues.filter((issue) => issue.stageId !== stage.id)
+      failRun(state, task, stage, message, inputRevisions, context)
+      return applied(`"${stage.name}" failed: ${message}`)
     },
   }),
 
@@ -388,6 +447,7 @@ export const commandDefinitions = {
       task.status = 'cancelled'
       task.message = 'Cancelled.'
       task.updatedAt = context.now
+      task.log.push({ at: context.now, message: 'Cancelled.' })
       return applied(`Cancelled "${task.label}".`)
     },
   }),

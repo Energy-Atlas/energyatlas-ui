@@ -1,7 +1,19 @@
-import { CircleX, Cpu, ListChecks, TriangleAlert } from 'lucide-react'
+import {
+  CircleX,
+  Cpu,
+  FlaskConical,
+  Hourglass,
+  ListChecks,
+  TriangleAlert,
+} from 'lucide-react'
 import { ProgressBar } from 'react-aria-components'
 import type { Task } from '../../domain/types.ts'
-import { useStageStates, useWorkbenchSnapshot } from '../WorkbenchContext.tsx'
+import { describeConditions } from '../../server/conditions.ts'
+import {
+  useClientSnapshot,
+  useStageStates,
+  useWorkbenchSnapshot,
+} from '../WorkbenchContext.tsx'
 import { StatusTag } from '../components/CapabilityBadge.tsx'
 import { StateBadge } from '../components/StateBadge.tsx'
 import { cx } from '../cx.ts'
@@ -14,10 +26,17 @@ const QUIET_OPERATION_TYPES = new Set(['task.start', 'task.reportProgress'])
 
 export function StatusBar({
   onOpenPage,
+  onOpenDemoConditions,
 }: {
   onOpenPage: (page: PageId) => void
+  onOpenDemoConditions: () => void
 }) {
   const state = useWorkbenchSnapshot((snapshot) => snapshot.state)
+  const pending = useClientSnapshot((snapshot) => snapshot.pending)
+  const dirty = useClientSnapshot((snapshot) => snapshot.meta.dirty)
+  const conditions = useClientSnapshot((snapshot) =>
+    describeConditions(snapshot.conditions).join(', '),
+  )
   const log = useWorkbenchSnapshot((snapshot) => snapshot.log)
   const stageStates = useStageStates()
 
@@ -51,7 +70,18 @@ export function StatusBar({
       <span className={styles.statusItem}>
         {state.project.name}
         {state.project.location ? '' : ' · no location yet'}
+        {dirty ? ' · unsaved changes' : ''}
       </span>
+      {conditions ? (
+        <button
+          type="button"
+          className={cx(styles.statusButton, styles.demoChip)}
+          aria-label={`Demo conditions: ${conditions}. Change demo conditions.`}
+          onClick={onOpenDemoConditions}
+        >
+          <FlaskConical size={14} aria-hidden="true" /> Demo: {conditions}
+        </button>
+      ) : null}
       {currentStage ? (
         <span className={styles.statusItem}>
           Stage: {currentStage.name}{' '}
@@ -70,7 +100,7 @@ export function StatusBar({
       <button
         type="button"
         className={styles.statusButton}
-        aria-label={`${activeTasks.length} active tasks. Open Tasks.`}
+        aria-label={`${activeTasks.length} active jobs. Open Jobs.`}
         onClick={() => onOpenPage('tasks')}
       >
         <ListChecks size={14} aria-hidden="true" /> {activeTasks.length}
@@ -95,6 +125,12 @@ export function StatusBar({
           )}
         </ProgressBar>
       ))}
+      {pending.length > 0 ? (
+        <span className={styles.statusItem} data-testid="status-pending">
+          <Hourglass size={14} aria-hidden="true" /> Waiting for the server:{' '}
+          {pending.map((request) => request.title).join(', ')}
+        </span>
+      ) : null}
       <span className={styles.statusItem} title="Illustrative, not measured">
         <Cpu size={14} aria-hidden="true" /> 4 workers{' '}
         <StatusTag status="simulated" />

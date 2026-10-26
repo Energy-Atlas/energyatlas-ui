@@ -18,6 +18,7 @@ import { capabilities } from '../../domain/capabilities.ts'
 import { STAGE_IDS, stageRunBlocker } from '../../domain/workflow.ts'
 import {
   useAppearance,
+  useClientSnapshot,
   useServices,
   useStageStates,
   useViewState,
@@ -30,6 +31,7 @@ import componentStyles from '../components/components.module.css'
 import { EmptyState } from '../components/EmptyState.tsx'
 import formStyles from '../components/forms.module.css'
 import { cx } from '../cx.ts'
+import { forStage, waitingReason } from '../service/usePendingReason.ts'
 import { compileChartSpec, type ChartSpec } from '../view/chartSpec.ts'
 import { EChart, useChartFont } from '../viz/EChart.tsx'
 import {
@@ -183,7 +185,8 @@ export function DashboardPage() {
   const headingId = useId()
   const controlsHeadingId = useId()
   const addedChartsHeadingId = useId()
-  const { workbench, layout, view } = useServices()
+  const { client, layout, view } = useServices()
+  const pending = useClientSnapshot((snapshot) => snapshot.pending)
   const state = useWorkbenchSnapshot((snapshot) => snapshot.state)
   const workflow = state.workflow
   const stageStates = useStageStates()
@@ -264,13 +267,16 @@ export function DashboardPage() {
           </span>
           <ActionButton
             label={`Run ${staleStage.name}`}
-            disabledReason={stageRunBlocker(
-              workflow,
-              state.tasks,
-              staleStageId,
-            )}
+            disabledReason={
+              waitingReason(
+                pending,
+                'workflow.runStage',
+                'the run was requested',
+                forStage(staleStageId),
+              ) ?? stageRunBlocker(workflow, state.tasks, staleStageId)
+            }
             onPress={() =>
-              workbench.execute({
+              void client.execute({
                 type: 'workflow.runStage',
                 input: { stageId: staleStageId },
               })
@@ -370,19 +376,31 @@ export function DashboardPage() {
                   label={`Apply ${adoption}% adoption to ${scenario.name}`}
                   variant="primary"
                   disabledReason={
-                    isPreview ? null : 'The preview matches the saved adoption.'
+                    isPreview
+                      ? waitingReason(
+                          pending,
+                          'scenario.setAdoption',
+                          'the adoption is being applied',
+                          (input) =>
+                            (input as { scenarioId?: unknown }).scenarioId ===
+                            scenario.id,
+                        )
+                      : 'The preview matches the saved adoption.'
                   }
                   onPress={() => {
-                    const result = workbench.execute({
-                      type: 'scenario.setAdoption',
-                      input: {
-                        scenarioId: scenario.id,
-                        adoptionPercent: adoption,
-                      },
-                    })
-                    if (result.outcome.status === 'applied') {
-                      setPreviews((current) => omit(current, scenario.id))
-                    }
+                    void client
+                      .execute({
+                        type: 'scenario.setAdoption',
+                        input: {
+                          scenarioId: scenario.id,
+                          adoptionPercent: adoption,
+                        },
+                      })
+                      .then((result) => {
+                        if (result.outcome.status === 'applied') {
+                          setPreviews((current) => omit(current, scenario.id))
+                        }
+                      })
                   }}
                 >
                   Apply

@@ -64,6 +64,13 @@ export type Workbench = {
   record: (operation: ExternalOperation) => string
   /** Replaces project state (new project, restore) and clears undo history. */
   load: (state: WorkbenchState, operation: ExternalOperation) => string
+  /**
+   * Takes state decided elsewhere (the server's) and appends the operations
+   * that produced it, keeping undo history; returns the new log entry ids.
+   */
+  adopt: (state: WorkbenchState, operations: ExternalOperation[]) => string[]
+  /** Forgets undo and redo history, for example once drafts have been sent. */
+  clearHistory: () => void
 }
 
 type HistoryEntry = {
@@ -87,9 +94,18 @@ type RegistryEntry = {
 }
 
 export function createWorkbench(
-  options: { initialState?: WorkbenchState; now?: () => Date } = {},
+  options: {
+    initialState?: WorkbenchState
+    now?: () => Date
+    /** Overrides which commands are undoable; the registry decides by default. */
+    isUndoable?: (type: Command['type']) => boolean
+    /** Why this workbench refuses a command, or null to run it. */
+    refuse?: (type: Command['type']) => string | null
+  } = {},
 ): Workbench {
   const now = options.now ?? (() => new Date())
+  const isUndoable =
+    options.isUndoable ?? ((type) => commandDefinitions[type].undoable)
   const store = createStore<WorkbenchSnapshot>()(() => ({
     state: options.initialState ?? createInitialState(),
     log: [],
@@ -130,7 +146,14 @@ export function createWorkbench(
       input: command.input,
       source,
       at,
-      undoable: definition.undoable,
+      undoable: isUndoable(command.type),
+    }
+
+    const refusal = options.refuse?.(command.type) ?? null
+    if (refusal) {
+      const issues = [{ path: '', message: refusal }]
+      commit(current, { ...entry, status: 'rejected', summary: null, issues })
+      return { operationId, outcome: { status: 'rejected', issues } }
     }
 
     const parsed = definition.input.safeParse(command.input)
@@ -158,7 +181,7 @@ export function createWorkbench(
     let patches: Patch[] = []
     let inversePatches: Patch[] = []
     try {
-      if (definition.undoable) {
+      if (entry.undoable) {
         ;[next, patches, inversePatches] = produceWithPatches(current, recipe)
       } else {
         next = produce(current, recipe)
@@ -186,7 +209,7 @@ export function createWorkbench(
       return { operationId, outcome }
     }
 
-    if (definition.undoable && patches.length > 0) {
+    if (entry.undoable && patches.length > 0) {
       undoStack.push({
         operationId,
         title: definition.title,
@@ -290,6 +313,18 @@ export function createWorkbench(
       undoStack.length = 0
       redoStack.length = 0
       return appendExternal(state, operation)
+    },
+    adopt: (state, operations) => {
+      if (operations.length === 0) {
+        store.setState({ state })
+        return []
+      }
+      return operations.map((operation) => appendExternal(state, operation))
+    },
+    clearHistory: () => {
+      undoStack.length = 0
+      redoStack.length = 0
+      store.setState({ canUndo: false, canRedo: false })
     },
     execute,
     undo: (source = 'manual') => replay('history.undo', source),

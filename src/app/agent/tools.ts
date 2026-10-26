@@ -16,11 +16,13 @@ import {
   describeViewOperations,
   type ViewOperation,
 } from '../view/viewOperations.ts'
+import type { ProjectClient } from '../service/projectClient.ts'
 import type { ViewStore } from '../view/viewStore.ts'
 
 // Agent tool calls go through the same paths as manual controls: project
-// commands through the workbench, view operations through the view store, and
-// layout operations through the layout controller, always with source "agent".
+// commands through the project client (the server, decision 0023), view
+// operations through the view store, and layout operations through the layout
+// controller, always with source "agent".
 
 export type LayoutToolOperation =
   | {
@@ -45,6 +47,7 @@ export type ToolResult = {
 
 export type ToolDeps = {
   workbench: Workbench
+  client: ProjectClient
   view: ViewStore
   layout: LayoutController
 }
@@ -78,13 +81,17 @@ export function requiresApproval(call: ToolCall): boolean {
   )
 }
 
-export function executeToolCall(deps: ToolDeps, call: ToolCall): ToolResult {
+/** Runs a tool call; project commands wait for the server's reply. */
+export async function executeToolCall(
+  deps: ToolDeps,
+  call: ToolCall,
+): Promise<ToolResult> {
   const log = () => deps.workbench.store.getState().log
   const before = log().length
 
   switch (call.kind) {
     case 'command':
-      deps.workbench.execute(call.command, 'agent')
+      await deps.client.execute(call.command, 'agent')
       break
     case 'view':
       deps.view.execute(call.operation, 'agent')

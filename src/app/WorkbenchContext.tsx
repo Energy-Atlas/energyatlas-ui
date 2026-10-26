@@ -9,7 +9,7 @@ import {
   type ReactNode,
 } from 'react'
 import { useStore } from 'zustand'
-import { browserScheduler, startTaskSimulator } from '../domain/simulator.ts'
+import { browserScheduler } from '../domain/simulator.ts'
 import type { CommandSource } from '../domain/types.ts'
 import {
   createWorkbench,
@@ -29,12 +29,23 @@ import {
   createLayoutController,
   type LayoutController,
 } from './layout/layoutController.ts'
-import { hasOutdatedProject, loadProject } from './persistence.ts'
+import { initialConditions } from '../server/conditions.ts'
+import { FIXTURES } from '../server/fixtures.ts'
+import { hasOutdatedProject } from '../server/persistence.ts'
+import { createMockServer } from '../server/server.ts'
+import { createTransport } from '../server/transport.ts'
 import {
   readBasemapPreference,
   storeBasemapPreference,
 } from './basemapPreference.ts'
-import { getBrowserStorage } from './storage.ts'
+import {
+  DRAFT_COMMANDS,
+  createProjectClient,
+  refuseServerCommand,
+  type ClientSnapshot,
+  type ProjectClient,
+} from './service/projectClient.ts'
+import { getBrowserStorage, getSessionStorage } from './storage.ts'
 import {
   applyAppearance,
   readAppearancePreference,
@@ -45,7 +56,10 @@ import { createViewStore, type ViewStore } from './view/viewStore.ts'
 
 type CoreServices = {
   storage: Storage | null
+  /** The UI's copy of the project; server commands go through `client`. */
   workbench: Workbench
+  /** Sends server commands to the mock server and follows its updates (decision 0023). */
+  client: ProjectClient
   layout: LayoutController
   /** Logged view state shared by manual controls and the agent. */
   view: ViewStore
@@ -89,13 +103,40 @@ function systemPrefersDark(): boolean {
 
 function createCoreServices(): CoreServices {
   const storage = getBrowserStorage()
-  const saved = loadProject(storage)
-  const workbench = createWorkbench({ initialState: saved?.state })
-  if (saved) {
+  const session = getSessionStorage()
+  const { conditions, fixture } = initialConditions(
+    session,
+    window.location.search,
+  )
+  const server = createMockServer({
+    storage,
+    scheduler: browserScheduler,
+    fixture,
+  })
+  const transport = createTransport(server, {
+    scheduler: browserScheduler,
+    conditions,
+  })
+  const initial = server.current()
+  const workbench = createWorkbench({
+    initialState: initial.state,
+    isUndoable: (type) => DRAFT_COMMANDS.has(type),
+    refuse: refuseServerCommand,
+  })
+  const client = createProjectClient({ workbench, transport, session, initial })
+  if (fixture) {
+    workbench.record({
+      type: 'project.replace',
+      title: 'Load fixture',
+      input: { fixture },
+      summary: `Loaded the "${FIXTURES[fixture].label}" fixture from the page address: ${FIXTURES[fixture].description}`,
+      source: 'system',
+    })
+  } else if (initial.meta.savedAt) {
     workbench.record({
       type: 'project.restore',
       title: 'Restore saved project',
-      summary: `Restored the project saved in this browser at ${new Date(saved.savedAt).toLocaleString()}.`,
+      summary: `Restored the project saved in this browser at ${new Date(initial.meta.savedAt).toLocaleString()}.`,
       source: 'system',
     })
   } else if (hasOutdatedProject(storage)) {
@@ -112,10 +153,12 @@ function createCoreServices(): CoreServices {
   return {
     storage,
     workbench,
+    client,
     layout,
     view,
     agent: createScriptedAgent({
       workbench,
+      client,
       layout,
       view,
       scheduler: browserScheduler,
@@ -147,11 +190,6 @@ export function WorkbenchProvider({ children }: { children: ReactNode }) {
   useLayoutEffect(() => {
     applyAppearance(appearance)
   }, [appearance])
-
-  useEffect(
-    () => startTaskSimulator(core.workbench, { scheduler: browserScheduler }),
-    [core.workbench],
-  )
 
   const services = useMemo<Services>(() => {
     return {
@@ -218,6 +256,13 @@ export function useWorkbenchSnapshot<T>(
   selector: (snapshot: WorkbenchSnapshot) => T,
 ): T {
   return useStore(useServices().workbench.store, selector)
+}
+
+/** Reads requests in flight, the server's save state, and the demo conditions. */
+export function useClientSnapshot<T>(
+  selector: (snapshot: ClientSnapshot) => T,
+): T {
+  return useStore(useServices().client.store, selector)
 }
 
 /** Reads logged view state (map, table, dashboard). */

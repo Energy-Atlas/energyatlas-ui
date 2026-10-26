@@ -18,6 +18,7 @@ import {
   requiresApproval,
   type ToolCall,
   type ToolDeps,
+  type ToolResult,
 } from './tools.ts'
 import type {
   AgentAdapter,
@@ -47,6 +48,7 @@ export function createScriptedAgent(
   const { workbench, scheduler, stepDelayMs = STEP_DELAY_MS } = options
   const deps: ToolDeps = {
     workbench: options.workbench,
+    client: options.client,
     view: options.view,
     layout: options.layout,
   }
@@ -232,7 +234,19 @@ export function createScriptedAgent(
   function runCall(titled: TitledCall, onDone: () => void) {
     const call: ToolCall =
       typeof titled.call === 'function' ? titled.call(context) : titled.call
-    const result = executeToolCall(deps, call)
+    void executeToolCall(deps, call).then((result) => {
+      // The session may have been stopped while the server answered.
+      if (!isRunning()) return
+      finishCall(titled, call, result, onDone)
+    })
+  }
+
+  function finishCall(
+    titled: TitledCall,
+    call: ToolCall,
+    result: ToolResult,
+    onDone: () => void,
+  ) {
     push({ id: nextId(), kind: 'tool', title: titled.title, call, result })
     if (result.status === 'rejected') {
       endWith(

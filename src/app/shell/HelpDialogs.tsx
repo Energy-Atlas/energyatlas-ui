@@ -22,7 +22,7 @@ type DialogFrameProps = {
   role?: 'dialog' | 'alertdialog'
 }
 
-function DialogFrame({
+export function DialogFrame({
   title,
   isOpen,
   onOpenChange,

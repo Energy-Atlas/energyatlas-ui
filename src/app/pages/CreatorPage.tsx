@@ -194,8 +194,9 @@ export function CreatorPage() {
 
 function MeasureCreator() {
   const headingId = useId()
-  const { workbench } = useServices()
+  const { client } = useServices()
   const [draft, setDraft] = useState<MeasureDraft>(EMPTY_MEASURE)
+  const [sending, setSending] = useState(false)
   const [errors, setErrors] = useState<Record<string, string>>({})
   const [message, setMessage] = useState<FormMessage>(null)
 
@@ -215,19 +216,27 @@ function MeasureCreator() {
         validationBehavior="aria"
         onSubmit={(event) => {
           event.preventDefault()
-          const result = workbench.execute({
-            type: 'measure.create',
-            input: draft,
-          })
-          if (result.outcome.status === 'applied') {
-            setDraft(EMPTY_MEASURE)
-            setErrors({})
-            setMessage({ tone: 'success', text: result.outcome.summary })
-            return
-          }
-          const { fieldErrors, general } = splitIssues(result.outcome.issues)
-          setErrors(fieldErrors)
-          setMessage(general ? { tone: 'error', text: general } : null)
+          if (sending) return
+          setSending(true)
+          void client
+            .execute({
+              type: 'measure.create',
+              input: draft,
+            })
+            .then((result) => {
+              setSending(false)
+              if (result.outcome.status === 'applied') {
+                setDraft(EMPTY_MEASURE)
+                setErrors({})
+                setMessage({ tone: 'success', text: result.outcome.summary })
+                return
+              }
+              const { fieldErrors, general } = splitIssues(
+                result.outcome.issues,
+              )
+              setErrors(fieldErrors)
+              setMessage(general ? { tone: 'error', text: general } : null)
+            })
         }}
       >
         <TextField
@@ -343,8 +352,9 @@ function MeasureCreator() {
         <Button
           type="submit"
           className={cx(componentStyles.button, componentStyles.primary)}
+          isPending={sending}
         >
-          Create measure
+          {sending ? 'Sending…' : 'Create measure'}
         </Button>
       </Form>
     </section>
@@ -353,8 +363,9 @@ function MeasureCreator() {
 
 function ScenarioCreator({ measures }: { measures: Measure[] }) {
   const headingId = useId()
-  const { workbench } = useServices()
+  const { client } = useServices()
   const [draft, setDraft] = useState<ScenarioDraft>(EMPTY_SCENARIO)
+  const [sending, setSending] = useState(false)
   const [errors, setErrors] = useState<Record<string, string>>({})
   const [message, setMessage] = useState<FormMessage>(null)
 
@@ -374,19 +385,27 @@ function ScenarioCreator({ measures }: { measures: Measure[] }) {
         validationBehavior="aria"
         onSubmit={(event) => {
           event.preventDefault()
-          const result = workbench.execute({
-            type: 'scenario.create',
-            input: draft,
-          })
-          if (result.outcome.status === 'applied') {
-            setDraft(EMPTY_SCENARIO)
-            setErrors({})
-            setMessage({ tone: 'success', text: result.outcome.summary })
-            return
-          }
-          const { fieldErrors, general } = splitIssues(result.outcome.issues)
-          setErrors(fieldErrors)
-          setMessage(general ? { tone: 'error', text: general } : null)
+          if (sending) return
+          setSending(true)
+          void client
+            .execute({
+              type: 'scenario.create',
+              input: draft,
+            })
+            .then((result) => {
+              setSending(false)
+              if (result.outcome.status === 'applied') {
+                setDraft(EMPTY_SCENARIO)
+                setErrors({})
+                setMessage({ tone: 'success', text: result.outcome.summary })
+                return
+              }
+              const { fieldErrors, general } = splitIssues(
+                result.outcome.issues,
+              )
+              setErrors(fieldErrors)
+              setMessage(general ? { tone: 'error', text: general } : null)
+            })
         }}
       >
         <TextField
@@ -469,8 +488,9 @@ function ScenarioCreator({ measures }: { measures: Measure[] }) {
         <Button
           type="submit"
           className={cx(componentStyles.button, componentStyles.primary)}
+          isPending={sending}
         >
-          Create scenario
+          {sending ? 'Sending…' : 'Create scenario'}
         </Button>
       </Form>
     </section>

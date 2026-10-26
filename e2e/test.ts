@@ -86,11 +86,24 @@ export async function blockBasemap(page: Page): Promise<void> {
   await page.route(OPENFREEMAP, (route) => route.abort('internetdisconnected'))
 }
 
+/** The session key of the demo conditions (decision 0023). */
+export const DEMO_CONDITIONS_KEY = 'eaui.demoConditions'
+
 export const test = base.extend<{ basemapStub: undefined }>({
   basemapStub: [
     async ({ page }, use) => {
       await serveBasemapStub(page)
       await serveTerrainStub(page)
+      // The mock server answers without delay in tests unless a test sets
+      // other conditions; a stored choice survives reloads, as in the app.
+      await page.addInitScript((key) => {
+        if (!window.sessionStorage.getItem(key)) {
+          window.sessionStorage.setItem(
+            key,
+            JSON.stringify({ latency: 'none' }),
+          )
+        }
+      }, DEMO_CONDITIONS_KEY)
       await use(undefined)
     },
     { auto: true },

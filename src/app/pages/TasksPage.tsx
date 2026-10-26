@@ -1,22 +1,51 @@
 import { useId } from 'react'
-import type { TaskStatus } from '../../domain/types.ts'
-import { useServices, useWorkbenchSnapshot } from '../WorkbenchContext.tsx'
+import type { Task, TaskStatus } from '../../domain/types.ts'
+import {
+  useClientSnapshot,
+  useServices,
+  useWorkbenchSnapshot,
+} from '../WorkbenchContext.tsx'
 import { ActionButton } from '../components/ActionButton.tsx'
 import styles from '../components/components.module.css'
+import { waitingReason } from '../service/usePendingReason.ts'
+import pageStyles from './pages.module.css'
 
-const STATUS_LABELS: Record<TaskStatus, string> = {
-  queued: 'Queued',
+/** RC's job states (decision 0023) for the stage tasks the server runs. */
+export const JOB_STATUS_LABELS: Record<TaskStatus, string> = {
+  queued: 'Created',
   running: 'Running',
-  succeeded: 'Succeeded',
+  succeeded: 'Completed',
   failed: 'Failed',
   cancelled: 'Cancelled',
 }
 
+function JobLog({ task }: { task: Task }) {
+  return (
+    <details className={pageStyles.jobLog}>
+      <summary>
+        Log <span className={styles.muted}>({task.log.length})</span>
+      </summary>
+      <ol aria-label={`Log of ${task.label}`}>
+        {task.log.map((line, index) => (
+          <li key={index}>
+            <time dateTime={line.at}>
+              {new Date(line.at).toLocaleTimeString()}
+            </time>{' '}
+            {line.message}
+          </li>
+        ))}
+      </ol>
+    </details>
+  )
+}
+
+/** The server's jobs: one per stage run, with its state, progress, and log. */
 export function TasksPage() {
   const headingId = useId()
-  const { workbench } = useServices()
+  const { client } = useServices()
   const tasks = useWorkbenchSnapshot((snapshot) => snapshot.state.tasks)
   const taskIds = useWorkbenchSnapshot((snapshot) => snapshot.state.taskIds)
+  const pending = useClientSnapshot((snapshot) => snapshot.pending)
   const ordered = [...taskIds].reverse().flatMap((id) => {
     const task = tasks[id]
     return task ? [task] : []
@@ -24,20 +53,21 @@ export function TasksPage() {
 
   return (
     <section className={styles.page} aria-labelledby={headingId}>
-      <h2 id={headingId}>Tasks</h2>
+      <h2 id={headingId}>Jobs</h2>
       {ordered.length === 0 ? (
         <p className={styles.empty}>
-          No background tasks yet. Run a workflow stage to start one.
+          No jobs yet. Run a workflow stage to start one.
         </p>
       ) : (
-        <table className={styles.table} aria-label="Tasks">
+        <table className={styles.table} aria-label="Jobs">
           <thead>
             <tr>
-              <th scope="col">Task</th>
+              <th scope="col">Job</th>
               <th scope="col">Status</th>
               <th scope="col">Progress</th>
               <th scope="col">Started by</th>
               <th scope="col">Message</th>
+              <th scope="col">Log</th>
               <th scope="col">
                 <span className="visually-hidden">Actions</span>
               </th>
@@ -50,17 +80,26 @@ export function TasksPage() {
               return (
                 <tr key={task.id}>
                   <td>{task.label}</td>
-                  <td>{STATUS_LABELS[task.status]}</td>
+                  <td>{JOB_STATUS_LABELS[task.status]}</td>
                   <td>{Math.round(task.progress * 100)}%</td>
                   <td>{task.source}</td>
                   <td>{task.message ?? ''}</td>
                   <td>
+                    <JobLog task={task} />
+                  </td>
+                  <td>
                     {active ? (
                       <ActionButton
                         label={`Cancel ${task.label}`}
-                        disabledReason={null}
+                        disabledReason={waitingReason(
+                          pending,
+                          'task.cancel',
+                          'the job is being cancelled',
+                          (input) =>
+                            (input as { taskId?: unknown }).taskId === task.id,
+                        )}
                         onPress={() =>
-                          workbench.execute({
+                          void client.execute({
                             type: 'task.cancel',
                             input: { taskId: task.id },
                           })

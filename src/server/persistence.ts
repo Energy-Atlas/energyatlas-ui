@@ -68,6 +68,8 @@ export function loadProject(storage: Storage | null): SavedProject | null {
   }
   if (!isSavedProject(parsed)) return null
   for (const task of Object.values(parsed.state.tasks)) {
+    // Projects saved before jobs kept a log have none.
+    task.log ??= []
     if (task.status === 'queued' || task.status === 'running') {
       task.status = 'cancelled'
       task.message = 'Interrupted when the page was closed.'

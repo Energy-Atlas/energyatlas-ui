@@ -25,7 +25,8 @@ export const PAGES = {
   creator: { name: 'Creator', component: 'page.creator' },
   settings: { name: 'Settings', component: 'page.settings' },
   issues: { name: 'Issues', component: 'page.issues' },
-  tasks: { name: 'Tasks', component: 'page.tasks' },
+  // Tasks became Jobs (decision 0023); the component id stays page.tasks.
+  tasks: { name: 'Jobs', component: 'page.tasks' },
   account: { name: 'Account', component: 'page.account' },
 } as const
 
@@ -200,12 +201,22 @@ type BorderLike = {
   getLocation: () => { getName: () => string }
 }
 
-/** Saved layouts store tab names; renamed panels take their current name. */
+/** Saved layouts store tab names; renamed pages and panels take their current name. */
 function withCurrentPanelNames(model: Model): Model {
-  for (const panel of Object.keys(PANELS) as PanelId[]) {
-    const node = model.getNodeById(panelTabId(panel))
-    if (node instanceof TabNode && node.getName() !== PANELS[panel].name) {
-      model.doAction(Actions.renameTab(node.getId(), PANELS[panel].name))
+  const tabs: [string, string][] = [
+    ...(Object.keys(PAGES) as PageId[]).map((page): [string, string] => [
+      pageTabId(page),
+      PAGES[page].name,
+    ]),
+    ...(Object.keys(PANELS) as PanelId[]).map((panel): [string, string] => [
+      panelTabId(panel),
+      PANELS[panel].name,
+    ]),
+  ]
+  for (const [id, name] of tabs) {
+    const node = model.getNodeById(id)
+    if (node instanceof TabNode && node.getName() !== name) {
+      model.doAction(Actions.renameTab(node.getId(), name))
     }
   }
   return model

@@ -168,6 +168,9 @@ export type StageState =
 export type TaskStatus =
   'queued' | 'running' | 'succeeded' | 'failed' | 'cancelled'
 
+/** One line of a job's log, as RC keeps for each job. */
+export type TaskLogLine = { at: string; message: string }
+
 export type Task = {
   id: string
   label: string
@@ -179,6 +182,7 @@ export type Task = {
   source: CommandSource
   createdAt: string
   updatedAt: string
+  log: TaskLogLine[]
 }
 
 export type IssueSeverity = 'info' | 'warning' | 'error'

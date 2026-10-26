@@ -385,6 +385,14 @@
   padding: 0 0.375rem;
 }
 
+/* Any demo condition that differs from normal is disclosed here (decision
+   0023), with the warning tone's edge so a rigged state is never mistaken
+   for a real one. */
+.demoChip {
+  border-color: var(--tone-warning-text);
+  color: var(--tone-warning-text);
+}
+
 .progress {
   display: inline-flex;
   align-items: center;
@@ -516,6 +524,14 @@
   max-height: 65vh;
   overflow: auto;
   padding: 0.75rem;
+}
+
+/* Ruled sections inside a dialog, as page sections are ruled. */
+.dialogSection {
+  margin: var(--space-3) -0.75rem var(--space-2);
+  padding: var(--space-2) 0.75rem 0;
+  border-top: var(--rule);
+  font-size: var(--font-size-base);
 }
 
 .dialogActions {
