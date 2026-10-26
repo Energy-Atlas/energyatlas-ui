@@ -45,10 +45,36 @@ path, and a real CSV download.
 
 - Computation is synthetic everywhere; values are not engineering results. Real connections are built inside RC
   later (decision 0022).
-- Roadmap, Dashboard, and empty-state Run controls rely on the server to explain item-input refusals; Workflow, Jobs,
-  and actions show them before sending.
-- Dashboard chart slots are numbered across all scenarios, including ones left out of the comparison set.
 - A full district benchmark (10,000 buildings) remains the separately recorded cross-cutting deliverable; slices
   paginate long tables and lists instead of rendering every row.
 - Job history is saved in full; pruning, notices persistence, and a generic job-schema runner are not built.
 - The owner may review the merged slices and decide whether to publish `master`; nothing here pushed it.
+
+## Follow-up fixes (2026-10-26)
+
+After the slices merged, the owner asked to fix the remaining gaps first. Branch `claude/slice-fixes` closes them:
+
+- Every Run control (Workflow, Roadmap, Dashboard, empty states, Jobs, actions) explains item-input refusals, such as
+  missing floor counts or invalid archetype definitions, before anything is sent.
+- Dashboard chart slots go to scenarios in the comparison set; left-out scenarios are named and take no slot, in the
+  dashboard, saved charts, and the agent's chart session. Colors follow a scenario's position in the comparison set,
+  so changing the set can reassign them.
+- Page drafts already reset on a project switch, because the whole workbench remounts with each project generation;
+  a browser test now confirms it (no code change was needed).
+- A retry of a run saved before its stage processed items one by one says so instead of naming a building change.
+- The scripted agent follows the job its own submission created (retries, fusions, fits) to its end and has a
+  "Calibrate and explore results" session: a fit after approval, left unadopted, then drill-down on the Results page.
+  In Automatic mode, fits and retries of stage or fit runs proceed without asking; applying or retrying a data fusion
+  still asks, because it changes the project model.
+- The command palette's search field takes focus when the palette opens from a focused control; this pre-existing
+  keyboard bug was found while testing and is covered by a regression test.
+- Browser coverage now includes all six appearances and a 900 px pane for every new page, a slow server, a failed
+  request with recovery, and a project switch.
+
+An independent review of the fix branch found nothing serious; its findings (agent chart session order, fusion
+retries in Automatic mode, the agent's job identification, left-out scenarios in saved charts, a redundant remount
+wrapper) were addressed. Calibration prompts are now matched before chart prompts, so "chart the meters" starts the
+calibration session.
+
+Verification on the final fix commit: typecheck, lint, format clean; 303 unit, 92 development browser, and 3 preview
+tests passed.

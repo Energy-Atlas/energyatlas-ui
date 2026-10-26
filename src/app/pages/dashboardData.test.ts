@@ -2,6 +2,8 @@ import { describe, expect, test } from 'vitest'
 import { runStageNow } from '../../domain/jobs/runNow.ts'
 import { createWorkbench, type Workbench } from '../../domain/workbench.ts'
 import { STAGE_IDS } from '../../domain/workflow.ts'
+import { APPEARANCES } from '../appearance/appearances.ts'
+import { compileChartSpec } from '../view/chartSpec.ts'
 import { buildDashboardData } from './dashboardData.ts'
 
 function runStage(workbench: Workbench, stageId: string) {
@@ -102,5 +104,30 @@ describe('buildDashboardData', () => {
     expect(data.scenarios.map((item) => item.slot)).toEqual([0, 1, 2])
     expect(data.uncharted).toEqual([])
     expect(data.leftOut).toEqual(['Scenario 1'])
+  })
+
+  test('a saved chart names a left-out scenario separately from missing results', () => {
+    const workbench = modeledProject(2)
+    const [first, second] = Object.values(workbench.getState().scenarios)
+    if (!first || !second) throw new Error('Missing scenarios')
+    workbench.execute({
+      type: 'scenario.update',
+      input: { ...first, included: false },
+    })
+    const compiled = compileChartSpec(
+      {
+        id: 'chart-1',
+        title: 'Monthly demand',
+        kind: 'line',
+        measure: 'monthlyDemand',
+        series: ['baseline', first.id, second.id],
+      },
+      workbench.getState(),
+      APPEARANCES.light.data,
+      'sans-serif',
+    )
+    expect(compiled.leftOut).toEqual([first.name])
+    expect(compiled.missing).toEqual([])
+    expect(compiled.table.columns).toContain(`${second.name} (MWh)`)
   })
 })

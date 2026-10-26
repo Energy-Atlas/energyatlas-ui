@@ -20,19 +20,8 @@ import {
   Workflow,
   type LucideIcon,
 } from 'lucide-react'
-import {
-  Fragment,
-  useCallback,
-  useEffect,
-  useMemo,
-  useState,
-  type ReactNode,
-} from 'react'
-import {
-  useClientSnapshot,
-  useLayoutVersion,
-  useServices,
-} from '../WorkbenchContext.tsx'
+import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useLayoutVersion, useServices } from '../WorkbenchContext.tsx'
 import {
   useAppActions,
   useInvokeAction,
@@ -110,50 +99,20 @@ function renderTab(node: TabNode, values: ITabRenderValues) {
   if (node.isInsideBorder()) values.content = node.getName()
 }
 
-/**
- * Remounts its page when the project session changes, so drafts, paging,
- * and edit forms kept in React state never carry into another project. The
- * Map and Table keep their own instances, which reset through view operations.
- */
-function ProjectScoped({ children }: { children: ReactNode }) {
-  const generation = useClientSnapshot((snapshot) => snapshot.projectGeneration)
-  return <Fragment key={generation}>{children}</Fragment>
-}
-
 function renderTabContent(node: TabNode) {
   switch (node.getComponent()) {
     case 'panel.workflow':
       return <WorkflowPanel />
     case 'page.tasks':
-      return (
-        <ProjectScoped>
-          <TasksPage />
-        </ProjectScoped>
-      )
+      return <TasksPage />
     case 'page.intake':
-      return (
-        <ProjectScoped>
-          <IntakePage />
-        </ProjectScoped>
-      )
+      return <IntakePage />
     case 'page.archetypes':
-      return (
-        <ProjectScoped>
-          <ArchetypesPage />
-        </ProjectScoped>
-      )
+      return <ArchetypesPage />
     case 'page.calibration':
-      return (
-        <ProjectScoped>
-          <CalibrationPage />
-        </ProjectScoped>
-      )
+      return <CalibrationPage />
     case 'page.results':
-      return (
-        <ProjectScoped>
-          <ResultsPage />
-        </ProjectScoped>
-      )
+      return <ResultsPage />
     case 'page.account':
       return <AccountPage />
     case 'page.issues':
@@ -171,23 +130,11 @@ function renderTabContent(node: TabNode) {
     case 'page.table':
       return <TablePage />
     case 'page.dashboard':
-      return (
-        <ProjectScoped>
-          <DashboardPage />
-        </ProjectScoped>
-      )
+      return <DashboardPage />
     case 'page.roadmap':
-      return (
-        <ProjectScoped>
-          <RoadmapPage />
-        </ProjectScoped>
-      )
+      return <RoadmapPage />
     case 'page.creator':
-      return (
-        <ProjectScoped>
-          <CreatorPage />
-        </ProjectScoped>
-      )
+      return <CreatorPage />
     default:
       return (
         <p className={componentStyles.page}>

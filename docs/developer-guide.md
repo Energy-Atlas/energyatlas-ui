@@ -196,6 +196,12 @@ identifying header lines, units in column names, neutralized formula-like text, 
 Currentness comes from derived stage states; publication time comes from the succeeded job with the result's run ID.
 Results view operations validate against the shown result, so they never report a change they did not make.
 
+### Page-local state and project switches
+
+`App.tsx` keys `WorkbenchShell` by the client's project generation, so a project replacement remounts every page and
+panel, and drafts kept in React state never carry into another project; `e2e/robustness.spec.ts` checks this. The
+generation changes only when the server replaces the session, not on reconnect or catch-up.
+
 ### Add or change model behavior: a command
 
 1. Add the entity fields to `src/domain/types.ts` (and `initialState.ts`).
@@ -277,13 +283,14 @@ Only packages from decisions 0007, 0008, and 0010 are allowed. Record a reason i
 
 | Command | What it covers |
 | --- | --- |
-| `npm test` | 299 Vitest tests after roadmap slices 3–8 (Jobs, intake, archetypes, scenarios, calibration, results, and their save migrations); earlier: 224 Vitest tests: domain/views/agent, appearance contrast, spatial helpers, fixtures and service conditions, plus catalog migration/validation, explicit sessions, shared lifecycle guards, mutation fencing, project tool parity, and queued-agent resets |
+| `npm test` | 302 Vitest tests after roadmap slices 3–8 and their follow-up fixes (Jobs, intake, archetypes, scenarios, calibration, results, and their save migrations); earlier: 224 Vitest tests: domain/views/agent, appearance contrast, spatial helpers, fixtures and service conditions, plus catalog migration/validation, explicit sessions, shared lifecycle guards, mutation fencing, project tool parity, and queued-agent resets |
 | `npm run test:e2e` | 68 Playwright tests in Edge with 4 local workers and axe; default 1280x800, plus lifecycle appearance captures at 1600x1000 and 900x700 (no serious or critical violations allowed) |
 | `npm run typecheck`, `npm run lint`, `npm run format:check` | Must be clean before committing |
 
 End-to-end specs:
 
 - `e2e/project-lifecycle.spec.ts`: start, named creation/validation, multi-project save/open/recent, equal names, draft and job guards, failed Save, malformed storage, held-request recovery, all six appearances at three sizes, axe, keyboard focus, and reproducible screenshots in `tmp/`.
+- `e2e/robustness.spec.ts`: a slow server with pending explanations, a failed request and its recovery, page drafts reset on a project switch, and the command palette's focus from a focused control.
 - `e2e/results.spec.ts`: provenance and currentness, drill-down into a building, the typical-weekday profile, a real CSV download with its header, scenario savings, and light and dark rendering with axe.
 - `e2e/calibration.spec.ts`: series validation, unit choice and warning, a fit job with a notice, a published variant that leaves the working baseline alone, Adopt with outdated dependents, Revert, and light, dark, and 900 px rendering with axe.
 - `e2e/scenarios.spec.ts`: library copies, the one-measure-per-kind rule before sending, the live preview, editing inclusion, modeling a comparison set, the comparison table, and light and dark rendering with axe.

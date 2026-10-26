@@ -144,6 +144,12 @@ function AddedChart({ spec }: { spec: ChartSpec }) {
           {compiled.missing.join(', ')}.
         </p>
       ) : null}
+      {compiled.leftOut.length > 0 ? (
+        <p className={componentStyles.muted}>
+          Not charted because they are left out of the comparison set:{' '}
+          {compiled.leftOut.join(', ')}.
+        </p>
+      ) : null}
       <EChart
         option={compiled.option}
         height={compiled.height}

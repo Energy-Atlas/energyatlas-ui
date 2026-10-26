@@ -41,12 +41,10 @@ const JOB_SUBMISSIONS: ReadonlySet<string> = new Set([
 
 /**
  * Jobs that compute without changing the project model, which Automatic mode
- * runs like stage runs. Applying a dataset changes the model, so it still asks.
+ * runs like stage runs. Applying a dataset changes the model, so it still asks;
+ * retries are decided by the run they retry.
  */
-const COMPUTATION_JOBS: ReadonlySet<string> = new Set([
-  'job.retry',
-  'calibration.fit',
-])
+const COMPUTATION_JOBS: ReadonlySet<string> = new Set(['calibration.fit'])
 
 export type ScriptedAgentOptions = ToolDeps & {
   scheduler: Scheduler
@@ -255,10 +253,11 @@ export function createScriptedAgent(
     const generation = sessionGeneration
     const call: ToolCall =
       typeof titled.call === 'function' ? titled.call(context) : titled.call
+    const knownTasks = new Set(workbench.getState().taskIds)
     void executeToolCall(deps, call).then((result) => {
       // The session may have been stopped while the server answered.
       if (generation !== sessionGeneration || !isRunning()) return
-      finishCall(titled, call, result, onDone)
+      finishCall(titled, call, result, onDone, knownTasks)
     })
   }
 
@@ -267,6 +266,7 @@ export function createScriptedAgent(
     call: ToolCall,
     result: ToolResult,
     onDone: () => void,
+    knownTasks: ReadonlySet<string> = new Set(),
   ) {
     push({ id: nextId(), kind: 'tool', title: titled.title, call, result })
     if (result.status === 'rejected') {
@@ -281,7 +281,17 @@ export function createScriptedAgent(
       return
     }
     if (call.kind === 'command' && JOB_SUBMISSIONS.has(call.command.type)) {
-      waitForJob(workbench.getState().taskIds.at(-1) ?? '', onDone)
+      // The agent's own new job; a repeated submission creates none.
+      const state = workbench.getState()
+      const created = state.taskIds.filter(
+        (id) => !knownTasks.has(id) && state.tasks[id]?.source === 'agent',
+      )
+      const taskId = created.at(-1)
+      if (!taskId) {
+        onDone()
+        return
+      }
+      waitForJob(taskId, onDone)
       return
     }
     onDone()
@@ -337,10 +347,17 @@ export function createScriptedAgent(
    */
   function isWorkflowCall(titled: TitledCall): boolean {
     if (typeof titled.call === 'function') return false
+    if (titled.call.kind !== 'command') return false
+    const { command } = titled.call
+    if (command.type === 'job.retry') {
+      // Retrying a fusion publishes a dataset into the model, so it still asks.
+      const state = workbench.getState()
+      const task = state.tasks[command.input.taskId]
+      const group = task?.groupId ? state.runGroups[task.groupId] : undefined
+      return group !== undefined && group.kind !== 'fusion'
+    }
     return (
-      titled.call.kind === 'command' &&
-      (titled.call.command.type.startsWith('workflow.') ||
-        COMPUTATION_JOBS.has(titled.call.command.type))
+      command.type.startsWith('workflow.') || COMPUTATION_JOBS.has(command.type)
     )
   }
 

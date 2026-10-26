@@ -1,7 +1,10 @@
 import type { Requirement } from '../../domain/stagePlan.ts'
 import type { StageState, WorkbenchState } from '../../domain/types.ts'
 import { STAGE_IDS } from '../../domain/workflow.ts'
-import { MAX_CHARTED_SCENARIOS } from '../pages/dashboardData.ts'
+import {
+  MAX_CHARTED_SCENARIOS,
+  chartedScenarioOrder,
+} from '../pages/dashboardData.ts'
 import { command, layoutCall, viewCall, type ToolCall } from './tools.ts'
 import type { ReferenceTarget } from './types.ts'
 
@@ -185,7 +188,7 @@ const representationSession: ScriptedSession = {
     ),
     (context) => {
       const state = context.state()
-      const modeled = Object.values(state.scenarios)
+      const modeled = chartedScenarioOrder(state)
         .slice(0, MAX_CHARTED_SCENARIOS)
         .filter((scenario) => state.results.scenarios[scenario.id])
         .slice(0, MAX_CHARTED_SCENARIOS - 1)

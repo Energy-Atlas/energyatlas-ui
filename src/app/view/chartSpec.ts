@@ -114,10 +114,11 @@ function resolveSeries(
   spec: ChartSpec,
   project: WorkbenchState,
   palette: DataPalette,
-): { series: ResolvedSeries[]; missing: string[] } {
+): { series: ResolvedSeries[]; missing: string[]; leftOut: string[] } {
   const scenarios = chartedScenarioOrder(project)
   const series: ResolvedSeries[] = []
   const missing: string[] = []
+  const leftOut: string[] = []
   for (const id of spec.series) {
     if (id === BASELINE_SERIES) {
       const baseline = project.results.baseline
@@ -135,8 +136,13 @@ function resolveSeries(
     const slot = scenarios.findIndex((scenario) => scenario.id === id)
     const scenario = scenarios[slot]
     const result = project.results.scenarios[id]
+    const excluded = project.scenarios[id]
+    if (!scenario && excluded) {
+      leftOut.push(excluded.name)
+      continue
+    }
     if (!scenario || !result || slot >= MAX_CHARTED_SCENARIOS) {
-      missing.push(scenario?.name ?? project.scenarios[id]?.name ?? id)
+      missing.push(scenario?.name ?? id)
       continue
     }
     series.push({
@@ -145,7 +151,7 @@ function resolveSeries(
       result,
     })
   }
-  return { series, missing }
+  return { series, missing, leftOut }
 }
 
 function formatNumber(value: unknown): string {
@@ -162,6 +168,8 @@ export type CompiledChart = {
   table: { caption: string; columns: string[]; rows: string[][] }
   /** Series named in the specification that have no results now. */
   missing: string[]
+  /** Scenarios named in the specification but left out of the comparison set. */
+  leftOut: string[]
 }
 
 export function compileChartSpec(
@@ -170,7 +178,7 @@ export function compileChartSpec(
   palette: DataPalette,
   fontFamily: string,
 ): CompiledChart {
-  const { series, missing } = resolveSeries(spec, project, palette)
+  const { series, missing, leftOut } = resolveSeries(spec, project, palette)
   const ink = palette.ink
   const text = { fontFamily, fontSize: 12 }
   const tooltip = {
@@ -248,6 +256,7 @@ export function compileChartSpec(
         ]),
       },
       missing,
+      leftOut,
     }
   }
 
@@ -306,5 +315,6 @@ export function compileChartSpec(
       rows: series.map((item) => [item.label, formatNumber(value(item))]),
     },
     missing,
+    leftOut,
   }
 }

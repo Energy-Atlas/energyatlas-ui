@@ -21,7 +21,10 @@ export const MONTHS = [
 
 export type ChartedScenario = {
   scenario: Scenario
-  /** Categorical color slot, fixed by the scenario's position in the project. */
+  /**
+   * Categorical color slot: the scenario's position in the comparison set.
+   * Changing the set can reassign colors; left-out scenarios take no slot.
+   */
   slot: number
   /** Result of the last scenario modeling run, if any. */
   modeled: ResultSet | null
