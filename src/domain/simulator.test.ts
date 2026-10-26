@@ -1,5 +1,10 @@
 import { describe, expect, test } from 'vitest'
-import { startTaskSimulator, type Scheduler } from './simulator.ts'
+import { runStageNow } from './jobs/runNow.ts'
+import {
+  startTaskSimulator,
+  type JobBehaviour,
+  type Scheduler,
+} from './simulator.ts'
 import { createWorkbench } from './workbench.ts'
 import { STAGE_IDS, deriveStageStates } from './workflow.ts'
 
@@ -86,6 +91,110 @@ describe('startTaskSimulator', () => {
         .getState()
         .log.some((entry) => entry.type === 'task.complete'),
     ).toBe(false)
+    stop()
+  })
+
+  test('runs one job at a time in the order submitted', () => {
+    const workbench = createWorkbench()
+    runStageNow(workbench, STAGE_IDS.location)
+    const manual = createManualScheduler()
+    const stop = startTaskSimulator(workbench, {
+      scheduler: manual.scheduler,
+      steps: 2,
+    })
+    // Two independent runs queued together.
+    workbench.execute({
+      type: 'workflow.runStage',
+      input: { stageId: STAGE_IDS.enrichment },
+    })
+    workbench.execute({
+      type: 'workflow.runStage',
+      input: { stageId: STAGE_IDS.location },
+    })
+    const [, first, second] = workbench.getState().taskIds
+    manual.runNext()
+    const running = () =>
+      Object.values(workbench.getState().tasks).filter(
+        (task) => task.status === 'running',
+      )
+    expect(running().map((task) => task.id)).toEqual([first])
+    expect(workbench.getState().tasks[second ?? '']?.status).toBe('queued')
+    manual.runAll()
+    const order = workbench.store
+      .getState()
+      .log.filter((entry) => entry.type === 'task.start')
+      .map((entry) => (entry.input as { taskId: string }).taskId)
+    expect(order.slice(-2)).toEqual([first, second])
+    stop()
+  })
+
+  test('fails some items transiently, then retries only those', () => {
+    const workbench = createWorkbench()
+    for (const stageId of [
+      STAGE_IDS.location,
+      STAGE_IDS.enrichment,
+      STAGE_IDS.schema,
+    ]) {
+      runStageNow(workbench, stageId)
+    }
+    const manual = createManualScheduler()
+    const stop = startTaskSimulator(workbench, {
+      scheduler: manual.scheduler,
+      behaviour: () => 'itemFailures',
+    })
+    workbench.execute({
+      type: 'workflow.runStage',
+      input: { stageId: STAGE_IDS.preprocessing },
+    })
+    manual.runAll()
+    const failed = workbench.getState().taskIds.at(-1) ?? ''
+    const task = workbench.getState().tasks[failed]
+    expect(task?.status).toBe('failed')
+    const failures = Object.keys(task?.items?.failures ?? {})
+    expect(failures.length).toBeGreaterThan(0)
+    expect(
+      workbench.store
+        .getState()
+        .log.filter((entry) => entry.type === 'task.processItems'),
+    ).toHaveLength(4)
+
+    workbench.execute({ type: 'job.retry', input: { taskId: failed } })
+    manual.runAll()
+    const retry =
+      workbench.getState().tasks[workbench.getState().taskIds.at(-1) ?? '']
+    expect(retry).toMatchObject({ status: 'succeeded', attempt: 2 })
+    expect(retry?.items?.ids).toEqual(failures)
+    stop()
+  })
+
+  test('keeps results held when publication fails', () => {
+    const workbench = createWorkbench()
+    for (const stageId of [
+      STAGE_IDS.location,
+      STAGE_IDS.enrichment,
+      STAGE_IDS.schema,
+    ]) {
+      runStageNow(workbench, stageId)
+    }
+    const manual = createManualScheduler()
+    let mode: JobBehaviour = 'publishFails'
+    const stop = startTaskSimulator(workbench, {
+      scheduler: manual.scheduler,
+      behaviour: () => mode,
+    })
+    workbench.execute({
+      type: 'workflow.runStage',
+      input: { stageId: STAGE_IDS.preprocessing },
+    })
+    manual.runAll()
+    const failed = workbench.getState().taskIds.at(-1) ?? ''
+    expect(workbench.getState().tasks[failed]?.message).toMatch(
+      /Publication failed/,
+    )
+    mode = 'normal'
+    workbench.execute({ type: 'job.retry', input: { taskId: failed } })
+    manual.runAll()
+    expect(workbench.getState().buildings.B0001?.heightM).not.toBeNull()
     stop()
   })
 })

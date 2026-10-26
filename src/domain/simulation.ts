@@ -6,6 +6,7 @@ import type {
   BuildingUse,
   EditableBuildingField,
   GridElement,
+  HeldPreprocessingOutput,
   LngLat,
   Provenance,
   ResultSet,
@@ -389,24 +390,62 @@ function matchSchema(
   }
 }
 
-function preprocessGeometry(
+/** One building's geospatial preprocessing, as a held item output; null when it lacks floors. */
+export function preprocessBuilding(
+  building: Building,
+): HeldPreprocessingOutput | null {
+  if (building.floors === null) return null
+  const floors = building.floors
+  const floorAreaM2 = round(building.footprintAreaM2 * floors)
+  return {
+    heightM: round(floors * 3.2, 1),
+    floorAreaM2,
+    zoneCount: Math.max(1, Math.round(floorAreaM2 / 450)),
+  }
+}
+
+/** Why held preprocessing outputs cannot be published, or null when they can. */
+export function validatePreprocessing(
   state: WorkbenchState,
-  context: StageRunContext,
-): StageRunResult {
-  if (state.buildingIds.some((id) => state.buildings[id]?.floors === null)) {
-    return {
-      ok: false,
-      message: 'Floor counts are missing. Run "Geospatial data enriching".',
+  membership: string[],
+  held: Record<string, HeldPreprocessingOutput>,
+): string | null {
+  for (const id of membership) {
+    const output = held[id]
+    if (!state.buildings[id]) return `building ${id} no longer exists`
+    if (!output) return `building ${id} has no held result`
+    if (
+      !(output.heightM > 0) ||
+      !(output.floorAreaM2 > 0) ||
+      !Number.isInteger(output.zoneCount) ||
+      output.zoneCount < 1
+    ) {
+      return `the held result for building ${id} is not valid`
     }
   }
+  return null
+}
+
+/**
+ * Applies a complete group's held outputs to the project at once. Call only
+ * after `validatePreprocessing` accepts them.
+ */
+export function publishPreprocessing(
+  state: WorkbenchState,
+  membership: string[],
+  held: Record<string, HeldPreprocessingOutput>,
+  context: StageRunContext,
+): StageRunResult {
   let zones = 0
-  forEachBuilding(state, (building) => {
-    const floors = building.floors ?? 1
-    building.heightM = round(floors * 3.2, 1)
-    building.floorAreaM2 = round(building.footprintAreaM2 * floors)
-    building.zoneCount = Math.max(1, Math.round(building.floorAreaM2 / 450))
-    zones += building.zoneCount
-  })
+  for (const id of membership) {
+    const building = state.buildings[id]
+    const output = held[id]
+    if (!building || !output) continue
+    building.heightM = output.heightM
+    building.floorAreaM2 = output.floorAreaM2
+    building.zoneCount = output.zoneCount
+    zones += output.zoneCount
+  }
   const provenance = fromStage(STAGE_IDS.preprocessing, context)
   upsertAsset(state, {
     id: 'asset:buildings',
@@ -428,7 +467,7 @@ function preprocessGeometry(
   })
   return {
     ok: true,
-    summary: `Derived heights, floor areas, and ${zones} thermal zones.`,
+    summary: `Derived heights, floor areas, and ${zones} thermal zones for ${membership.length} buildings.`,
     warnings: [],
   }
 }
@@ -964,7 +1003,6 @@ const STAGE_RUNNERS: Record<
   [STAGE_IDS.location]: captureFootprints,
   [STAGE_IDS.enrichment]: enrichFootprints,
   [STAGE_IDS.schema]: matchSchema,
-  [STAGE_IDS.preprocessing]: preprocessGeometry,
   [STAGE_IDS.shading]: estimateShadingAndPv,
   [STAGE_IDS.archetypes]: modelArchetypes,
   [STAGE_IDS.baseline]: setUpBaseline,

@@ -4,10 +4,16 @@ import { saveProject } from './persistence.ts'
 import { buildFixture, FIXTURE_IDS } from './fixtures.ts'
 import {
   CATALOG_KEY,
+  INTERRUPTED,
   readProjectCatalog,
+  restoreProject,
   writeProjectCatalog,
   type CatalogEntry,
 } from './projectCatalog.ts'
+import { retryBlocker } from '../domain/jobs/runGroups.ts'
+import { finishJobNow, runStageNow } from '../domain/jobs/runNow.ts'
+import { createWorkbench } from '../domain/workbench.ts'
+import { STAGE_IDS } from '../domain/workflow.ts'
 
 function memoryStorage(): Storage {
   const values = new Map<string, string>()
@@ -127,5 +133,117 @@ describe('project catalog', () => {
       false,
     )
     expect(storage.getItem(CATALOG_KEY)).toBe(original)
+  })
+
+  it('migrates a save from before run groups and keeps its jobs as history', () => {
+    const storage = memoryStorage()
+    const state = buildFixture('partway', () => new Date())
+    const legacy = JSON.parse(JSON.stringify(state)) as Record<string, unknown>
+    delete legacy.runGroups
+    delete legacy.runGroupIds
+    for (const task of Object.values(
+      legacy.tasks as Record<string, Record<string, unknown>>,
+    )) {
+      for (const key of [
+        'groupId',
+        'attempt',
+        'parentTaskId',
+        'requestId',
+        'items',
+      ])
+        delete task[key]
+    }
+    storage.setItem(
+      CATALOG_KEY,
+      JSON.stringify({
+        version: 1,
+        projects: [
+          {
+            ...entry(state.project.id),
+            name: state.project.name,
+            state: legacy,
+          },
+        ],
+      }),
+    )
+    const read = readProjectCatalog(storage)
+    expect(read.error).toBeNull()
+    const restored = read.catalog.projects[0]?.state
+    expect(restored?.runGroups).toEqual({})
+    const task = Object.values(restored?.tasks ?? {})[0]
+    expect(task).toMatchObject({ groupId: null, attempt: 1, items: null })
+    const opened = restoreProject(read.catalog.projects[0]!)
+    expect(retryBlocker(opened, task?.id ?? '')).toMatch(/before retries/)
+  })
+
+  it('round-trips held results so a finished partial run stays retryable', () => {
+    const storage = memoryStorage()
+    const engine = createWorkbench({
+      initialState: buildFixture('partway', () => new Date()),
+    })
+    // Rewind preprocessing into a partial failure.
+    runStageNow(engine, STAGE_IDS.schema)
+    engine.execute({
+      type: 'workflow.runStage',
+      input: { stageId: STAGE_IDS.preprocessing },
+    })
+    const failed = engine.getState().taskIds.at(-1) ?? ''
+    finishJobNow(engine, failed, { failures: { B0002: 'Fault.' } })
+    const state = engine.getState()
+    const saved = {
+      ...entry(state.project.id),
+      name: state.project.name,
+      state,
+    }
+    expect(writeProjectCatalog(storage, { projects: [saved] }).ok).toBe(true)
+    const read = readProjectCatalog(storage)
+    expect(read.error).toBeNull()
+    const opened = restoreProject(read.catalog.projects[0]!)
+    const group = opened.runGroups[opened.tasks[failed]?.groupId ?? '']
+    expect(Object.keys(group?.held ?? {})).toHaveLength(463)
+    expect(retryBlocker(opened, failed)).toBeNull()
+  })
+
+  it('interrupts previously active work on reopen and closes it to retries', () => {
+    const engine = createWorkbench({
+      initialState: buildFixture('partway', () => new Date()),
+    })
+    runStageNow(engine, STAGE_IDS.schema)
+    engine.execute({
+      type: 'workflow.runStage',
+      input: { stageId: STAGE_IDS.preprocessing },
+    })
+    const active = engine.getState().taskIds.at(-1) ?? ''
+    const state = engine.getState()
+    const opened = restoreProject({
+      ...entry(state.project.id),
+      name: state.project.name,
+      state,
+    })
+    expect(opened.tasks[active]).toMatchObject({
+      status: 'cancelled',
+      message: INTERRUPTED,
+    })
+    expect(opened.runGroups[opened.tasks[active]?.groupId ?? '']?.status).toBe(
+      'cancelled',
+    )
+    expect(retryBlocker(opened, active)).toMatch(/fresh run/)
+  })
+
+  it('rejects a job that refers to a missing run group without changing storage', () => {
+    const storage = memoryStorage()
+    const state = buildFixture('partway', () => new Date())
+    const broken = JSON.parse(JSON.stringify(state)) as typeof state
+    const first = Object.values(broken.tasks)[0]
+    if (first) first.groupId = 'group-missing'
+    const raw = JSON.stringify({
+      version: 1,
+      projects: [
+        { ...entry(state.project.id), name: state.project.name, state: broken },
+      ],
+    })
+    storage.setItem(CATALOG_KEY, raw)
+    expect(readProjectCatalog(storage).error).toBeTruthy()
+    expect(storage.getItem(CATALOG_KEY)).toBe(raw)
   })
 })

@@ -15,18 +15,31 @@ type WriteResult = { ok: true } | { ok: false; message: string }
 const UNREADABLE =
   'The project catalog could not be read. Stored projects have not been changed.'
 
-function isEntry(value: unknown): value is CatalogEntry {
-  if (!value || typeof value !== 'object') return false
+/** A valid catalog entry with its state migrated to the current shape, or null. */
+function parseEntry(value: unknown): CatalogEntry | null {
+  if (!value || typeof value !== 'object') return null
   const entry = value as Partial<CatalogEntry>
-  return (
-    typeof entry.id === 'string' &&
-    typeof entry.name === 'string' &&
-    typeof entry.savedAt === 'string' &&
-    (entry.lastOpenedAt === null || typeof entry.lastOpenedAt === 'string') &&
-    projectStateSchema.safeParse(entry.state).success &&
-    entry.state?.project.id === entry.id &&
-    entry.state.project.name === entry.name
+  if (
+    typeof entry.id !== 'string' ||
+    typeof entry.name !== 'string' ||
+    typeof entry.savedAt !== 'string' ||
+    (entry.lastOpenedAt !== null && typeof entry.lastOpenedAt !== 'string')
   )
+    return null
+  const parsed = projectStateSchema.safeParse(entry.state)
+  if (
+    !parsed.success ||
+    parsed.data.project.id !== entry.id ||
+    parsed.data.project.name !== entry.name
+  )
+    return null
+  return {
+    id: entry.id,
+    name: entry.name,
+    savedAt: entry.savedAt,
+    lastOpenedAt: entry.lastOpenedAt ?? null,
+    state: parsed.data,
+  }
 }
 
 export function readProjectCatalog(storage: Storage | null): {
@@ -46,16 +59,21 @@ export function readProjectCatalog(storage: Storage | null): {
         version?: unknown
         projects?: unknown
       }
+      const projects = Array.isArray(parsed?.projects)
+        ? parsed.projects.map(parseEntry)
+        : null
       if (
         parsed?.version !== 1 ||
-        !Array.isArray(parsed.projects) ||
-        !parsed.projects.every(isEntry) ||
-        new Set(parsed.projects.map((entry) => entry.id)).size !==
-          parsed.projects.length
+        !projects ||
+        projects.some((entry) => entry === null) ||
+        new Set(projects.map((entry) => entry?.id)).size !== projects.length
       ) {
         return { catalog: empty, error: UNREADABLE }
       }
-      return { catalog: { projects: parsed.projects }, error: null }
+      return {
+        catalog: { projects: projects.filter((entry) => entry !== null) },
+        error: null,
+      }
     }
     const legacy = loadProject(storage)
     if (!legacy) {
@@ -65,14 +83,14 @@ export function readProjectCatalog(storage: Storage | null): {
       }
     }
     const { id, name } = legacy.state.project
-    const migrated: CatalogEntry = {
+    const migrated = parseEntry({
       id,
       name,
       state: legacy.state,
       savedAt: legacy.savedAt,
       lastOpenedAt: null,
-    }
-    return isEntry(migrated)
+    })
+    return migrated
       ? { catalog: { projects: [migrated] }, error: null }
       : { catalog: empty, error: UNREADABLE }
   } catch {
@@ -104,14 +122,28 @@ export function writeProjectCatalog(
   }
 }
 
-/** A saved running job cannot resume after this in-page server has restarted. */
+export const INTERRUPTED =
+  'Interrupted when the project session was closed. Interrupted work does not restart; start a fresh run.'
+
+/**
+ * A saved running job cannot resume after this in-page server has restarted:
+ * it is interrupted and its run closed to retries. A finished partial run
+ * stays retryable while its captured inputs still match.
+ */
 export function restoreProject(entry: CatalogEntry): WorkbenchState {
   const state = structuredClone(entry.state)
   for (const task of Object.values(state.tasks)) {
     task.log ??= []
     if (task.status === 'queued' || task.status === 'running') {
       task.status = 'cancelled'
-      task.message = 'Interrupted when the project session was closed.'
+      task.message = INTERRUPTED
+      task.log.push({ at: task.updatedAt, message: INTERRUPTED })
+      const group = task.groupId ? state.runGroups[task.groupId] : undefined
+      if (group?.status === 'open') {
+        group.status = 'cancelled'
+        group.statusReason = 'This run was interrupted when the project closed.'
+        group.held = {}
+      }
     }
   }
   return {

@@ -1,4 +1,5 @@
 import { createInitialState } from '../domain/initialState.ts'
+import { runStageNow } from '../domain/jobs/runNow.ts'
 import type { WorkbenchState } from '../domain/types.ts'
 import { createWorkbench, type Workbench } from '../domain/workbench.ts'
 import { STAGE_IDS, deriveStageStates } from '../domain/workflow.ts'
@@ -37,15 +38,6 @@ export const FIXTURE_IDS = Object.keys(FIXTURES) as FixtureId[]
 
 export function isFixtureId(value: unknown): value is FixtureId {
   return typeof value === 'string' && value in FIXTURES
-}
-
-/** Runs one stage to its end at once, as the job runner would over time. */
-function runStageNow(engine: Workbench, stageId: string) {
-  engine.execute({ type: 'workflow.runStage', input: { stageId } }, 'system')
-  const taskId = engine.getState().taskIds.at(-1)
-  if (!taskId) return
-  engine.execute({ type: 'task.start', input: { taskId } }, 'system')
-  engine.execute({ type: 'task.complete', input: { taskId } }, 'system')
 }
 
 /** Scenario definitions need a scenario; create one as a user would in Creator. */
@@ -106,7 +98,7 @@ export function buildFixture(id: FixtureId, now: () => Date): WorkbenchState {
     const stageId = nextRunnable(state)
     if (!stageId) break
     if (stageId === STAGE_IDS.scenarioDefinitions) defineScenario(engine)
-    runStageNow(engine, stageId)
+    runStageNow(engine, stageId, 'system')
   }
   const state = engine.getState()
   return { ...state, workflow: { ...state.workflow, currentStageId: null } }

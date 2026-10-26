@@ -25,6 +25,8 @@ export function createInitialState(): WorkbenchState {
     workflow: createDefaultWorkflow(),
     tasks: {},
     taskIds: [],
+    runGroups: {},
+    runGroupIds: [],
     issues: [],
     selection: { entityType: null, ids: [] },
     pendingEdits: {},

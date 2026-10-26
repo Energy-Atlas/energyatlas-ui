@@ -166,11 +166,29 @@ export type StageState =
   | 'unavailable'
 
 export type TaskStatus =
-  'queued' | 'running' | 'succeeded' | 'failed' | 'cancelled'
+  | 'queued'
+  | 'running'
+  | 'succeeded'
+  | 'failed'
+  | 'cancelled'
+  /** Finished without executing because its captured inputs changed first. */
+  | 'invalidated'
 
 /** One line of a job's log, as RC keeps for each job. */
 export type TaskLogLine = { at: string; message: string }
 
+/**
+ * The items one attempt works through, in order. Outcomes are compact: items
+ * before `processed` succeeded unless listed in `failures`.
+ */
+export type TaskItems = {
+  ids: string[]
+  processed: number
+  succeeded: number
+  failures: Record<string, string>
+}
+
+/** One immutable attempt of a run group; the UI calls it a job. */
 export type Task = {
   id: string
   label: string
@@ -183,6 +201,50 @@ export type Task = {
   createdAt: string
   updatedAt: string
   log: TaskLogLine[]
+  /** The run group (input context) this attempt belongs to; null for jobs saved before groups. */
+  groupId: string | null
+  /** 1 for a fresh run, then one more for each retry in the same group. */
+  attempt: number
+  /** The attempt this one retries. */
+  parentTaskId: string | null
+  /** The client's key for the submission, so a repeated delivery creates nothing new. */
+  requestId: string | null
+  /** Item-level work; null for whole-stage jobs. */
+  items: TaskItems | null
+}
+
+/** What a run consumed when it was submitted; compared before start, retry, and publication. */
+export type InputSignature = {
+  /** Revisions of every stage upstream of the run's stage, transitively. */
+  ancestors: Record<string, number>
+  /** The stage's own edit revision. */
+  editRevision: number
+  /** Item membership, in order; empty for whole-stage runs. */
+  membership: string[]
+}
+
+/** A held item output from geospatial preprocessing, published only with the whole group. */
+export type HeldPreprocessingOutput = {
+  heightM: number
+  floorAreaM2: number
+  zoneCount: number
+}
+
+export type RunGroupStatus =
+  'open' | 'published' | 'cancelled' | 'invalidated' | 'superseded'
+
+/** Every attempt at one stage run with one input context. */
+export type RunGroup = {
+  id: string
+  stageId: string
+  signature: InputSignature
+  attemptIds: string[]
+  /** Successful item outputs, kept out of the project until the group publishes. */
+  held: Record<string, HeldPreprocessingOutput>
+  status: RunGroupStatus
+  /** Why the group is closed, or why its last publication failed. */
+  statusReason: string | null
+  createdAt: string
 }
 
 export type IssueSeverity = 'info' | 'warning' | 'error'
@@ -242,6 +304,8 @@ export type WorkbenchState = {
   workflow: WorkflowState
   tasks: Record<string, Task>
   taskIds: string[]
+  runGroups: Record<string, RunGroup>
+  runGroupIds: string[]
   issues: Issue[]
   selection: Selection
   pendingEdits: Record<string, PendingEdit>

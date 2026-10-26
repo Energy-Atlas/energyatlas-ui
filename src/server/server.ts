@@ -34,6 +34,7 @@ import {
 /** Commands the server owns; everything else is local UI state. */
 export const SERVER_COMMANDS: ReadonlySet<Command['type']> = new Set([
   'workflow.runStage',
+  'job.retry',
   'workflow.setStageSkipped',
   'workflow.insertStage',
   'task.cancel',

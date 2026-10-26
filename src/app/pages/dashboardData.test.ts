@@ -1,13 +1,11 @@
 import { describe, expect, test } from 'vitest'
+import { runStageNow } from '../../domain/jobs/runNow.ts'
 import { createWorkbench, type Workbench } from '../../domain/workbench.ts'
 import { STAGE_IDS } from '../../domain/workflow.ts'
 import { buildDashboardData } from './dashboardData.ts'
 
 function runStage(workbench: Workbench, stageId: string) {
-  workbench.execute({ type: 'workflow.runStage', input: { stageId } })
-  const taskId = workbench.getState().taskIds.at(-1) ?? ''
-  workbench.execute({ type: 'task.start', input: { taskId } }, 'system')
-  workbench.execute({ type: 'task.complete', input: { taskId } }, 'system')
+  runStageNow(workbench, stageId)
 }
 
 function modeledProject(scenarioCount: number): Workbench {

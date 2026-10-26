@@ -2,6 +2,7 @@ import { describe, expect, test } from 'vitest'
 import { GROUP } from './assets.ts'
 import { capabilities } from './capabilities.ts'
 import { describeCommands } from './commands.ts'
+import { finishJobNow } from './jobs/runNow.ts'
 import { computeScenarioResult } from './simulation.ts'
 import type { Building } from './types.ts'
 import { createWorkbench, type Workbench } from './workbench.ts'
@@ -36,11 +37,7 @@ function runStage(workbench: Workbench, stageId: string) {
   }
   const taskId = workbench.getState().taskIds.at(-1)
   if (!taskId) throw new Error('No task was queued')
-  workbench.execute({ type: 'task.start', input: { taskId } }, 'system')
-  return workbench.execute(
-    { type: 'task.complete', input: { taskId } },
-    'system',
-  )
+  return finishJobNow(workbench, taskId)
 }
 
 function runStages(workbench: Workbench, stageIds: string[]) {

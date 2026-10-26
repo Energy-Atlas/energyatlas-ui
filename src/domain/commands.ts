@@ -1,6 +1,21 @@
 import { z } from 'zod'
 import { GROUP, upsertAsset } from './assets.ts'
-import { runSimulatedStage } from './simulation.ts'
+import {
+  captureSignature,
+  groupOf,
+  isItemStage,
+  outstandingItems,
+  retryBlocker,
+  retryScope,
+  signatureMismatch,
+} from './jobs/runGroups.ts'
+import {
+  preprocessBuilding,
+  publishPreprocessing,
+  runSimulatedStage,
+  validatePreprocessing,
+  type StageRunResult,
+} from './simulation.ts'
 import type {
   Building,
   CommandSource,
@@ -103,6 +118,92 @@ function nextRevision(state: WorkbenchState): number {
   return revision
 }
 
+const requestIdSchema = z
+  .string()
+  .min(1)
+  .max(100)
+  .optional()
+  .describe(
+    'Optional client key for this submission; repeating it creates nothing new.',
+  )
+
+const JOB_STATUS_WORDS: Record<Task['status'], string> = {
+  queued: 'queued',
+  running: 'running',
+  succeeded: 'completed',
+  failed: 'failed',
+  cancelled: 'cancelled',
+  invalidated: 'finished without running',
+}
+
+/** An earlier submission with the same key, answered again without creating a job. */
+function repeatedSubmission(
+  state: WorkbenchState,
+  requestId: string | undefined,
+): CommandOutcome | null {
+  if (!requestId) return null
+  const task = Object.values(state.tasks).find(
+    (candidate) => candidate.requestId === requestId,
+  )
+  return task
+    ? applied(
+        `Already accepted as attempt ${task.attempt} of "${task.label}"; nothing new was queued.`,
+      )
+    : null
+}
+
+/** Adds a queued attempt to a run group. */
+function createAttempt(
+  state: WorkbenchState,
+  stage: StageRecord,
+  groupId: string,
+  options: {
+    items: string[] | null
+    parentTaskId: string | null
+    requestId: string | null
+    context: CommandContext
+  },
+): Task {
+  const group = state.runGroups[groupId]
+  stage.runCount += 1
+  const taskId = allocateId(state, 'task')
+  const runId = allocateId(state, 'run')
+  const attempt = (group?.attemptIds.length ?? 0) + 1
+  const { context, items } = options
+  const task: Task = {
+    id: taskId,
+    label: stage.name,
+    stageId: stage.id,
+    runId,
+    status: 'queued',
+    progress: 0,
+    message: null,
+    source: context.source,
+    createdAt: context.now,
+    updatedAt: context.now,
+    log: [
+      {
+        at: context.now,
+        message:
+          attempt === 1
+            ? `Queued${items ? ` with ${items.length} items` : ''}.`
+            : `Queued as attempt ${attempt}${items ? ` for ${items.length} items` : ''}.`,
+      },
+    ],
+    groupId,
+    attempt,
+    parentTaskId: options.parentTaskId,
+    requestId: options.requestId,
+    items: items
+      ? { ids: [...items], processed: 0, succeeded: 0, failures: {} }
+      : null,
+  }
+  state.tasks[taskId] = task
+  state.taskIds.push(taskId)
+  group?.attemptIds.push(taskId)
+  return task
+}
+
 const nameSchema = z
   .string()
   .trim()
@@ -163,34 +264,85 @@ export const commandDefinitions = {
   'workflow.runStage': defineCommand({
     title: 'Run stage',
     description:
-      'Queue a simulated run of a stage as a background task. Earlier stages must be executed or skipped.',
-    input: z.object({ stageId: z.string().min(1, 'Choose a stage.') }),
+      'Queue a fresh simulated run of a stage as a background job, capturing its inputs. Earlier stages must be executed or skipped. Jobs run one at a time in the order submitted.',
+    input: z.object({
+      stageId: z.string().min(1, 'Choose a stage.'),
+      requestId: requestIdSchema,
+    }),
     undoable: false,
-    run(state, { stageId }, context) {
+    run(state, { stageId, requestId }, context) {
+      const repeated = repeatedSubmission(state, requestId)
+      if (repeated) return repeated
       const blocker = stageRunBlocker(state.workflow, state.tasks, stageId)
       const stage = state.workflow.stages[stageId]
       if (blocker || !stage) {
         return rejected(blocker ?? `Unknown stage "${stageId}".`, 'stageId')
       }
-      stage.runCount += 1
-      const taskId = allocateId(state, 'task')
-      const runId = allocateId(state, 'run')
-      state.tasks[taskId] = {
-        id: taskId,
-        label: stage.name,
-        stageId,
-        runId,
-        status: 'queued',
-        progress: 0,
-        message: null,
-        source: context.source,
-        createdAt: context.now,
-        updatedAt: context.now,
-        log: [{ at: context.now, message: 'Queued.' }],
+      for (const group of Object.values(state.runGroups)) {
+        if (group.stageId === stageId && group.status === 'open') {
+          group.status = 'superseded'
+          group.statusReason = 'A fresh run of this stage replaced it.'
+          group.held = {}
+        }
       }
-      state.taskIds.push(taskId)
+      const groupId = allocateId(state, 'group')
+      const signature = captureSignature(state, stageId)
+      state.runGroups[groupId] = {
+        id: groupId,
+        stageId,
+        signature,
+        attemptIds: [],
+        held: {},
+        status: 'open',
+        statusReason: null,
+        createdAt: context.now,
+      }
+      state.runGroupIds.push(groupId)
+      const task = createAttempt(state, stage, groupId, {
+        items: isItemStage(stageId) ? signature.membership : null,
+        parentTaskId: null,
+        requestId: requestId ?? null,
+        context,
+      })
       state.workflow.currentStageId = stageId
-      return applied(`Queued a simulated run of "${stage.name}".`)
+      return applied(
+        `Queued a simulated run of "${stage.name}"${task.items ? ` for ${task.items.ids.length} items` : ''}.`,
+      )
+    },
+  }),
+
+  'job.retry': defineCommand({
+    title: 'Retry job',
+    description:
+      'Retry a failed run with unchanged inputs as a new linked attempt. Item runs retry only failed or unprocessed items and keep held successes; a run whose items all succeeded retries publication. Cancelled runs and runs whose inputs changed need a fresh run instead.',
+    input: z.object({
+      taskId: z.string().min(1, 'Choose a job.'),
+      requestId: requestIdSchema,
+    }),
+    undoable: false,
+    run(state, { taskId, requestId }, context) {
+      const repeated = repeatedSubmission(state, requestId)
+      if (repeated) return repeated
+      const blocker = retryBlocker(state, taskId)
+      if (blocker) return rejected(blocker, 'taskId')
+      const task = state.tasks[taskId]
+      const group = task?.groupId ? state.runGroups[task.groupId] : undefined
+      const stage = group ? state.workflow.stages[group.stageId] : undefined
+      if (!task || !group || !stage) return rejected('Unknown job.', 'taskId')
+      const parent = state.tasks[group.attemptIds.at(-1) ?? ''] ?? task
+      const scope = retryScope(group).toLowerCase()
+      const items =
+        group.signature.membership.length > 0 ? outstandingItems(group) : null
+      const retry = createAttempt(state, stage, group.id, {
+        items,
+        parentTaskId: parent.id,
+        requestId: requestId ?? null,
+        context,
+      })
+      state.workflow.currentStageId = stage.id
+      return applied(
+        `Queued attempt ${retry.attempt} of "${stage.name}": ${scope}.`,
+      )
     },
   }),
 
@@ -286,7 +438,8 @@ export const commandDefinitions = {
 
   'task.start': defineCommand({
     title: 'Start task',
-    description: 'Move a queued task to running.',
+    description:
+      'Move a queued task to running after checking that its captured inputs are unchanged; otherwise finish it without running.',
     input: z.object({ taskId: z.string().min(1) }),
     undoable: false,
     run(state, { taskId }, context) {
@@ -294,6 +447,19 @@ export const commandDefinitions = {
       if (!task) return rejected(`Unknown task "${taskId}".`, 'taskId')
       if (task.status !== 'queued') {
         return rejected(`Task is ${task.status}, not queued.`, 'taskId')
+      }
+      const group = groupOf(state, task)
+      const changed = group ? signatureMismatch(state, group) : null
+      if (group && changed) {
+        const reason = `Not run: ${changed} after it was queued.`
+        task.status = 'invalidated'
+        task.message = `${reason} Start a fresh run.`
+        task.updatedAt = context.now
+        task.log.push({ at: context.now, message: task.message })
+        group.status = 'invalidated'
+        group.statusReason = reason
+        group.held = {}
+        return applied(`"${task.label}" was not run because ${changed}.`)
       }
       task.status = 'running'
       task.updatedAt = context.now
@@ -331,13 +497,73 @@ export const commandDefinitions = {
     },
   }),
 
+  'task.processItems': defineCommand({
+    title: 'Process job items',
+    description:
+      'Compute the next items of a running item job. Successful outputs are held on the run group, not applied to the project; failures are recorded per item.',
+    input: z.object({
+      taskId: z.string().min(1),
+      count: z.number().int().min(1),
+      /** Items the execution fails, with reasons (demo conditions). */
+      failures: z.record(z.string(), z.string()).default({}),
+    }),
+    undoable: false,
+    run(state, { taskId, count, failures }, context) {
+      const task = state.tasks[taskId]
+      if (!task) return rejected(`Unknown task "${taskId}".`, 'taskId')
+      if (task.status !== 'running') {
+        return rejected(`Task is ${task.status}, not running.`, 'taskId')
+      }
+      const items = task.items
+      const group = groupOf(state, task)
+      if (!items || !group) {
+        return rejected('This job has no items to process.', 'taskId')
+      }
+      const batch = items.ids.slice(items.processed, items.processed + count)
+      let failed = 0
+      for (const id of batch) {
+        const building = state.buildings[id]
+        const output = building ? preprocessBuilding(building) : null
+        const reason =
+          failures[id] ??
+          (!building
+            ? 'The building no longer exists.'
+            : !output
+              ? 'The floor count is missing.'
+              : null)
+        if (reason || !output) {
+          items.failures[id] = reason ?? 'No result.'
+          failed += 1
+        } else {
+          group.held[id] = output
+          items.succeeded += 1
+        }
+        items.processed += 1
+      }
+      const total = items.ids.length
+      task.progress = total === 0 ? 1 : items.processed / total
+      task.updatedAt = context.now
+      task.log.push({
+        at: context.now,
+        message: `Processed ${items.processed} of ${total} items${failed > 0 ? `; ${failed} failed in this batch` : ''}.`,
+      })
+      return applied(
+        `"${task.label}" processed ${items.processed} of ${total} items.`,
+      )
+    },
+  }),
+
   'task.complete': defineCommand({
     title: 'Complete task',
     description:
-      'Finish a running stage task: apply its simulated outputs or record its failure.',
-    input: z.object({ taskId: z.string().min(1) }),
+      'Finish a running job: publish a complete, validated result once, or record why it is held or failed.',
+    input: z.object({
+      taskId: z.string().min(1),
+      /** Fails publication with this reason (demo conditions). */
+      failPublication: z.string().min(1).optional(),
+    }),
     undoable: false,
-    run(state, { taskId }, context) {
+    run(state, { taskId, failPublication }, context) {
       const task = state.tasks[taskId]
       if (!task) return rejected(`Unknown task "${taskId}".`, 'taskId')
       if (task.status !== 'running') {
@@ -354,19 +580,63 @@ export const commandDefinitions = {
         })
         return applied('Task failed because its stage no longer exists.')
       }
+      if (task.items && task.items.processed < task.items.ids.length) {
+        return rejected(
+          `${task.items.ids.length - task.items.processed} items are still pending.`,
+          'taskId',
+        )
+      }
       const inputRevisions = Object.fromEntries(
         upstreamIds(state.workflow, stage.id).map((id) => [
           id,
           state.workflow.stages[id]?.revision ?? 0,
         ]),
       )
-      const result = runSimulatedStage(state, stage.id, {
-        runId: task.runId,
-        operationId: context.operationId,
-        attempt: stage.runCount,
-      })
+      const group = groupOf(state, task)
       state.issues = state.issues.filter((issue) => issue.stageId !== stage.id)
       task.updatedAt = context.now
+
+      const changed = group ? signatureMismatch(state, group) : null
+      if (group && changed) {
+        group.status = 'invalidated'
+        group.statusReason = `Not published: ${changed} during the run.`
+        group.held = {}
+        const message = `${group.statusReason} Start a fresh run.`
+        failRun(state, task, stage, message, inputRevisions, context)
+        return applied(`"${stage.name}" was not published: ${changed}.`)
+      }
+
+      let result: StageRunResult
+      if (group && task.items) {
+        const failures = Object.keys(task.items.failures).length
+        if (failures > 0) {
+          const held = Object.keys(group.held).length
+          const message = `${failures} of ${task.items.ids.length} items failed. ${held} successful results are held and not published until the failed items are retried.`
+          failRun(state, task, stage, message, inputRevisions, context)
+          return applied(`"${stage.name}" partly failed: ${message}`)
+        }
+        const membership = group.signature.membership
+        const invalid =
+          failPublication ??
+          validatePreprocessing(state, membership, group.held)
+        if (invalid) {
+          group.statusReason = `Publication failed: ${invalid}`
+          const message = `Publication failed: ${invalid}. All ${membership.length} results stay held; retry publication once the cause is resolved.`
+          failRun(state, task, stage, message, inputRevisions, context)
+          return applied(`"${stage.name}" was not published: ${invalid}.`)
+        }
+        result = publishPreprocessing(state, membership, group.held, {
+          runId: task.runId,
+          operationId: context.operationId,
+          attempt: stage.runCount,
+        })
+      } else {
+        result = runSimulatedStage(state, stage.id, {
+          runId: task.runId,
+          operationId: context.operationId,
+          attempt: stage.runCount,
+        })
+      }
 
       if (!result.ok) {
         failRun(state, task, stage, result.message, inputRevisions, context)
@@ -382,6 +652,11 @@ export const commandDefinitions = {
         inputRevisions,
         inputEditRevision: stage.editRevision,
         finishedAt: context.now,
+      }
+      if (group) {
+        group.status = 'published'
+        group.statusReason = null
+        group.held = {}
       }
       for (const warning of result.warnings) {
         state.issues.push({
@@ -406,7 +681,7 @@ export const commandDefinitions = {
   'task.fail': defineCommand({
     title: 'Fail task',
     description:
-      'Fail a running stage task without outputs, as when the server reports an error partway.',
+      'Fail a running job without publishing, as when the server reports an error partway. Item outputs computed so far stay held.',
     input: z.object({
       taskId: z.string().min(1),
       message: z.string().min(1, 'Give a reason.'),
@@ -433,22 +708,31 @@ export const commandDefinitions = {
   }),
 
   'task.cancel': defineCommand({
-    title: 'Cancel task',
+    title: 'Cancel job',
     description:
-      'Cancel a queued or running task. Stage outputs are unchanged.',
-    input: z.object({ taskId: z.string().min(1) }),
+      'Cancel a queued or running job. Nothing is published; completed item diagnostics stay in its record, and the run needs a fresh run rather than a retry.',
+    input: z.object({ taskId: z.string().min(1, 'Choose a job.') }),
     undoable: false,
     run(state, { taskId }, context) {
       const task = state.tasks[taskId]
-      if (!task) return rejected(`Unknown task "${taskId}".`, 'taskId')
+      if (!task) return rejected(`Unknown job "${taskId}".`, 'taskId')
       if (task.status !== 'queued' && task.status !== 'running') {
-        return rejected(`Task is already ${task.status}.`, 'taskId')
+        return rejected(
+          `The job is already ${JOB_STATUS_WORDS[task.status]}.`,
+          'taskId',
+        )
       }
       task.status = 'cancelled'
-      task.message = 'Cancelled.'
+      task.message = 'Cancelled. Nothing was published; start a fresh run.'
       task.updatedAt = context.now
       task.log.push({ at: context.now, message: 'Cancelled.' })
-      return applied(`Cancelled "${task.label}".`)
+      const group = groupOf(state, task)
+      if (group && group.status === 'open') {
+        group.status = 'cancelled'
+        group.statusReason = 'This run was cancelled.'
+        group.held = {}
+      }
+      return applied(`Cancelled "${task.label}". Nothing was published.`)
     },
   }),
 

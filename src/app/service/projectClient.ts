@@ -62,6 +62,23 @@ export function refuseServerCommand(
     : null
 }
 
+/**
+ * Gives job submissions a key so a repeated delivery of the same request
+ * creates nothing new on the server (jobs rollout plan, shared run contract).
+ */
+export function withRequestId(command: Command): Command {
+  if (
+    (command.type === 'workflow.runStage' || command.type === 'job.retry') &&
+    !command.input.requestId
+  ) {
+    return {
+      ...command,
+      input: { ...command.input, requestId: crypto.randomUUID() },
+    } as Command
+  }
+  return command
+}
+
 export type PendingRequest = {
   id: number
   projectGeneration: number
@@ -292,9 +309,10 @@ export function createProjectClient(options: {
   }
 
   async function executeOnServer(
-    command: Command,
+    submitted: Command,
     source: CommandSource,
   ): Promise<ExecuteResult> {
+    const command = withRequestId(submitted)
     const drafts =
       command.type === 'edits.apply'
         ? workbench.getState().pendingEdits

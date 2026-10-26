@@ -109,6 +109,11 @@ describe('deriveStageStates', () => {
       createdAt: '2026-09-14T12:00:00.000Z',
       updatedAt: '2026-09-14T12:00:00.000Z',
       log: [],
+      groupId: null,
+      attempt: 1,
+      parentTaskId: null,
+      requestId: null,
+      items: null,
     }
     expect(
       deriveStageStates(workflow, { 'task-1': runningTask })[

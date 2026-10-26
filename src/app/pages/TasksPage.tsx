@@ -17,6 +17,7 @@ export const JOB_STATUS_LABELS: Record<TaskStatus, string> = {
   succeeded: 'Completed',
   failed: 'Failed',
   cancelled: 'Cancelled',
+  invalidated: 'Not run',
 }
 
 function JobLog({ task }: { task: Task }) {

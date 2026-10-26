@@ -36,6 +36,36 @@ const result = z.object({
   monthlyKwh: z.array(number),
   byBuildingKwh: record(number),
 })
+const taskStatus = z.enum([
+  'queued',
+  'running',
+  'succeeded',
+  'failed',
+  'cancelled',
+  'invalidated',
+])
+const runGroup = z.object({
+  id,
+  stageId: id,
+  signature: z.object({
+    ancestors: record(number),
+    editRevision: number,
+    membership: ids,
+  }),
+  attemptIds: ids,
+  held: record(
+    z.object({ heightM: number, floorAreaM2: number, zoneCount: number }),
+  ),
+  status: z.enum([
+    'open',
+    'published',
+    'cancelled',
+    'invalidated',
+    'superseded',
+  ]),
+  statusReason: text.nullable(),
+  createdAt: text,
+})
 const stageRun = z.object({
   runId: id,
   operationId: id,
@@ -46,8 +76,12 @@ const stageRun = z.object({
   finishedAt: text,
 })
 
-/** Storage is an input boundary: check every field the workbench dereferences. */
-export const projectStateSchema: z.ZodType<WorkbenchState> = z
+/**
+ * Storage is an input boundary: check every field the workbench dereferences.
+ * Fields added after projects were first saved have defaults, so parsing an
+ * older save migrates it; use the parsed output, not the stored value.
+ */
+export const projectStateSchema: z.ZodType<WorkbenchState, unknown> = z
   .object({
     project: z.object({
       id,
@@ -179,22 +213,31 @@ export const projectStateSchema: z.ZodType<WorkbenchState> = z
         label: text,
         stageId: id,
         runId: id,
-        status: z.enum([
-          'queued',
-          'running',
-          'succeeded',
-          'failed',
-          'cancelled',
-        ]),
+        status: taskStatus,
         progress: number,
         message: text.nullable(),
         source,
         createdAt: text,
         updatedAt: text,
-        log: z.array(z.object({ at: text, message: text })),
+        log: z.array(z.object({ at: text, message: text })).default([]),
+        groupId: id.nullable().default(null),
+        attempt: number.int().positive().default(1),
+        parentTaskId: id.nullable().default(null),
+        requestId: text.nullable().default(null),
+        items: z
+          .object({
+            ids,
+            processed: number.int().nonnegative(),
+            succeeded: number.int().nonnegative(),
+            failures: record(text),
+          })
+          .nullable()
+          .default(null),
       }),
     ),
     taskIds: ids,
+    runGroups: record(runGroup).default({}),
+    runGroupIds: ids.default([]),
     issues: z.array(
       z.object({
         id,
@@ -227,6 +270,18 @@ export const projectStateSchema: z.ZodType<WorkbenchState> = z
     references(state.rootAssetIds, state.assets)
     references(state.buildingIds, state.buildings)
     references(state.taskIds, state.tasks)
+    references(state.runGroupIds, state.runGroups)
+    for (const group of Object.values(state.runGroups)) {
+      references(group.attemptIds, state.tasks)
+      if (!(group.stageId in state.workflow.stages))
+        fail('A run group stage is missing.')
+    }
+    for (const task of Object.values(state.tasks)) {
+      if (task.groupId !== null && !(task.groupId in state.runGroups))
+        fail('A job refers to a missing run group.')
+      if (task.items && task.items.processed > task.items.ids.length)
+        fail('A job processed more items than it has.')
+    }
     references(state.workflow.stageIds, state.workflow.stages)
     const identifiedCollections: Record<string, { id: string }>[] = [
       state.assets,
@@ -237,6 +292,7 @@ export const projectStateSchema: z.ZodType<WorkbenchState> = z
       state.scenarios,
       state.archetypes,
       state.gridElements,
+      state.runGroups,
     ]
     for (const collection of identifiedCollections) {
       for (const [key, value] of Object.entries(collection))

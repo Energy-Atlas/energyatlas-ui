@@ -97,6 +97,18 @@ export const JOB_OPTIONS: Option<JobBehaviour>[] = [
     label: 'Stall',
     description: 'Runs stop making progress until cancelled.',
   },
+  {
+    value: 'itemFailures',
+    label: 'Some items fail',
+    description:
+      'Geospatial preprocessing fails a few buildings on a first attempt; retrying the failed items succeeds.',
+  },
+  {
+    value: 'publishFails',
+    label: 'Publication fails',
+    description:
+      'Item runs compute every result but publication is refused; results stay held for a retry.',
+  },
 ]
 
 function labelOf<Value extends string>(
