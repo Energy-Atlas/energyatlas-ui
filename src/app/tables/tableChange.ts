@@ -66,10 +66,10 @@ export function tableChangeIssue(
         message: `${found.header} is not a number column; filter it by text or values.`,
       }
     }
-    if (change.filter.kind === 'values' && found.type !== 'enum') {
+    if (change.filter.kind === 'values' && numeric) {
       return {
         path: 'change.filter',
-        message: `${found.header} has no value list; filter it by ${numeric ? 'range' : 'text'}.`,
+        message: `${found.header} is a number column; filter it by range.`,
       }
     }
     if (
@@ -138,6 +138,8 @@ export function describeTableChange(
                 : 'default column widths'
           case 'freezeFirst':
             return value ? 'first column frozen' : 'first column scrolls'
+          case 'freezeHeader':
+            return value ? 'header row frozen' : 'header row scrolls'
           default:
             return key
         }

@@ -267,3 +267,29 @@ column widgets in step 3.
 **Verification (2026-10-26):** typecheck, lint, and format clean; 344 unit tests, 98 development browser tests
 (including `e2e/tables.spec.ts` and the gallery's axe checks in six appearances with the data table), and 3
 production-preview tests passed; `git diff --check` clean. Results was checked by eye in a narrow pane.
+
+## Owner review of steps 1 and 2 (2026-10-26)
+
+The owner tried the tables and alerts and asked for these changes, now built on the same branch:
+
+- **Column widgets follow the pointer:** a column's filter-and-sort and format widgets show while the pointer or
+  focus is in any cell of that column, not only its header.
+- **Text filters search values:** text, identifier, and enum columns open a search field above a checklist of the
+  column's distinct values, with Select all (matches). Applying with every value checked clears the filter;
+  applying while searching with every match checked keeps the rows that contain the search. Applying or clearing a
+  filter closes its popover. Number columns keep the at-least and at-most range.
+- **Headers cycle sorts:** clicking a header steps through ascending, descending, and unsorted. There is no
+  standalone sort arrow: the column's filter icon shows with the direction in its corner, whether the sort came
+  from the header or from the popover, and its name says "sorted ascending" or "sorted descending".
+- **Format:** alignment offers Left, Center, and Right; Hide column moved out of the format popover (columns are
+  hidden from the table's Columns tool).
+- **Freezing:** the Style popover freezes the header row as well as the first column, separately or together; a
+  frozen header bounds the table's height so it scrolls within itself. Stored arrangements from before read it as
+  off.
+- **Shading:** shaded alternate rows were too faint to see, worst in Dark; shading and hover are now opaque mixes
+  on the pane colour (7 % text, 12 % accent) and frozen cells keep them.
+- **Inline alerts:** no heavy left stroke; the whole alert is edged in its tone at the normal rule width on the
+  faint tone fill (`--tone-*-bg`), with its icon.
+
+Verification: typecheck, lint, and format clean; 344 unit, 99 development browser, and 3 production-preview tests
+passed. The table, the value-search popover, and the alerts were checked by eye in Light and Dark.

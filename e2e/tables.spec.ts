@@ -184,3 +184,71 @@ test('a column filter explains a bad range and the grid works from the keyboard'
     ),
   ).toEqual([])
 })
+
+test('column widgets follow the pointer, headers cycle sorts, and the header row can freeze', async ({
+  page,
+}) => {
+  test.setTimeout(60_000)
+  const table = await openResults(page)
+  const grid = table.getByRole('grid', { name: 'Building results' })
+  const useTool = table.getByRole('button', { name: /^Filter and sort Use/ })
+
+  // Hovering any cell of a column shows that column's widgets.
+  await page.mouse.move(0, 0)
+  await expect(useTool).toHaveCSS('opacity', '0')
+  await grid.locator('tbody tr').nth(2).getByRole('gridcell').first().hover()
+  await expect(useTool).toHaveCSS('opacity', '1')
+
+  // A header steps through ascending, descending, and unsorted; the filter
+  // icon carries the direction.
+  const floor = grid.getByRole('columnheader', { name: /^Floor area/ })
+  const label = floor.getByText('Floor area (m²)')
+  await label.click()
+  await expect(floor).toHaveAttribute('aria-sort', 'ascending')
+  await label.click()
+  await expect(floor).toHaveAttribute('aria-sort', 'descending')
+  await expect(
+    table.getByRole('button', {
+      name: 'Filter and sort Floor area (sorted descending)',
+    }),
+  ).toBeVisible()
+  await label.click()
+  await expect(floor).toHaveAttribute('aria-sort', 'none')
+
+  // Text columns filter by searching their values; Apply closes the popover.
+  await useTool.click()
+  const dialog = page.getByRole('dialog', { name: 'Filter and sort: Use' })
+  await dialog.getByLabel('Search values').fill('off')
+  await expect(dialog.getByRole('group').getByRole('checkbox')).toHaveCount(1)
+  await dialog.getByRole('button', { name: 'Apply filter' }).click()
+  await expect(dialog).toHaveCount(0)
+  await expect(
+    table.getByRole('button', { name: 'Remove filter: Use contains “off”' }),
+  ).toBeVisible()
+
+  // Format offers center alignment and no longer hides columns.
+  await grid.getByRole('button', { name: 'Format Use' }).click()
+  const format = page.getByRole('dialog', { name: 'Format: Use' })
+  await format.getByRole('radio', { name: 'Center' }).click()
+  await expect(format.getByRole('button', { name: 'Hide column' })).toHaveCount(
+    0,
+  )
+  await page.keyboard.press('Escape')
+  await expect(grid.getByRole('columnheader', { name: /^Use/ })).toHaveCSS(
+    'text-align',
+    'center',
+  )
+
+  // Freezing the header row keeps it in place while the table scrolls.
+  await table.getByRole('button', { name: /^Style of/ }).click()
+  const style = page.getByRole('dialog', { name: /^Style:/ })
+  await style.getByRole('checkbox', { name: 'Freeze the header row' }).focus()
+  await page.keyboard.press('Space')
+  await page.keyboard.press('Escape')
+  await expect(floor).toHaveCSS('position', 'sticky')
+  await table.getByRole('button', { name: /^Style of/ }).click()
+  await page
+    .getByRole('dialog', { name: /^Style:/ })
+    .getByRole('button', { name: 'Reset table' })
+    .click()
+})

@@ -7,7 +7,7 @@ import { z } from 'zod'
 
 export const DENSITIES = ['compact', 'comfortable'] as const
 export const WIDTH_MODES = ['default', 'fit', 'even'] as const
-export const ALIGNMENTS = ['start', 'end'] as const
+export const ALIGNMENTS = ['start', 'center', 'end'] as const
 export const SCALES = ['base', 'kilo'] as const
 
 const filterSchema = z.discriminatedUnion('kind', [
@@ -45,7 +45,14 @@ const styleSchema = z.object({
   shaded: z.boolean(),
   wrap: z.boolean(),
   widths: z.enum(WIDTH_MODES),
+  /** Keeps the first column in place while the table scrolls sideways. */
   freezeFirst: z.boolean(),
+  /**
+   * Keeps the header row in place while the table scrolls down; the table
+   * then scrolls within a bounded height. Settings stored before this option
+   * read as off.
+   */
+  freezeHeader: z.boolean().default(false),
 })
 
 export type TableStyle = z.infer<typeof styleSchema>
@@ -73,6 +80,7 @@ export const DEFAULT_STYLE: TableStyle = {
   wrap: false,
   widths: 'default',
   freezeFirst: false,
+  freezeHeader: false,
 }
 
 export function defaultTableSettings(): TableSettings {

@@ -309,13 +309,13 @@ Only packages from decisions 0007, 0008, and 0010 are allowed. Record a reason i
 | Command | What it covers |
 | --- | --- |
 | `npm test` | 344 Vitest tests after step 2 of the unified panel components (table settings, row model, CSV, and `table.change`); 325 after step 1; 302 after roadmap slices 3–8 and their follow-up fixes (Jobs, intake, archetypes, scenarios, calibration, results, and their save migrations); earlier: 224 Vitest tests: domain/views/agent, appearance contrast, spatial helpers, fixtures and service conditions, plus catalog migration/validation, explicit sessions, shared lifecycle guards, mutation fencing, project tool parity, and queued-agent resets |
-| `npm run test:e2e` | 98 Playwright tests (including the component gallery and shared tables) in Edge with 4 local workers and axe; default 1280x800, plus lifecycle appearance captures at 1600x1000 and 900x700 (no serious or critical violations allowed) |
+| `npm run test:e2e` | 99 Playwright tests (including the component gallery and shared tables) in Edge with 4 local workers and axe; default 1280x800, plus lifecycle appearance captures at 1600x1000 and 900x700 (no serious or critical violations allowed) |
 | `npm run typecheck`, `npm run lint`, `npm run format:check` | Must be clean before committing |
 
 End-to-end specs:
 
 - `e2e/project-lifecycle.spec.ts`: start, named creation/validation, multi-project save/open/recent, equal names, draft and job guards, failed Save, malformed storage, held-request recovery, all six appearances at three sizes, axe, keyboard focus, and reproducible screenshots in `tmp/`.
-- `e2e/tables.spec.ts`: on the Results page, hover-revealed tools, a checklist filter with its chip and count, sort, MWh format, hidden column, the CSV of the view, the arrangement kept in this browser, Reset, an explained bad range, and grid keyboard use with axe.
+- `e2e/tables.spec.ts`: on the Results page, hover-revealed tools, a checklist filter with its chip and count, sort, MWh format, hidden column, the CSV of the view, the arrangement kept in this browser, Reset, an explained bad range, grid keyboard use with axe, widgets shown from any cell of a column, the three-step header sort, value search, center alignment, and a frozen header row.
 - `e2e/gallery.spec.ts`: the component gallery in all six appearances with axe, the appearance switch, toolbar overflow into More with the primary action kept, and keyboard use of toolbars, filters, checkable menus, and sections.
 - `e2e/robustness.spec.ts`: a slow server with pending explanations, a failed request and its recovery, page drafts reset on a project switch, and the command palette's focus from a focused control.
 - `e2e/results.spec.ts`: provenance and currentness, drill-down into a building, the typical-weekday profile, a real CSV download with its header, scenario savings, and light and dark rendering with axe.

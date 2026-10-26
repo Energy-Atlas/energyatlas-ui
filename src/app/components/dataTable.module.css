@@ -80,6 +80,7 @@
 .th:hover .columnTool,
 .th:focus-within .columnTool,
 .th[data-focused] .columnTool,
+.th[data-column-hover] .columnTool,
 .columnTool[aria-expanded='true'],
 .columnTool.active {
   opacity: 1;
@@ -99,6 +100,10 @@
 .badge {
   margin-left: 0.125rem;
   font-variant-numeric: tabular-nums;
+}
+
+.hoverZone {
+  min-width: 0;
 }
 
 .scroll {
@@ -187,16 +192,32 @@
   justify-content: flex-end;
 }
 
-.tr:hover > .td {
-  background: color-mix(in srgb, var(--color-accent) 8%, transparent);
+.center {
+  text-align: center;
+}
+
+.center .head {
+  justify-content: center;
+}
+
+/* Shading and hover are opaque mixes on the pane colour, so a frozen cell
+   looks like the rest of its row. */
+.frame {
+  --row-shade: color-mix(in srgb, var(--color-text) 7%, var(--color-surface));
+  --row-hover: color-mix(
+    in srgb,
+    var(--color-accent) 12%,
+    var(--color-surface)
+  );
 }
 
 .shaded .tr:nth-child(even) > .td {
-  background: color-mix(in srgb, var(--color-text) 4%, var(--color-surface));
+  background: var(--row-shade);
 }
 
+.tr:hover > .td,
 .shaded .tr:nth-child(even):hover > .td {
-  background: color-mix(in srgb, var(--color-accent) 8%, transparent);
+  background: var(--row-hover);
 }
 
 .current > .td {
@@ -223,15 +244,32 @@
 
 /* A frozen cell keeps its row's shading, hover, and current mark. */
 .freeze.shaded .tr:nth-child(even) > .td:first-child {
-  background: color-mix(in srgb, var(--color-text) 4%, var(--color-surface));
+  background: var(--row-shade);
 }
 
 .freeze .tr:hover > .td:first-child {
-  background: color-mix(in srgb, var(--color-accent) 8%, var(--color-surface));
+  background: var(--row-hover);
 }
 
 .freeze .current > .td:first-child {
   background: var(--color-selected-bg);
+}
+
+/* Freezing the header row bounds the table's height, so it scrolls within
+   itself and the header stays on top. */
+.freezeHeader .scroll {
+  max-height: min(70vh, 36rem);
+}
+
+.freezeHeader .th {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  box-shadow: 0 1px 0 var(--color-border);
+}
+
+.freeze.freezeHeader .th:first-child {
+  z-index: 3;
 }
 
 .head {
@@ -257,12 +295,6 @@
   order: -1;
 }
 
-.sortMark {
-  display: inline-flex;
-  flex-shrink: 0;
-  color: var(--color-accent-text);
-}
-
 .columnTools {
   display: inline-flex;
   flex-shrink: 0;
@@ -270,6 +302,7 @@
 }
 
 .columnTool {
+  position: relative;
   display: inline-grid;
   place-items: center;
   width: 1.25rem;
@@ -295,6 +328,15 @@
 
 .columnTool.active {
   color: var(--color-accent-text);
+}
+
+/* A sorted column's filter icon carries the direction in its corner. */
+.sortCorner {
+  position: absolute;
+  right: -2px;
+  bottom: -2px;
+  padding: 0.5px;
+  background: var(--color-surface-raised);
 }
 
 .resizer {

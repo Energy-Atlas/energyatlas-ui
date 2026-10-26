@@ -24,6 +24,7 @@ import {
   Popover,
   ResizableTableContainer,
   Row,
+  SearchField,
   Table,
   TableBody,
   TableHeader,
@@ -84,6 +85,32 @@ export type DataTableProps<Row> = {
 }
 
 type Item<Row> = { id: string; row: Row }
+
+const ALIGN_CLASS = {
+  start: undefined,
+  center: styles.center,
+  end: styles.end,
+} satisfies Record<'start' | 'center' | 'end', string | undefined>
+
+/**
+ * Marks the header of the column holding `target` (a cell or anything in
+ * one), so that column's widgets show; null clears the mark. The mark is a
+ * data attribute React does not manage, so re-renders keep it.
+ */
+function markColumn(zone: HTMLElement, target: EventTarget | null) {
+  const cell =
+    target instanceof Element
+      ? target.closest<HTMLTableCellElement>('td, th')
+      : null
+  const header =
+    cell && zone.contains(cell)
+      ? zone.querySelector('table')?.tHead?.rows[0]?.cells[cell.cellIndex]
+      : undefined
+  for (const marked of zone.querySelectorAll('[data-column-hover]')) {
+    if (marked !== header) marked.removeAttribute('data-column-hover')
+  }
+  header?.setAttribute('data-column-hover', '')
+}
 
 /**
  * A checkbox in a table popover. Inside the table a checkbox would be claimed
@@ -179,6 +206,7 @@ export function DataTable<Row>({
         style.shaded && styles.shaded,
         style.wrap && styles.wrap,
         style.freezeFirst && styles.freeze,
+        style.freezeHeader && styles.freezeHeader,
         className,
       )}
       data-table-id={id}
@@ -236,112 +264,138 @@ export function DataTable<Row>({
         </AriaToolbar>
       </div>
 
-      <ResizableTableContainer
-        // Changing the width mode re-applies its default widths.
-        key={`${style.widths}:${shownColumns.map((column) => column.id).join('|')}`}
-        className={styles.scroll}
-      >
-        <Table
-          aria-label={label}
-          className={styles.table}
-          sortDescriptor={sortDescriptor}
-          onSortChange={(descriptor) =>
-            onChange({
-              kind: 'sort',
-              sort: {
-                column: String(descriptor.column),
-                direction: descriptor.direction,
-              },
-            })
+      <div
+        className={styles.hoverZone}
+        // A column's widgets show while the pointer or focus is anywhere in
+        // that column, not only on its header.
+        onPointerOver={(event) => markColumn(event.currentTarget, event.target)}
+        onPointerLeave={(event) => markColumn(event.currentTarget, null)}
+        onFocus={(event) => markColumn(event.currentTarget, event.target)}
+        onBlur={(event) => {
+          if (!event.currentTarget.contains(event.relatedTarget)) {
+            markColumn(event.currentTarget, null)
           }
+        }}
+      >
+        <ResizableTableContainer
+          // Changing the width mode re-applies its default widths.
+          key={`${style.widths}:${shownColumns.map((column) => column.id).join('|')}`}
+          className={styles.scroll}
         >
-          <TableHeader columns={shownColumns} dependencies={[settings, rows]}>
-            {(column) => (
-              <Column
-                id={column.id}
-                isRowHeader={column.rowHeader}
-                allowsSorting={!column.action && column.sortable !== false}
-                defaultWidth={widthOf(column)}
-                minWidth={minWidthOf(column)}
-                textValue={columnHeader(column, settings.formats[column.id])}
-                className={cx(
-                  styles.th,
-                  columnAlign(column, settings.formats[column.id]) === 'end' &&
-                    styles.end,
-                )}
-              >
-                {({ sortDirection }) => (
-                  <ColumnHead
-                    column={column}
-                    rows={rows}
-                    settings={settings}
-                    sortDirection={sortDirection}
-                    onChange={onChange}
-                  />
-                )}
-              </Column>
-            )}
-          </TableHeader>
-          <TableBody
-            items={items}
-            dependencies={[settings, shownColumns]}
-            className={styles.tbody}
-            renderEmptyState={() => (
-              <p className={styles.emptyRow}>
-                {rows.length === 0 ? (
-                  emptyText
-                ) : (
-                  <>
-                    No rows match the filters.{' '}
-                    <Button
-                      className={componentStyles.button}
-                      onPress={() => onChange({ kind: 'clearFilters' })}
-                    >
-                      Clear filters
-                    </Button>
-                  </>
-                )}
-              </p>
-            )}
+          <Table
+            aria-label={label}
+            className={styles.table}
+            sortDescriptor={sortDescriptor}
+            onSortChange={(descriptor) => {
+              const column = String(descriptor.column)
+              // Clicking a header steps through ascending, descending, and
+              // unsorted.
+              const cleared =
+                settings.sort?.column === column &&
+                settings.sort.direction === 'descending'
+              onChange({
+                kind: 'sort',
+                sort: cleared
+                  ? null
+                  : {
+                      column,
+                      direction:
+                        settings.sort?.column === column
+                          ? 'descending'
+                          : 'ascending',
+                    },
+              })
+            }}
           >
-            {(item) => (
-              <Row
-                id={item.id}
-                columns={shownColumns}
-                dependencies={[settings]}
-                className={cx(
-                  styles.tr,
-                  item.id === currentKey && styles.current,
-                )}
-              >
-                {(column) => {
-                  const format = settings.formats[column.id]
-                  const text = formatCell(
-                    column.value(item.row),
-                    column,
-                    format,
-                  )
-                  return (
-                    <Cell
-                      textValue={text}
-                      className={cx(
-                        styles.td,
-                        column.wrap && styles.wrapCell,
-                        columnAlign(column, format) === 'end' && styles.end,
-                      )}
-                    >
-                      {column.render ? column.render(item.row, text) : text}
-                      {column.rowHeader && item.id === currentKey ? (
-                        <span className="visually-hidden"> (current)</span>
-                      ) : null}
-                    </Cell>
-                  )
-                }}
-              </Row>
-            )}
-          </TableBody>
-        </Table>
-      </ResizableTableContainer>
+            <TableHeader columns={shownColumns} dependencies={[settings, rows]}>
+              {(column) => (
+                <Column
+                  id={column.id}
+                  isRowHeader={column.rowHeader}
+                  allowsSorting={!column.action && column.sortable !== false}
+                  defaultWidth={widthOf(column)}
+                  minWidth={minWidthOf(column)}
+                  textValue={columnHeader(column, settings.formats[column.id])}
+                  className={cx(
+                    styles.th,
+                    ALIGN_CLASS[
+                      columnAlign(column, settings.formats[column.id])
+                    ],
+                  )}
+                >
+                  {({ sortDirection }) => (
+                    <ColumnHead
+                      column={column}
+                      rows={rows}
+                      settings={settings}
+                      sortDirection={sortDirection}
+                      onChange={onChange}
+                    />
+                  )}
+                </Column>
+              )}
+            </TableHeader>
+            <TableBody
+              items={items}
+              dependencies={[settings, shownColumns]}
+              className={styles.tbody}
+              renderEmptyState={() => (
+                <p className={styles.emptyRow}>
+                  {rows.length === 0 ? (
+                    emptyText
+                  ) : (
+                    <>
+                      No rows match the filters.{' '}
+                      <Button
+                        className={componentStyles.button}
+                        onPress={() => onChange({ kind: 'clearFilters' })}
+                      >
+                        Clear filters
+                      </Button>
+                    </>
+                  )}
+                </p>
+              )}
+            >
+              {(item) => (
+                <Row
+                  id={item.id}
+                  columns={shownColumns}
+                  dependencies={[settings]}
+                  className={cx(
+                    styles.tr,
+                    item.id === currentKey && styles.current,
+                  )}
+                >
+                  {(column) => {
+                    const format = settings.formats[column.id]
+                    const text = formatCell(
+                      column.value(item.row),
+                      column,
+                      format,
+                    )
+                    return (
+                      <Cell
+                        textValue={text}
+                        className={cx(
+                          styles.td,
+                          column.wrap && styles.wrapCell,
+                          ALIGN_CLASS[columnAlign(column, format)],
+                        )}
+                      >
+                        {column.render ? column.render(item.row, text) : text}
+                        {column.rowHeader && item.id === currentKey ? (
+                          <span className="visually-hidden"> (current)</span>
+                        ) : null}
+                      </Cell>
+                    )
+                  }}
+                </Row>
+              )}
+            </TableBody>
+          </Table>
+        </ResizableTableContainer>
+      </div>
 
       {processed.length > page.length && pageSize ? (
         <p className={styles.more}>
@@ -384,22 +438,14 @@ function ColumnHead<Row>({
   return (
     <div className={styles.head}>
       <span className={styles.headLabel}>{header}</span>
-      {sortDirection ? (
-        <span className={styles.sortMark} aria-hidden="true">
-          {sortDirection === 'ascending' ? (
-            <ArrowUp size={12} />
-          ) : (
-            <ArrowDown size={12} />
-          )}
-        </span>
-      ) : null}
       <span className={styles.columnTools}>
         {column.filterable !== false || column.sortable !== false ? (
           <ColumnFilterTool
             column={column}
             rows={rows}
             settings={settings}
-            active={filtered}
+            filtered={filtered}
+            sortDirection={sortDirection}
             onChange={onChange}
           />
         ) : null}
@@ -444,23 +490,46 @@ function ColumnFilterTool<Row>({
   column,
   rows,
   settings,
-  active,
+  filtered,
+  sortDirection,
   onChange,
 }: {
   column: DataColumn<Row>
   rows: Row[]
   settings: TableSettings
-  active: boolean
+  filtered: boolean
+  sortDirection: 'ascending' | 'descending' | undefined
   onChange: (change: TableChange) => void
 }) {
   const sorted = settings.sort?.column === column.id
+  const state = [
+    filtered ? 'filtered' : null,
+    sortDirection ? `sorted ${sortDirection}` : null,
+  ].filter(Boolean)
+  const SortArrow = sortDirection === 'descending' ? ArrowDown : ArrowUp
+  const [open, setOpen] = useState(false)
   return (
-    <DialogTrigger>
+    <DialogTrigger isOpen={open} onOpenChange={setOpen}>
       <Button
-        className={cx(styles.columnTool, (active || sorted) && styles.active)}
-        aria-label={`Filter and sort ${column.header}${active ? ' (filtered)' : ''}`}
+        className={cx(
+          styles.columnTool,
+          (filtered || sortDirection) && styles.active,
+        )}
+        aria-label={`Filter and sort ${column.header}${state.length ? ` (${state.join(', ')})` : ''}`}
       >
-        <Filter size={12} aria-hidden="true" />
+        <Filter
+          size={12}
+          aria-hidden="true"
+          fill={filtered ? 'currentColor' : 'none'}
+        />
+        {sortDirection ? (
+          <SortArrow
+            className={styles.sortCorner}
+            size={9}
+            strokeWidth={3}
+            aria-hidden="true"
+          />
+        ) : null}
       </Button>
       <ToolPopover title={`Filter and sort: ${column.header}`}>
         {column.sortable !== false ? (
@@ -491,7 +560,11 @@ function ColumnFilterTool<Row>({
             rows={rows}
             filter={settings.filters[column.id] ?? null}
             format={settings.formats[column.id]}
-            onChange={onChange}
+            onChange={(change) => {
+              // Applying or clearing a filter closes it, as in a spreadsheet.
+              onChange(change)
+              setOpen(false)
+            }}
           />
         ) : null}
       </ToolPopover>
@@ -513,128 +586,39 @@ function FilterEditor<Row>({
   format: ColumnFormat | undefined
   onChange: (change: TableChange) => void
 }) {
-  const options = useMemo(
-    () => (columnType(column) === 'enum' ? distinctValues(rows, column) : []),
-    [rows, column],
+  const numeric = columnType(column) === 'number'
+  return numeric ? (
+    <RangeFilterEditor
+      column={column}
+      filter={filter}
+      format={format}
+      onChange={onChange}
+    />
+  ) : (
+    <ValueFilterEditor
+      column={column}
+      rows={rows}
+      filter={filter}
+      onChange={onChange}
+    />
   )
-  // An enum with very many values, or one the agent filtered by text, filters
-  // by text here too.
-  const type =
-    columnType(column) === 'enum' &&
-    (options.length > MAX_CHECKLIST_VALUES || filter?.kind === 'text')
-      ? 'text'
-      : columnType(column)
-  // Ranges are stored in the column's own unit and entered in the unit shown.
-  const factor = format?.scale === 'kilo' && canScale(column) ? 1000 : 1
-  const unit = shownUnit(column, format)
-  const shown = (value: number | null) =>
-    value === null ? '' : String(value / factor)
-  const [text, setText] = useState(
-    filter?.kind === 'text' ? filter.contains : '',
-  )
-  const [values, setValues] = useState<string[]>(
-    filter?.kind === 'values' ? filter.values : options,
-  )
-  const [min, setMin] = useState(
-    filter?.kind === 'range' ? shown(filter.min) : '',
-  )
-  const [max, setMax] = useState(
-    filter?.kind === 'range' ? shown(filter.max) : '',
-  )
-  const errorId = useId()
-  const parse = (value: string) =>
-    value.trim() === '' ? null : Number(value.replace(/,/g, ''))
-  const lower = parse(min)
-  const upper = parse(max)
-  const invalid =
-    type === 'number' &&
-    ((lower !== null && !Number.isFinite(lower)) ||
-      (upper !== null && !Number.isFinite(upper)))
-      ? 'Enter numbers, or leave a bound empty.'
-      : type === 'number' && lower !== null && upper !== null && lower > upper
-        ? 'The lower bound is above the upper bound.'
-        : null
+}
 
-  const draft = (): ColumnFilter | null => {
-    if (type === 'number') {
-      return lower === null && upper === null
-        ? null
-        : {
-            kind: 'range',
-            min: lower === null ? null : lower * factor,
-            max: upper === null ? null : upper * factor,
-          }
-    }
-    if (type === 'enum') {
-      // Every listed value checked is no filter at all.
-      return options.every((option) => values.includes(option))
-        ? null
-        : {
-            kind: 'values',
-            values: values.filter((value) => options.includes(value)),
-          }
-    }
-    return text.trim() === '' ? null : { kind: 'text', contains: text }
-  }
-
+function FilterActions({
+  column,
+  filter,
+  invalid,
+  errorId,
+  onChange,
+}: {
+  column: { id: string }
+  filter: ColumnFilter | null
+  invalid: string | null
+  errorId: string
+  onChange: (change: TableChange) => void
+}) {
   return (
-    <form
-      className={styles.filterForm}
-      onSubmit={(event) => {
-        event.preventDefault()
-        if (invalid) return
-        onChange({ kind: 'filter', column: column.id, filter: draft() })
-      }}
-    >
-      {type === 'number' ? (
-        <div className={styles.range}>
-          <TextField
-            className={formStyles.field}
-            value={min}
-            onChange={setMin}
-            isInvalid={invalid !== null}
-          >
-            <Label className={styles.fieldLabel}>
-              At least{unit ? ` (${unit})` : ''}
-            </Label>
-            <Input className={formStyles.input} inputMode="decimal" />
-          </TextField>
-          <TextField
-            className={formStyles.field}
-            value={max}
-            onChange={setMax}
-            isInvalid={invalid !== null}
-          >
-            <Label className={styles.fieldLabel}>
-              At most{unit ? ` (${unit})` : ''}
-            </Label>
-            <Input className={formStyles.input} inputMode="decimal" />
-          </TextField>
-        </div>
-      ) : type === 'enum' ? (
-        <CheckboxGroup
-          className={styles.values}
-          value={values}
-          onChange={setValues}
-          aria-label={`Show rows where ${column.header} is`}
-        >
-          {options.map((option) => (
-            <ToolCheckbox key={option} value={option}>
-              {option || '(empty)'}
-            </ToolCheckbox>
-          ))}
-        </CheckboxGroup>
-      ) : (
-        <TextField
-          className={formStyles.field}
-          value={text}
-          onChange={setText}
-          autoFocus
-        >
-          <Label className={styles.fieldLabel}>Contains</Label>
-          <Input className={formStyles.input} maxLength={100} />
-        </TextField>
-      )}
+    <>
       {invalid ? (
         <p id={errorId} className={formStyles.fieldError} role="alert">
           {invalid}
@@ -663,6 +647,212 @@ function FilterEditor<Row>({
           Clear filter
         </button>
       </div>
+    </>
+  )
+}
+
+/**
+ * Text columns: a search field over a checklist of the column's distinct
+ * values. Applying with every value checked clears the filter; applying while
+ * searching with every match checked keeps the rows that contain the search.
+ */
+function ValueFilterEditor<Row>({
+  column,
+  rows,
+  filter,
+  onChange,
+}: {
+  column: DataColumn<Row>
+  rows: Row[]
+  filter: ColumnFilter | null
+  onChange: (change: TableChange) => void
+}) {
+  const options = useMemo(() => distinctValues(rows, column), [rows, column])
+  const [search, setSearch] = useState(
+    filter?.kind === 'text' ? filter.contains : '',
+  )
+  const [checked, setChecked] = useState<string[]>(
+    filter?.kind === 'values'
+      ? filter.values.filter((value) => options.includes(value))
+      : options,
+  )
+  const errorId = useId()
+  const term = search.trim().toLowerCase()
+  const matches = term
+    ? options.filter((option) => option.toLowerCase().includes(term))
+    : options
+  const listed = matches.slice(0, MAX_CHECKLIST_VALUES)
+  const checkedMatches = matches.filter((option) => checked.includes(option))
+  const allMatchesChecked = checkedMatches.length === matches.length
+
+  const draft = (): ColumnFilter | null => {
+    if (!term) {
+      return allMatchesChecked ? null : { kind: 'values', values: checked }
+    }
+    return allMatchesChecked
+      ? { kind: 'text', contains: search.trim() }
+      : { kind: 'values', values: checkedMatches }
+  }
+  const pending = draft()
+  const invalid =
+    pending?.kind === 'values' && pending.values.length > MAX_CHECKLIST_VALUES
+      ? `Check at most ${MAX_CHECKLIST_VALUES} values, or search to narrow the list.`
+      : matches.length === 0
+        ? 'No value matches the search.'
+        : null
+
+  return (
+    <form
+      className={styles.filterForm}
+      onSubmit={(event) => {
+        event.preventDefault()
+        if (invalid) return
+        onChange({ kind: 'filter', column: column.id, filter: pending })
+      }}
+    >
+      <SearchField
+        className={formStyles.field}
+        value={search}
+        onChange={setSearch}
+        autoFocus
+      >
+        <Label className={styles.fieldLabel}>Search values</Label>
+        <Input className={formStyles.input} maxLength={100} />
+      </SearchField>
+      <ToolCheckbox
+        isSelected={allMatchesChecked && matches.length > 0}
+        isIndeterminate={checkedMatches.length > 0 && !allMatchesChecked}
+        onChange={(select) =>
+          setChecked((current) =>
+            select
+              ? [...new Set([...current, ...matches])]
+              : current.filter((value) => !matches.includes(value)),
+          )
+        }
+      >
+        {term ? 'Select all matches' : 'Select all'}
+      </ToolCheckbox>
+      <CheckboxGroup
+        className={styles.values}
+        value={checked.filter((value) => listed.includes(value))}
+        onChange={(next) =>
+          setChecked((current) => [
+            ...current.filter((value) => !listed.includes(value)),
+            ...next,
+          ])
+        }
+        aria-label={`Show rows where ${column.header} is`}
+      >
+        {listed.map((option) => (
+          <ToolCheckbox key={option} value={option}>
+            {option || '(empty)'}
+          </ToolCheckbox>
+        ))}
+      </CheckboxGroup>
+      {matches.length > listed.length ? (
+        <p className={componentStyles.muted}>
+          Showing {listed.length} of {matches.length} values; search to find the
+          rest.
+        </p>
+      ) : null}
+      <FilterActions
+        column={column}
+        filter={filter}
+        invalid={invalid}
+        errorId={errorId}
+        onChange={onChange}
+      />
+    </form>
+  )
+}
+
+/** Number columns: an at-least and at-most range, in the unit shown. */
+function RangeFilterEditor<Row>({
+  column,
+  filter,
+  format,
+  onChange,
+}: {
+  column: DataColumn<Row>
+  filter: ColumnFilter | null
+  format: ColumnFormat | undefined
+  onChange: (change: TableChange) => void
+}) {
+  // Ranges are stored in the column's own unit and entered in the unit shown.
+  const factor = format?.scale === 'kilo' && canScale(column) ? 1000 : 1
+  const unit = shownUnit(column, format)
+  const shown = (value: number | null) =>
+    value === null ? '' : String(value / factor)
+  const [min, setMin] = useState(
+    filter?.kind === 'range' ? shown(filter.min) : '',
+  )
+  const [max, setMax] = useState(
+    filter?.kind === 'range' ? shown(filter.max) : '',
+  )
+  const errorId = useId()
+  const parse = (value: string) =>
+    value.trim() === '' ? null : Number(value.replace(/,/g, ''))
+  const lower = parse(min)
+  const upper = parse(max)
+  const invalid =
+    (lower !== null && !Number.isFinite(lower)) ||
+    (upper !== null && !Number.isFinite(upper))
+      ? 'Enter numbers, or leave a bound empty.'
+      : lower !== null && upper !== null && lower > upper
+        ? 'The lower bound is above the upper bound.'
+        : null
+
+  return (
+    <form
+      className={styles.filterForm}
+      onSubmit={(event) => {
+        event.preventDefault()
+        if (invalid) return
+        onChange({
+          kind: 'filter',
+          column: column.id,
+          filter:
+            lower === null && upper === null
+              ? null
+              : {
+                  kind: 'range',
+                  min: lower === null ? null : lower * factor,
+                  max: upper === null ? null : upper * factor,
+                },
+        })
+      }}
+    >
+      <div className={styles.range}>
+        <TextField
+          className={formStyles.field}
+          value={min}
+          onChange={setMin}
+          isInvalid={invalid !== null}
+        >
+          <Label className={styles.fieldLabel}>
+            At least{unit ? ` (${unit})` : ''}
+          </Label>
+          <Input className={formStyles.input} inputMode="decimal" />
+        </TextField>
+        <TextField
+          className={formStyles.field}
+          value={max}
+          onChange={setMax}
+          isInvalid={invalid !== null}
+        >
+          <Label className={styles.fieldLabel}>
+            At most{unit ? ` (${unit})` : ''}
+          </Label>
+          <Input className={formStyles.input} inputMode="decimal" />
+        </TextField>
+      </div>
+      <FilterActions
+        column={column}
+        filter={filter}
+        invalid={invalid}
+        errorId={errorId}
+        onChange={onChange}
+      />
     </form>
   )
 }
@@ -680,7 +870,6 @@ function ColumnFormatTool<Row>({
 }) {
   const format = settings.formats[column.id] ?? {}
   const numeric = columnType(column) === 'number'
-  const hideable = !column.rowHeader && column.hideable !== false
   const set = (next: TableChange & { kind: 'format' }) => onChange(next)
   return (
     <DialogTrigger>
@@ -754,6 +943,7 @@ function ColumnFormatTool<Row>({
           aria-label={`Alignment of ${column.header}`}
           segments={[
             { id: 'start', label: 'Left' },
+            { id: 'center', label: 'Center' },
             { id: 'end', label: 'Right' },
           ]}
           value={columnAlign(column, format)}
@@ -762,23 +952,6 @@ function ColumnFormatTool<Row>({
           }
         />
         <div className={styles.dialogActions}>
-          <button
-            type="button"
-            className={componentStyles.button}
-            aria-disabled={hideable ? undefined : true}
-            title={
-              hideable
-                ? undefined
-                : `${column.header} names each row, so it stays shown.`
-            }
-            onClick={() => {
-              if (hideable) {
-                onChange({ kind: 'setHidden', column: column.id, hidden: true })
-              }
-            }}
-          >
-            Hide column
-          </button>
           <button
             type="button"
             className={componentStyles.button}
@@ -1023,6 +1196,14 @@ function StyleTool({
             onChange={(wrap) => onChange({ kind: 'style', style: { wrap } })}
           >
             Wrap long text
+          </ToolCheckbox>
+          <ToolCheckbox
+            isSelected={style.freezeHeader}
+            onChange={(freezeHeader) =>
+              onChange({ kind: 'style', style: { freezeHeader } })
+            }
+          >
+            Freeze the header row
           </ToolCheckbox>
           <ToolCheckbox
             isSelected={style.freezeFirst}

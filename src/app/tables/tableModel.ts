@@ -90,7 +90,7 @@ export function columnHeader<Row>(
 export function columnAlign<Row>(
   column: DataColumn<Row>,
   format: ColumnFormat | undefined,
-): 'start' | 'end' {
+): 'start' | 'center' | 'end' {
   return format?.align ?? (isNumeric(column) ? 'end' : 'start')
 }
 
