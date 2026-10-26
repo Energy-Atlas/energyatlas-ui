@@ -348,6 +348,8 @@ Compared with the plan above and the package constraints, the build so far:
 
 ## Next steps
 
+Current plan (2026-10-25): the [pre-connection roadmap](pre-connection-roadmap.md). Real backend connections are built inside RCEnergySimulator after the demo is refined, and `feature/agentic` stays unmerged for now ([decision 0022](decisions/0022-backend-connections-inside-rc.md)). The stage 4 notes below are history.
+
 Stage 4 is built on the `feature/agentic` branch; see [stage 4 status](#stage-4-scripted-agent-2026-09-15). The scope it implemented, from decisions 0006, 0009, and 0011 and the Reasoning row above:
 
 - **Context panel** (decision 0009): built in the [design alignment](design-alignment.md) pass with a Reasoning placeholder and a read-only Inspection mode. The items below fill the Reasoning mode; agent tool calls can switch modes with `setContextMode(mode, 'agent')`.

@@ -22,3 +22,6 @@ Keep short dated records of accepted decisions: status, context, decision, ratio
 - [0018: Contextual lighting for the 3D map scene](0018-map-scene-lighting.md)
 - [0019: A globe with one solar state, and no area night lights](0019-globe-projection-and-solar-state.md)
 - [0021: UI alignment with the EnergyAtlas family, the family look winning](0021-energyatlas-family-ui-alignment.md)
+- [0022: Real backend connections inside RCEnergySimulator, after the demo is refined](0022-backend-connections-inside-rc.md)
+
+Number 0020 is used on the unmerged `feature/agentic` branch.
