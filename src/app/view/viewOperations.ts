@@ -60,6 +60,12 @@ export type ViewState = {
   jobs: { selectedTaskId: string | null; filter: JobFilter }
   /** The data intake draft: a dataset and its mapping, not sent until applied. */
   intake: { datasetId: string | null; mapping: FieldMapping }
+  /** The Results page's chosen result, drilled-down building, and resolution. */
+  results: {
+    resultId: string
+    buildingId: string | null
+    resolution: 'monthly' | 'hourly'
+  }
   nextChartNumber: number
 }
 
@@ -78,6 +84,7 @@ export function createInitialViewState(): ViewState {
     dashboard: { hiddenScenarioIds: [], charts: [] },
     jobs: { selectedTaskId: null, filter: 'all' },
     intake: { datasetId: null, mapping: {} },
+    results: { resultId: 'baseline', buildingId: null, resolution: 'monthly' },
     nextChartNumber: 1,
   }
 }
@@ -450,6 +457,67 @@ export const viewOperationDefinitions = {
         target
           ? `Mapped "${field}" to ${TARGET_FIELDS[target].label}.`
           : `"${field}" is ignored.`,
+      )
+    },
+  }),
+
+  'results.select': defineViewOperation({
+    title: 'Show result',
+    description:
+      'Show a published result on the Results page: "baseline" or a modeled scenario id. Held or unpublished results cannot be shown.',
+    input: z.object({ resultId: z.string().min(1, 'Choose a result.') }),
+    run(view, { resultId }, project) {
+      const published =
+        resultId === 'baseline'
+          ? project.results.baseline
+          : project.results.scenarios[resultId]
+      if (!published) {
+        return rejected(
+          `"${resultId}" has no published result. Run the stage that produces it first.`,
+          'resultId',
+        )
+      }
+      view.results.resultId = resultId
+      return applied(`Results show "${published.label}".`)
+    },
+  }),
+
+  'results.showBuilding': defineViewOperation({
+    title: 'Show building results',
+    description:
+      'Drill down into one building of the shown result, or pass null for the district.',
+    input: z.object({ buildingId: z.string().min(1).nullable() }),
+    run(view, { buildingId }, project) {
+      if (buildingId !== null && !project.buildings[buildingId]) {
+        return rejected(`Unknown building "${buildingId}".`, 'buildingId')
+      }
+      view.results.buildingId = buildingId
+      if (buildingId === null) view.results.resolution = 'monthly'
+      return applied(
+        buildingId
+          ? `Results drill down into ${buildingId}.`
+          : 'Results show the district.',
+      )
+    },
+  }),
+
+  'results.setResolution': defineViewOperation({
+    title: 'Set results resolution',
+    description:
+      'Show monthly totals, or a typical weekday by hour for the drilled-down building. Daily resolution is not offered.',
+    input: z.object({ resolution: z.enum(['monthly', 'hourly']) }),
+    run(view, { resolution }) {
+      if (resolution === 'hourly' && view.results.buildingId === null) {
+        return rejected(
+          'Hourly profiles are kept for single buildings only. Choose a building first.',
+          'resolution',
+        )
+      }
+      view.results.resolution = resolution
+      return applied(
+        resolution === 'hourly'
+          ? 'Results show a typical weekday by hour.'
+          : 'Results show monthly totals.',
       )
     },
   }),

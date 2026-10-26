@@ -30,6 +30,7 @@ export const PAGES = {
   intake: { name: 'Data intake', component: 'page.intake' },
   archetypes: { name: 'Archetypes', component: 'page.archetypes' },
   calibration: { name: 'Calibration', component: 'page.calibration' },
+  results: { name: 'Results', component: 'page.results' },
   account: { name: 'Account', component: 'page.account' },
 } as const
 

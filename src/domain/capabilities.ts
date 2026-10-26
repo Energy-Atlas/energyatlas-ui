@@ -58,6 +58,18 @@ export const capabilities = {
     explanation:
       'Meter validation, fit jobs, residual metrics, calibrated variants, and explicit adoption are real state transitions; meter data is synthetic and the fit is one whole-district factor, not a real calibration algorithm.',
   },
+  'results.drilldown': {
+    label: 'Results drill-down',
+    status: 'simulated',
+    explanation:
+      'Per-building and per-scenario results with provenance and currentness come from published synthetic results; monthly and typical-weekday series are derived, not simulated hour by hour.',
+  },
+  'results.csv': {
+    label: 'CSV export',
+    status: 'working',
+    explanation:
+      'Exports a published result as CSV in the browser, naming its run and currentness; a native report generator is planned.',
+  },
   'workflow.freeformEditing': {
     label: 'Free-form graph editing',
     status: 'planned',

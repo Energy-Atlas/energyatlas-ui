@@ -112,6 +112,15 @@ export function WorkflowPanel() {
                     </ActionButton>
                   )
                 })()}
+                {stageId === STAGE_IDS.dashboard ? (
+                  <ActionButton
+                    label="Open Results to drill into published results"
+                    disabledReason={null}
+                    onPress={() => layout.openPage('results')}
+                  >
+                    Results
+                  </ActionButton>
+                ) : null}
                 {stageId === STAGE_IDS.baseline ? (
                   <ActionButton
                     label="Open Calibration to fit the baseline to meters"
