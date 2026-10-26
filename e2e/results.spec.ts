@@ -67,11 +67,18 @@ test('drills into a building and exports the published result as CSV', async ({
   ).toContainText('Saving vs baseline (kWh)')
 })
 
-test('results render in light and dark without serious axe violations', async ({
+test('results render in every appearance and a narrow pane without serious axe violations', async ({
   page,
 }) => {
-  test.setTimeout(60_000)
-  for (const appearance of ['light', 'darkEngineering']) {
+  test.setTimeout(240_000)
+  for (const appearance of [
+    'light',
+    'dark',
+    'monochrome',
+    'lieflat',
+    'cleanLight',
+    'darkEngineering',
+  ]) {
     await page.addInitScript((value) => {
       localStorage.setItem('eaui.theme', value)
     }, appearance)
@@ -92,4 +99,12 @@ test('results render in light and dark without serious axe violations', async ({
     ).toEqual([])
     await page.screenshot({ path: `tmp/results-${appearance}-1280.png` })
   }
+  await page.setViewportSize({ width: 900, height: 700 })
+  // Wait for the narrow layout to settle before measuring.
+  await expect
+    .poll(() =>
+      page.evaluate(() => document.documentElement.scrollWidth <= innerWidth),
+    )
+    .toBe(true)
+  await page.screenshot({ path: 'tmp/results-narrow-900.png' })
 })

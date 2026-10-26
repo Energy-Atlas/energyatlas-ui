@@ -155,6 +155,15 @@ export function signatureMismatch(
     now.membership.length !== before.membership.length ||
     now.membership.some((id, index) => before.membership[index] !== id)
   ) {
+    // Runs saved before their stage worked item by item recorded no items.
+    const first = state.tasks[group.attemptIds[0] ?? '']
+    if (
+      before.membership.length === 0 &&
+      group.kind === 'stage' &&
+      first?.items === null
+    ) {
+      return 'the run was saved before this stage processed items one by one'
+    }
     return group.kind === 'fusion'
       ? 'the records that validate changed'
       : group.stageId === STAGE_IDS.scenarioModeling

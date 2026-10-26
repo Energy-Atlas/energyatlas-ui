@@ -93,11 +93,18 @@ test('validates meters, fits a variant, and adopts it only on request', async ({
   await expect(calibration).toContainText('Working baseline: modeled baseline')
 })
 
-test('calibration renders in light, dark, and a narrow pane without serious axe violations', async ({
+test('calibration renders in every appearance and a narrow pane without serious axe violations', async ({
   page,
 }) => {
-  test.setTimeout(90_000)
-  for (const appearance of ['light', 'darkEngineering']) {
+  test.setTimeout(240_000)
+  for (const appearance of [
+    'light',
+    'dark',
+    'monochrome',
+    'lieflat',
+    'cleanLight',
+    'darkEngineering',
+  ]) {
     await page.addInitScript((value) => {
       localStorage.setItem('eaui.theme', value)
     }, appearance)

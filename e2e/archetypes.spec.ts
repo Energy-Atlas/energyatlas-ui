@@ -124,11 +124,18 @@ test('validates archetype and schedule fields where they are entered', async ({
   ).toContainText('2.5 full-load hours a week')
 })
 
-test('archetypes render in light, dark, and a narrow pane without serious axe violations', async ({
+test('archetypes render in every appearance and a narrow pane without serious axe violations', async ({
   page,
 }) => {
-  test.setTimeout(90_000)
-  for (const appearance of ['light', 'darkEngineering']) {
+  test.setTimeout(240_000)
+  for (const appearance of [
+    'light',
+    'dark',
+    'monochrome',
+    'lieflat',
+    'cleanLight',
+    'darkEngineering',
+  ]) {
     await page.addInitScript((value) => {
       localStorage.setItem('eaui.theme', value)
     }, appearance)

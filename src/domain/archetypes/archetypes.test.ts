@@ -280,4 +280,36 @@ describe('assignment jobs', () => {
     })
     expect(states(workbench)[S.archetypes]).toBe('executed')
   })
+
+  test('a failed whole-stage assignment saved before item runs explains why it needs a fresh run', () => {
+    const workbench = partway()
+    runStageNow(workbench, S.archetypes)
+    workbench.execute({
+      type: 'workflow.runStage',
+      input: { stageId: S.archetypes },
+    })
+    const taskId = workbench.getState().taskIds.at(-1) ?? ''
+    finishJobNow(workbench, taskId, { failures: { B0002: 'Fault.' } })
+    const state = workbench.getState()
+    const groupId = state.tasks[taskId]?.groupId ?? ''
+    const group = state.runGroups[groupId]!
+    // As saved before Archetype modeling was an item stage.
+    const old = {
+      ...state,
+      tasks: {
+        ...state.tasks,
+        [taskId]: { ...state.tasks[taskId]!, items: null },
+      },
+      runGroups: {
+        ...state.runGroups,
+        [groupId]: {
+          ...group,
+          signature: { ...group.signature, membership: [] },
+        },
+      },
+    }
+    expect(retryBlocker(old, taskId)).toMatch(
+      /saved before this stage processed items one by one/,
+    )
+  })
 })

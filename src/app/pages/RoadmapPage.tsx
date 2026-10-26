@@ -21,11 +21,11 @@ import {
   Label,
   TextField,
 } from 'react-aria-components'
+import { stageSubmitBlocker } from '../../domain/commands.ts'
 import type { StageState, WorkflowState } from '../../domain/types.ts'
 import {
   downstreamIds,
   hasActiveTask,
-  stageRunBlocker,
   upstreamIds,
 } from '../../domain/workflow.ts'
 import {
@@ -215,6 +215,7 @@ function StageDetails() {
   const pending = useClientSnapshot((snapshot) => snapshot.pending)
   const workflow = useWorkbenchSnapshot((snapshot) => snapshot.state.workflow)
   const tasks = useWorkbenchSnapshot((snapshot) => snapshot.state.tasks)
+  const project = useWorkbenchSnapshot((snapshot) => snapshot.state)
   const states = useStageStates()
   const stageId = workflow.currentStageId
   const stage = stageId ? workflow.stages[stageId] : undefined
@@ -267,7 +268,7 @@ function StageDetails() {
               'workflow.runStage',
               'the run was requested',
               forStage(stageId),
-            ) ?? stageRunBlocker(workflow, tasks, stageId)
+            ) ?? stageSubmitBlocker(project, stageId)
           }
           onPress={() =>
             void client.execute({

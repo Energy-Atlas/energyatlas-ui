@@ -84,4 +84,23 @@ describe('buildDashboardData', () => {
     expect(item?.shown?.totalKwh).toBeLessThan(item?.modeled?.totalKwh ?? 0)
     expect(workbench.getState().scenarios[scenarioId]?.adoptionPercent).toBe(20)
   })
+
+  test('scenarios left out of the comparison take no chart slot', () => {
+    const workbench = modeledProject(4)
+    const first = Object.values(workbench.getState().scenarios)[0]
+    if (!first) throw new Error('Missing scenario')
+    workbench.execute({
+      type: 'scenario.update',
+      input: { ...first, included: false },
+    })
+    const data = buildDashboardData(workbench.getState(), {})
+    expect(data.scenarios.map((item) => item.scenario.name)).toEqual([
+      'Scenario 2',
+      'Scenario 3',
+      'Scenario 4',
+    ])
+    expect(data.scenarios.map((item) => item.slot)).toEqual([0, 1, 2])
+    expect(data.uncharted).toEqual([])
+    expect(data.leftOut).toEqual(['Scenario 1'])
+  })
 })

@@ -38,6 +38,16 @@ export type DashboardData = {
   scenarios: ChartedScenario[]
   /** Scenarios beyond the charted three, listed by name. */
   uncharted: string[]
+  /** Scenarios left out of the comparison set; they take no chart slot. */
+  leftOut: string[]
+}
+
+/**
+ * Scenarios in chart-slot order: those included in the comparison set, in
+ * creation order. Shared by the dashboard and chart specifications.
+ */
+export function chartedScenarioOrder(state: WorkbenchState): Scenario[] {
+  return Object.values(state.scenarios).filter((scenario) => scenario.included)
 }
 
 function round(value: number, digits: number): number {
@@ -50,7 +60,7 @@ export function buildDashboardData(
   previews: Record<string, number>,
 ): DashboardData {
   const baseline = state.results.baseline
-  const all = Object.values(state.scenarios)
+  const all = chartedScenarioOrder(state)
 
   const scenarios = all
     .slice(0, MAX_CHARTED_SCENARIOS)
@@ -87,6 +97,9 @@ export function buildDashboardData(
     scenarios,
     uncharted: all
       .slice(MAX_CHARTED_SCENARIOS)
+      .map((scenario) => scenario.name),
+    leftOut: Object.values(state.scenarios)
+      .filter((scenario) => !scenario.included)
       .map((scenario) => scenario.name),
   }
 }

@@ -30,6 +30,20 @@ export function CommandPalette({
 }: CommandPaletteProps) {
   const { contains } = useFilter({ sensitivity: 'base' })
   const menuRef = useRef<HTMLDivElement>(null)
+  const inputRef = useRef<HTMLInputElement>(null)
+
+  // Opened from a focused workbench control, the field's autofocus does not
+  // take, and the browser later drops focus to the body when the workbench
+  // becomes inert. Move focus into the field once the modal has mounted.
+  useEffect(() => {
+    if (!isOpen) return
+    const frame = window.requestAnimationFrame(() => {
+      const input = inputRef.current
+      const dialog = input?.closest('[role="dialog"]')
+      if (input && !dialog?.contains(document.activeElement)) input.focus()
+    })
+    return () => window.cancelAnimationFrame(frame)
+  }, [isOpen])
 
   // React Aria's Autocomplete replays the field's keys on the focused menu
   // item. The item cancels Backspace, and Autocomplete then cancels the real
@@ -65,6 +79,7 @@ export function CommandPalette({
               className={styles.paletteSearch}
             >
               <Input
+                ref={inputRef}
                 placeholder="Type a command"
                 className={styles.paletteInput}
               />

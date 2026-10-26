@@ -1,5 +1,5 @@
 import { Info } from 'lucide-react'
-import { stageRunBlocker } from '../../domain/workflow.ts'
+import { stageSubmitBlocker } from '../../domain/commands.ts'
 import { useServices, useWorkbenchSnapshot } from '../WorkbenchContext.tsx'
 import { forStage, usePendingReason } from '../service/usePendingReason.ts'
 import { ActionButton } from './ActionButton.tsx'
@@ -19,9 +19,8 @@ export function EmptyState({ title, message, stageId }: EmptyStateProps) {
     'the run was requested',
     forStage(stageId),
   )
-  const workflow = useWorkbenchSnapshot((snapshot) => snapshot.state.workflow)
-  const tasks = useWorkbenchSnapshot((snapshot) => snapshot.state.tasks)
-  const stage = workflow.stages[stageId]
+  const state = useWorkbenchSnapshot((snapshot) => snapshot.state)
+  const stage = state.workflow.stages[stageId]
 
   return (
     <div className={styles.emptyState}>
@@ -34,9 +33,7 @@ export function EmptyState({ title, message, stageId }: EmptyStateProps) {
           <ActionButton
             label={`Run ${stage.name}`}
             variant="primary"
-            disabledReason={
-              waiting ?? stageRunBlocker(workflow, tasks, stageId)
-            }
+            disabledReason={waiting ?? stageSubmitBlocker(state, stageId)}
             onPress={() =>
               void client.execute({
                 type: 'workflow.runStage',

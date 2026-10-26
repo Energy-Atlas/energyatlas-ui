@@ -32,6 +32,22 @@ import type {
 export const STEP_DELAY_MS = 350
 const STAGE_POLL_MS = 200
 
+/** Job submissions besides stage runs; the agent waits for each to finish. */
+const JOB_SUBMISSIONS: ReadonlySet<string> = new Set([
+  'job.retry',
+  'intake.applyDataset',
+  'calibration.fit',
+])
+
+/**
+ * Jobs that compute without changing the project model, which Automatic mode
+ * runs like stage runs. Applying a dataset changes the model, so it still asks.
+ */
+const COMPUTATION_JOBS: ReadonlySet<string> = new Set([
+  'job.retry',
+  'calibration.fit',
+])
+
 export type ScriptedAgentOptions = ToolDeps & {
   scheduler: Scheduler
   stepDelayMs?: number
@@ -264,7 +280,32 @@ export function createScriptedAgent(
       waitForStage(call.command.input.stageId, onDone)
       return
     }
+    if (call.kind === 'command' && JOB_SUBMISSIONS.has(call.command.type)) {
+      waitForJob(workbench.getState().taskIds.at(-1) ?? '', onDone)
+      return
+    }
     onDone()
+  }
+
+  /** Follows a submitted job to its end, as stage runs are followed. */
+  function waitForJob(taskId: string, onDone: () => void) {
+    const check = () => {
+      if (!isRunning()) return
+      const task = workbench.getState().tasks[taskId]
+      if (task && (task.status === 'queued' || task.status === 'running')) {
+        schedule(check, STAGE_POLL_MS)
+        return
+      }
+      if (task && task.status !== 'succeeded') {
+        endWith(
+          'error',
+          `"${task.label}" ended ${task.status === 'invalidated' ? 'without running' : task.status}: ${task.message ?? 'no message was reported.'} I ended the session. Open Jobs to retry or start a fresh run, then ask again.`,
+        )
+        return
+      }
+      onDone()
+    }
+    schedule(check, STAGE_POLL_MS)
   }
 
   function waitForStage(stageId: string, onDone: () => void) {
@@ -298,7 +339,8 @@ export function createScriptedAgent(
     if (typeof titled.call === 'function') return false
     return (
       titled.call.kind === 'command' &&
-      titled.call.command.type.startsWith('workflow.')
+      (titled.call.command.type.startsWith('workflow.') ||
+        COMPUTATION_JOBS.has(titled.call.command.type))
     )
   }
 

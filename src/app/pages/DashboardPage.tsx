@@ -15,7 +15,8 @@ import {
   SliderTrack,
 } from 'react-aria-components'
 import { capabilities } from '../../domain/capabilities.ts'
-import { STAGE_IDS, stageRunBlocker } from '../../domain/workflow.ts'
+import { stageSubmitBlocker } from '../../domain/commands.ts'
+import { STAGE_IDS } from '../../domain/workflow.ts'
 import {
   useAppearance,
   useClientSnapshot,
@@ -273,7 +274,7 @@ export function DashboardPage() {
                 'workflow.runStage',
                 'the run was requested',
                 forStage(staleStageId),
-              ) ?? stageRunBlocker(workflow, state.tasks, staleStageId)
+              ) ?? stageSubmitBlocker(state, staleStageId)
             }
             onPress={() =>
               void client.execute({
@@ -422,9 +423,16 @@ export function DashboardPage() {
         )}
         {data.uncharted.length > 0 ? (
           <p className={componentStyles.muted}>
-            Charts compare the first {MAX_CHARTED_SCENARIOS} scenarios, the most
-            the validated palette distinguishes. Not charted:{' '}
-            {data.uncharted.join(', ')}.
+            Charts compare the first {MAX_CHARTED_SCENARIOS} scenarios in the
+            comparison set, the most the validated palette distinguishes. Not
+            charted: {data.uncharted.join(', ')}.
+          </p>
+        ) : null}
+        {data.leftOut.length > 0 ? (
+          <p className={componentStyles.muted}>
+            Left out of the comparison set, so not charted:{' '}
+            {data.leftOut.join(', ')}. Include them in Creator to model and
+            chart them.
           </p>
         ) : null}
       </section>

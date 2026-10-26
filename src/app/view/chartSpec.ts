@@ -1,3 +1,4 @@
+import { chartedScenarioOrder } from '../pages/dashboardData.ts'
 import { z } from 'zod'
 import type { ValidationIssue } from '../../domain/commands.ts'
 import type { ResultSet, WorkbenchState } from '../../domain/types.ts'
@@ -78,14 +79,20 @@ export function validateChartSpec(
       },
     ]
   }
-  const scenarios = Object.values(project.scenarios)
+  const scenarios = chartedScenarioOrder(project)
   const issues: ValidationIssue[] = []
   for (const id of spec.series) {
     if (id === BASELINE_SERIES) continue
     const slot = scenarios.findIndex((scenario) => scenario.id === id)
     const scenario = scenarios[slot]
     if (!scenario) {
-      issues.push({ path: 'series', message: `Unknown scenario "${id}".` })
+      const leftOut = project.scenarios[id]
+      issues.push({
+        path: 'series',
+        message: leftOut
+          ? `"${leftOut.name}" is left out of the comparison set, so it has no chart slot.`
+          : `Unknown scenario "${id}".`,
+      })
     } else if (slot >= MAX_CHARTED_SCENARIOS) {
       issues.push({
         path: 'series',
@@ -108,7 +115,7 @@ function resolveSeries(
   project: WorkbenchState,
   palette: DataPalette,
 ): { series: ResolvedSeries[]; missing: string[] } {
-  const scenarios = Object.values(project.scenarios)
+  const scenarios = chartedScenarioOrder(project)
   const series: ResolvedSeries[] = []
   const missing: string[] = []
   for (const id of spec.series) {
@@ -129,7 +136,7 @@ function resolveSeries(
     const scenario = scenarios[slot]
     const result = project.results.scenarios[id]
     if (!scenario || !result || slot >= MAX_CHARTED_SCENARIOS) {
-      missing.push(scenario?.name ?? id)
+      missing.push(scenario?.name ?? project.scenarios[id]?.name ?? id)
       continue
     }
     series.push({

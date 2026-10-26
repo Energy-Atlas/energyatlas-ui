@@ -141,3 +141,43 @@ test('data representation session colors the map and adds a chart from a specifi
   ).toContainText('Dec')
   expect(await seriousViolations(page)).toEqual([])
 })
+
+test('calibration session fits as a job after approval and drills into results', async ({
+  page,
+}) => {
+  test.setTimeout(180_000)
+  const panel = reasoningPanel(page)
+  await panel
+    .getByRole('textbox', { name: 'Message the agent' })
+    .fill('Calibrate the baseline to the meters')
+  await panel
+    .getByRole('button', { name: 'Queue message', exact: true })
+    .click()
+  const stages = panel.getByRole('listitem', {
+    name: /^Run \d+ outdated or missing stages$/,
+  })
+  await expect(stages).toContainText('Waiting for your approval')
+  await stages.getByRole('button', { name: /^Approve: Run/ }).click()
+
+  const fit = panel.getByRole('listitem', {
+    name: 'Fit the baseline to the 2025 meters',
+  })
+  await expect(fit).toContainText('Waiting for your approval', {
+    timeout: 90_000,
+  })
+  await fit
+    .getByRole('button', {
+      name: 'Approve: Fit the baseline to the 2025 meters',
+    })
+    .click()
+  await expect(
+    panel.getByRole('log', { name: 'Agent transcript' }),
+  ).toContainText('I did not adopt it', { timeout: 30_000 })
+  await expect(
+    page.getByRole('tab', { name: 'Results', exact: true }),
+  ).toHaveAttribute('aria-selected', 'true', { timeout: 15_000 })
+  await expect(
+    page.getByRole('region', { name: 'Results', exact: true }),
+  ).toContainText('Typical weekday', { timeout: 15_000 })
+  expect(await seriousViolations(page)).toEqual([])
+})

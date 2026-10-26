@@ -109,11 +109,18 @@ test('composes, previews, edits, and compares scenarios as one modeled set', asy
   ).toContainText('Current')
 })
 
-test('creator renders in light and dark without serious axe violations', async ({
+test('creator renders in every appearance and a narrow pane without serious axe violations', async ({
   page,
 }) => {
-  test.setTimeout(60_000)
-  for (const appearance of ['light', 'darkEngineering']) {
+  test.setTimeout(240_000)
+  for (const appearance of [
+    'light',
+    'dark',
+    'monochrome',
+    'lieflat',
+    'cleanLight',
+    'darkEngineering',
+  ]) {
     await page.addInitScript((value) => {
       localStorage.setItem('eaui.theme', value)
     }, appearance)
@@ -134,4 +141,12 @@ test('creator renders in light and dark without serious axe violations', async (
     ).toEqual([])
     await page.screenshot({ path: `tmp/creator-${appearance}-1280.png` })
   }
+  await page.setViewportSize({ width: 900, height: 700 })
+  // Wait for the narrow layout to settle before measuring.
+  await expect
+    .poll(() =>
+      page.evaluate(() => document.documentElement.scrollWidth <= innerWidth),
+    )
+    .toBe(true)
+  await page.screenshot({ path: 'tmp/creator-narrow-900.png' })
 })

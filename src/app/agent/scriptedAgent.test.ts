@@ -181,6 +181,35 @@ describe('scripted agent', () => {
     expect(JSON.stringify(last)).toContain('reduces annual demand by')
   })
 
+  it('fits the baseline as a job after approval, leaves it unadopted, and drills into results', async () => {
+    const { workbench, manual, agent, lastApproval, agentEntries, transcript } =
+      setup()
+    agent.startPreset('calibration')
+    await manual.settle(50)
+    expect(lastApproval().title).toMatch(/^Run \d+ outdated or missing stages$/)
+    agent.approve(lastApproval().id)
+    await manual.settle(20000)
+    expect(lastApproval().title).toBe('Fit the baseline to the 2025 meters')
+    agent.approve(lastApproval().id)
+    await manual.settle(2000)
+    expect(agent.store.getState().status).toBe('idle')
+    const state = workbench.getState()
+    expect(state.calibration.variantIds).toHaveLength(1)
+    expect(state.calibration.adoptedVariantId).toBeNull()
+    expect(
+      agentEntries()
+        .map((entry) => entry.type)
+        .filter((type) => type !== 'workflow.runStage'),
+    ).toEqual([
+      'calibration.fit',
+      'layout.openPage',
+      'results.select',
+      'results.showBuilding',
+      'results.setResolution',
+    ])
+    expect(JSON.stringify(transcript())).toContain('I did not adopt it')
+  })
+
   it('stops a session and leaves applied changes in place', async () => {
     const { manual, agent, lastApproval, transcript } = setup()
     agent.startPreset('layout')

@@ -414,16 +414,94 @@ const restoreSession: ScriptedSession = {
   ],
 }
 
+const CALIBRATION_METER = 'meter:district-2025'
+
+const calibrationSession: ScriptedSession = {
+  id: 'calibration',
+  label: 'Calibrate and explore results',
+  prompt:
+    'Fit the baseline to the 2025 meters, then show me the highest-demand building.',
+  description:
+    'Runs a calibration fit job, reports its residuals without adopting it, and drills into published results through view operations.',
+  keywords: [/\bcalibrat/, /\bmeters?\b/, /\bdrill/],
+  steps: [
+    reason(
+      'A calibration fit compares the modeled baseline with metered months, so the baseline must be current. The fit publishes a separate variant; adopting it would change the working baseline, so that stays your decision.',
+    ),
+    ensure([STAGE_IDS.baseline], 'Calibrating the baseline', 'current'),
+    propose(
+      'Fit the baseline to the 2025 meters',
+      'The fit runs as one job and publishes a calibrated variant; the working baseline does not change.',
+      [
+        {
+          title:
+            'Fit the modeled baseline to "District utility meters, 2025" in kWh',
+          call: command({
+            type: 'calibration.fit',
+            input: { meterId: CALIBRATION_METER, unit: 'kWh' },
+          }),
+        },
+      ],
+    ),
+    (context) => {
+      const state = context.state()
+      const id = state.calibration.variantIds.at(-1)
+      const variant = id ? state.calibration.variants[id] : undefined
+      if (!variant) return say('The fit published no variant.')
+      return say(
+        `**${variant.label}** fits with factor ${variant.factor}: CV(RMSE) ${variant.before.cvrmsePercent}% to ${variant.after.cvrmsePercent}%, NMBE ${variant.before.nmbePercent}% to ${variant.after.nmbePercent}%. I did not adopt it; Adopt on the Calibration page makes it the working baseline and outdates scenario results.`,
+      )
+    },
+    tool(
+      'Open Results',
+      layoutCall({ type: 'layout.openPage', input: { page: 'results' } }),
+    ),
+    tool(
+      'Show the published baseline',
+      viewCall({ type: 'results.select', input: { resultId: 'baseline' } }),
+    ),
+    (context) => {
+      const baseline = context.state().results.baseline
+      const top = Object.entries(baseline?.byBuildingKwh ?? {}).sort(
+        ([a, x], [b, y]) => y - x || (a < b ? -1 : 1),
+      )[0]
+      if (!top) return say('The baseline has no building results to show.')
+      context.memory.topBuilding = top[0]
+      return [
+        tool(
+          `Drill into ${top[0]}, the highest-demand building`,
+          viewCall({
+            type: 'results.showBuilding',
+            input: { buildingId: top[0] },
+          }),
+        ),
+        tool(
+          'Show its typical weekday by hour',
+          viewCall({
+            type: 'results.setResolution',
+            input: { resolution: 'hourly' },
+          }),
+        ),
+        say(
+          `Results now show ${top[0]} with ${Math.round(top[1]).toLocaleString('en-US')} kWh a year and its typical weekday from its archetype schedule. Export CSV on that page downloads the published baseline with its run named in the header.`,
+        ),
+      ]
+    },
+  ],
+}
+
 export const SESSIONS: ScriptedSession[] = [
   layoutSession,
   representationSession,
   modelChangeSession,
+  calibrationSession,
   restoreSession,
 ]
 
 // Restoring is checked first: its phrases also mention the layout.
 const MATCH_ORDER = [
   restoreSession,
+  calibrationSession,
   layoutSession,
   representationSession,
   modelChangeSession,
