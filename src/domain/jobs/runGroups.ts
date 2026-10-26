@@ -119,6 +119,8 @@ export function signatureMismatch(
       ? 'the records that validate changed'
       : 'the set of buildings changed'
   }
+  // Retries reuse the group's own dataset and mapping, so this guards only
+  // against a group whose saved options no longer match its input.
   if (now.options !== before.options) {
     return 'the dataset or its mapping changed'
   }
@@ -249,13 +251,17 @@ export function openFailedAttempt(
   return null
 }
 
-/** Results held by a stage's open run, which a fresh run would discard. */
-export function heldCount(state: WorkbenchState, stageId: string): number {
+/** Results held by a stage's open runs of one kind, which a fresh run would discard. */
+export function heldCount(
+  state: WorkbenchState,
+  stageId: string,
+  kind: RunGroup['kind'] = 'stage',
+): number {
   let held = 0
   for (const group of Object.values(state.runGroups)) {
     if (
       group.stageId === stageId &&
-      group.kind === 'stage' &&
+      group.kind === kind &&
       group.status === 'open'
     ) {
       held += Object.keys(group.held).length
@@ -265,8 +271,12 @@ export function heldCount(state: WorkbenchState, stageId: string): number {
 }
 
 /** Accessible-name suffix warning that a fresh run discards held results. */
-export function discardNote(state: WorkbenchState, stageId: string): string {
-  const held = heldCount(state, stageId)
+export function discardNote(
+  state: WorkbenchState,
+  stageId: string,
+  kind: RunGroup['kind'] = 'stage',
+): string {
+  const held = heldCount(state, stageId, kind)
   return held > 0
     ? `, discarding ${held} held result${held === 1 ? '' : 's'}`
     : ''

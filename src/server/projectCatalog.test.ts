@@ -332,7 +332,7 @@ describe('project catalog', () => {
     ).toBe(true)
     const reread = readProjectCatalog(storage)
     expect(reread.error).toBeNull()
-    expect(reread.catalog.projects[0]?.state.buildings.B0465?.sourceRef).toBe(
+    expect(reread.catalog.projects[0]?.state.buildings.BX0001?.sourceRef).toBe(
       'infill/1',
     )
     expect(

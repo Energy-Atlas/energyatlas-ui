@@ -306,12 +306,21 @@ function buildingKeys(state: WorkbenchState): Map<string, string[]> {
   return keys
 }
 
+/**
+ * IDs for buildings a dataset adds. They have their own namespace (BX0001…),
+ * so a regenerated footprint extract can never take an added building's ID.
+ */
 function nextBuildingIds(state: WorkbenchState, count: number): string[] {
   const ids: string[] = []
-  let number = state.buildingIds.length + 1
+  let number = 1
   while (ids.length < count) {
-    const id = `B${String(number).padStart(4, '0')}`
-    if (!state.buildings[id]) ids.push(id)
+    const id = `BX${String(number).padStart(4, '0')}`
+    const taken =
+      Boolean(state.buildings[id]) ||
+      Object.values(state.sourceRecords).some(
+        (record) => record.buildingId === id,
+      )
+    if (!taken) ids.push(id)
     number += 1
   }
   return ids
@@ -629,17 +638,25 @@ export function applySourceRecords(state: WorkbenchState): number {
     const building = record ? state.buildings[record.buildingId] : undefined
     if (!record || !building) continue
     applyFields(building, record.fields)
-    applied += 1
+    if (Object.keys(record.fields).length > 0) applied += 1
   }
   return applied
 }
 
-/** Buildings that datasets added, rebuilt when footprints are captured again. */
+/**
+ * Buildings that datasets added, rebuilt with their footprints when footprints
+ * are captured again. Like captured buildings, their attributes return when
+ * enrichment reapplies source records and manual overrides.
+ */
 export function addedBuildings(state: WorkbenchState): Building[] {
   return state.sourceRecordIds.flatMap((key) => {
     const record = state.sourceRecords[key]
     return record?.footprint
-      ? [newBuilding(record.buildingId, key, record.footprint, record.fields)]
+      ? [
+          newBuilding(record.buildingId, key, record.footprint, {
+            ...(record.fields.name ? { name: record.fields.name } : {}),
+          }),
+        ]
       : []
   })
 }

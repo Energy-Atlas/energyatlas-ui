@@ -37,3 +37,15 @@ Behavior notes:
 - A manual floor override wins over an imported value; the preview lists it as a kept override.
 - Added buildings get the next free `B####` IDs at preparation; the same IDs are planned again at processing and
   publication because inputs are locked by the signature and the edit lock.
+
+Review: an independent review found no held-output, signature, ID-determinism, migration, or circular-import defect
+and eight lower-severity items, all addressed: added buildings use their own `BX####` ID namespace so a regenerated
+footprint extract cannot take their IDs; Apply warns when it discards a partly failed fusion's held results;
+footprint capture rebuilds added buildings like captured ones (attributes return with enrichment); Inspection no
+longer calls imported values synthetic; the enrichment warning counts only records that supply values; Apply names
+missing prerequisites before record problems; fusion messages use the job label; the options check is documented.
+
+Verification on the final slice commit (2026-10-26, Edge, 4 workers): `npm run typecheck`, `npm run lint`,
+`npm run format:check` clean; `npm test` 265 passed (31 files); `npm run test:e2e` 78 passed; `npm run
+test:e2e:preview` 3 passed. Intake screenshots in light and dark engineering at 1280 px and at 900 px were reviewed
+from ignored `tmp/intake-*.png`.

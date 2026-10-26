@@ -215,7 +215,9 @@ function inspectBuilding(
   }
   if (building.sourceRef?.startsWith('OpenStreetMap')) {
     provenance.push(
-      `Footprint geometry from ${building.sourceRef} (© OpenStreetMap contributors, ODbL). Use, year, floors, and results are synthetic.`,
+      imported
+        ? `Footprint geometry from ${building.sourceRef} (© OpenStreetMap contributors, ODbL). Values the dataset supplied replace synthetic ones; other attributes and all results are synthetic.`
+        : `Footprint geometry from ${building.sourceRef} (© OpenStreetMap contributors, ODbL). Use, year, floors, and results are synthetic.`,
     )
   }
   provenance.push(STAGE_PROVENANCE)

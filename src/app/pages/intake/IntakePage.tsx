@@ -8,6 +8,8 @@ import {
   prepareDataset,
   type PreparedDataset,
 } from '../../../domain/intake/fusion.ts'
+import { discardNote, heldCount } from '../../../domain/jobs/runGroups.ts'
+import { STAGE_IDS } from '../../../domain/workflow.ts'
 import type {
   HeldFusionOutput,
   ImportedFields,
@@ -208,11 +210,13 @@ export function IntakePage() {
     ) ??
     (!prepared
       ? 'Choose a dataset first.'
-      : prepared.schemaIssues.length > 0
-        ? `Fix the mapping first: ${prepared.schemaIssues[0]?.message ?? ''}`
-        : prepared.plans.length === 0
-          ? 'No record is valid, so there is nothing to apply.'
-          : fusionSubmitBlocker(state))
+      : (fusionSubmitBlocker(state) ??
+        (prepared.schemaIssues.length > 0
+          ? `Fix the mapping first: ${prepared.schemaIssues[0]?.message ?? ''}`
+          : prepared.plans.length === 0
+            ? 'No record is valid, so there is nothing to apply.'
+            : null)))
+  const discards = heldCount(state, STAGE_IDS.schema, 'fusion')
   const applied = Object.values(state.datasets)
 
   return (
@@ -346,7 +350,7 @@ export function IntakePage() {
           ) : null}
           <div className={styles.apply}>
             <ActionButton
-              label={`Apply ${dataset.label}`}
+              label={`Apply ${dataset.label}${discardNote(state, STAGE_IDS.schema, 'fusion')}`}
               variant="primary"
               disabledReason={applyBlocker}
               onPress={() =>
@@ -364,6 +368,12 @@ export function IntakePage() {
             >
               Apply dataset
             </ActionButton>
+            {discards > 0 ? (
+              <span className={componentStyles.muted}>
+                Applying starts over and discards the {discards} results held by
+                the earlier, partly failed fusion.
+              </span>
+            ) : null}
             {queued && state.tasks[queued] ? (
               <span>
                 Queued as a job.{' '}

@@ -421,7 +421,7 @@ export const commandDefinitions = {
       })
       state.workflow.currentStageId = stage.id
       return applied(
-        `Queued attempt ${retry.attempt} of "${stage.name}": ${scope}.`,
+        `Queued attempt ${retry.attempt} of "${retry.label}": ${scope}.`,
       )
     },
   }),
@@ -759,7 +759,7 @@ export const commandDefinitions = {
         group.held = {}
         const message = `${group.statusReason} Start a fresh run.`
         failRun(state, task, stage, message, inputRevisions, context)
-        return applied(`"${stage.name}" was not published: ${changed}.`)
+        return applied(`"${task.label}" was not published: ${changed}.`)
       }
 
       let result: StageRunResult

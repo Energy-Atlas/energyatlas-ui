@@ -141,7 +141,7 @@ describe('fusion jobs', () => {
     finishJobNow(workbench, workbench.getState().taskIds.at(-1) ?? '')
     let state = workbench.getState()
     expect(state.buildingIds).toHaveLength(470)
-    const added = state.buildings.B0465
+    const added = state.buildings.BX0001
     expect(added).toMatchObject({
       name: 'Infill building 1',
       use: 'residential',
@@ -156,14 +156,14 @@ describe('fusion jobs', () => {
 
     workbench.execute({
       type: 'edits.propose',
-      input: { entityId: 'B0465', field: 'floors', value: 12 },
+      input: { entityId: 'BX0001', field: 'floors', value: 12 },
     })
     workbench.execute({ type: 'edits.apply', input: {} })
     runStageNow(workbench, STAGE_IDS.location)
     runStageNow(workbench, STAGE_IDS.enrichment)
     state = workbench.getState()
     expect(state.buildingIds).toHaveLength(470)
-    expect(state.buildings.B0465).toMatchObject({
+    expect(state.buildings.BX0001).toMatchObject({
       use: 'residential',
       yearBuilt: 2026,
       floors: 12,
