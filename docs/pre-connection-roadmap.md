@@ -79,5 +79,6 @@ the interfaces they plug into.
 Scale and accessibility checks run alongside every step.
 
 Step 3 is in [design discussion](jobs-discussion.md): the owner chose a Jobs list and detail pane
-([decision 0025](decisions/0025-jobs-list-and-detail-pane.md)). Retry and partial-failure behavior must be
-discussed before implementation.
+([decision 0025](decisions/0025-jobs-list-and-detail-pane.md)), held successful results until failures are resolved,
+and failed-item retry only when inputs are unchanged. The [rollout proposal](jobs-rollout-plan.md) bundles the
+remaining choices across workflow stages and steps 3–8 before autonomous implementation.

@@ -1,6 +1,7 @@
 # Documentation index
 
-- [Jobs discussion](jobs-discussion.md): read-only RC observations, accepted list/detail-pane direction (decision 0025), and pending retry/partial-failure/queue choices.
+- [Jobs rollout plan](jobs-rollout-plan.md): bundled cross-stage decisions, bounded slices through Results, and proposed autonomous execution scope.
+- [Jobs discussion](jobs-discussion.md): read-only RC observations, accepted list/detail pane and held-result retry rules (decision 0025), and remaining cross-stage choices.
 - [Project lifecycle design](project-lifecycle-design.md): accepted start screen and job confirmation (decision 0024), implemented behavior, boundaries, verification, and remaining limitations.
 - [Project lifecycle implementation plan](project-lifecycle-plan.md): service, shared guards, UI, and verification stages.
 - [Review and project lifecycle discussion, 2026-10-25](20261025_review-and-project-lifecycle.md): local integration, review fixes, final verification, and pending directions for roadmap step 2.

@@ -1,7 +1,8 @@
 # Jobs: roadmap step 3 discussion
 
 Date: 2026-10-26. Status: direction A accepted ([decision 0025](decisions/0025-jobs-list-and-detail-pane.md));
-retry and partial failures are in discussion before implementation.
+held results and input-compatible failed-item retries are also accepted; remaining choices are grouped in the
+[rollout plan](jobs-rollout-plan.md) before autonomous implementation.
 The owner requested review/integration of project lifecycle, followed by discussion of Jobs.
 Decision 0022 keeps computation and transport mocked here; connections are built inside RC later.
 
@@ -50,12 +51,12 @@ Do not infer a single-worker scheduler or batch prioritization from the current 
 
 ## Proposed behavioral boundaries for the next design discussion
 
-- Retry creates a new linked attempt and keeps the original log/error immutable. Choose whether it uses a recorded
-  input snapshot or explicitly reviewed current inputs; do not silently reuse a stale run after project edits.
+- Retry creates a new linked attempt and keeps the original log/error immutable. Under the accepted rule it requires
+  the original consumed inputs to remain unchanged; a changed context requires a fresh run rather than a retry.
 - Distinguish failed request, failed execution, cancellation requested, and cancelled. Cancellation feedback should
   remain visible while pending, and a completion racing cancellation must resolve consistently.
 - Use one representative synthetic item-level run to demonstrate partial failure with counts and failed-item
-  reasons. Agree whether any partial output is usable before designing actions that accept or retry it.
+  reasons. Successful partial output remains held under the owner's accepted publication rule.
 - Completion notices belong to the project session, open the matching job, and never steal keyboard focus.
   Project switching must not deliver a previous session's notices into the new project.
 - Keep history and attempts within the saved project boundary. Decide explicitly how much diagnostic detail is
@@ -75,16 +76,18 @@ and `task.cancel` do not publish new stage outputs. `Task` in `src/domain/types.
 attempt-parent link, or recorded input snapshot. Partial progress today does not imply retained item results.
 Input revision metadata is recorded when the run completes/fails, rather than being a submission snapshot.
 
-Candidate behavior, not yet accepted:
+Owner-accepted behavior:
+
+- Hold successful results until failed items are resolved.
+- Retry only failed items if inputs have not changed; changed inputs require a fresh run.
+
+Other candidate behavior, not yet accepted:
 
 - Retry is manual and creates a new linked attempt. Original status, log, and item outcomes remain available.
-- An execution-wide failure retries the run; an item-level failure can retry only failed items when their inputs
-  are still compatible with the successful items. Changed inputs require an explicit fresh run or a clearly
-  described rerun with current inputs; do not silently combine outputs from different input revisions.
-- For a partial run, retain successful item results and failed-item reasons in the job detail. Whether those
-  successes can enter the live project immediately or must wait for a complete result is the next owner choice.
-  That choice also determines downstream eligibility and what a failed-item retry may publish.
+- An execution-wide failure without reusable item outputs retries the whole run.
+- Retain successful item results and failed-item reasons in job detail. Publication is all-or-nothing under the
+  accepted held-results rule; the rollout plan proposes downstream, cancellation, and persistence consequences.
 - Distinguish transport submission failure from execution failure: a rejected submission must not invent a job
   attempt, and any later retry must avoid duplicating an already accepted submission.
 
-Next: settle partial-output publication, then retry inputs/scope and queue policy before implementation.
+Next: discuss the [bundled rollout choices](jobs-rollout-plan.md), including scope of autonomous execution.
