@@ -3,8 +3,48 @@ import { compareScenarios } from '../../domain/scenarios/comparison.ts'
 import { STAGE_IDS } from '../../domain/workflow.ts'
 import { useStageStates, useWorkbenchSnapshot } from '../WorkbenchContext.tsx'
 import componentStyles from '../components/components.module.css'
+import { WorkbenchTable } from '../components/WorkbenchTable.tsx'
+import type { DataColumn } from '../tables/tableModel.ts'
 
-const MWH = new Intl.NumberFormat('en-US', { maximumFractionDigits: 0 })
+type ComparisonRow = ReturnType<typeof compareScenarios>[number]
+
+const COLUMNS: DataColumn<ComparisonRow>[] = [
+  {
+    id: 'result',
+    header: 'Result',
+    value: (row) => row.name,
+    rowHeader: true,
+  },
+  {
+    id: 'annual',
+    header: 'Annual demand',
+    value: (row) => row.totalKwh / 1000,
+    type: 'number',
+    unit: 'MWh',
+  },
+  {
+    id: 'peak',
+    header: 'Peak',
+    value: (row) => row.peakKw,
+    type: 'number',
+    unit: 'kW',
+  },
+  {
+    id: 'reduction',
+    header: 'Reduction',
+    value: (row) => (row.id === 'baseline' ? null : row.reductionPercent),
+    type: 'number',
+    unit: '%',
+    decimals: 1,
+    empty: '—',
+  },
+  {
+    id: 'currentness',
+    header: 'Currentness',
+    value: (row) => (row.current ? 'Current' : 'Outdated'),
+    type: 'enum',
+  },
+]
 
 /** Baseline and modeled scenarios side by side, each labeled current or outdated. */
 export function ScenarioComparison() {
@@ -26,33 +66,13 @@ export function ScenarioComparison() {
           definitions and Scenario modeling.
         </p>
       ) : (
-        <table
-          className={componentStyles.table}
+        <WorkbenchTable
+          id="creator.comparison"
           aria-label="Modeled comparison"
-        >
-          <thead>
-            <tr>
-              <th scope="col">Result</th>
-              <th scope="col">Annual demand (MWh)</th>
-              <th scope="col">Peak (kW)</th>
-              <th scope="col">Reduction</th>
-              <th scope="col">Currentness</th>
-            </tr>
-          </thead>
-          <tbody>
-            {rows.map((row) => (
-              <tr key={row.id}>
-                <th scope="row">{row.name}</th>
-                <td>{MWH.format(row.totalKwh / 1000)}</td>
-                <td>{MWH.format(row.peakKw)}</td>
-                <td>
-                  {row.id === 'baseline' ? '—' : `${row.reductionPercent}%`}
-                </td>
-                <td>{row.current ? 'Current' : 'Outdated'}</td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
+          columns={COLUMNS}
+          rows={rows}
+          rowKey={(row) => row.id}
+        />
       )}
     </section>
   )

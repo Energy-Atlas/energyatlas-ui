@@ -1,0 +1,327 @@
+import type { ReactNode } from 'react'
+import { csvCommentLine, csvField } from '../csv.ts'
+import type {
+  ColumnFilter,
+  ColumnFormat,
+  TableSettings,
+} from './tableSettings.ts'
+
+// The row model behind DataTable (decision 0027): which columns show, which
+// rows pass the filters and in what order, how a value reads, and what an
+// export contains. Pure, so the rules are unit-tested apart from React.
+
+export type ColumnType = 'text' | 'number' | 'enum' | 'identifier'
+
+export type DataColumn<Row> = {
+  id: string
+  /** The column's name, without its unit. */
+  header: string
+  /** The value that is sorted, filtered, formatted, and exported. */
+  value: (row: Row) => string | number | null
+  /** Enum columns filter by a checklist of values; text by "contains". */
+  type?: ColumnType
+  /** Shown after the header, such as "kWh"; kWh, kW, and kVA can scale. */
+  unit?: string
+  /** Default digits after the decimal point for numbers. */
+  decimals?: number
+  /** Custom cell content, given the formatted text (buttons, badges). */
+  render?: (row: Row, text: string) => ReactNode
+  /** Names the row for assistive technology; it cannot be hidden. */
+  rowHeader?: boolean
+  hideable?: boolean
+  sortable?: boolean
+  filterable?: boolean
+  /** Default width in pixels. */
+  width?: number
+  /** Text for a missing value. */
+  empty?: string
+  /** Long text (messages, explanations) wraps instead of being cut short. */
+  wrap?: boolean
+  /**
+   * Row actions (buttons): the header is read by assistive technology only,
+   * and the column has no widgets, no sort, and no place in exports.
+   */
+  action?: boolean
+}
+
+const SCALED_UNITS: Record<string, string> = {
+  kWh: 'MWh',
+  'kWh/yr': 'MWh/yr',
+  kW: 'MW',
+  kVA: 'MVA',
+}
+
+export function canScale<Row>(column: DataColumn<Row>): boolean {
+  return column.unit !== undefined && column.unit in SCALED_UNITS
+}
+
+export function columnType<Row>(column: DataColumn<Row>): ColumnType {
+  return column.type ?? 'text'
+}
+
+export function isNumeric<Row>(column: DataColumn<Row>): boolean {
+  return columnType(column) === 'number'
+}
+
+function scaled(format: ColumnFormat | undefined): boolean {
+  return format?.scale === 'kilo'
+}
+
+/** The unit shown for the column under its format. */
+export function shownUnit<Row>(
+  column: DataColumn<Row>,
+  format: ColumnFormat | undefined,
+): string | undefined {
+  if (!column.unit) return undefined
+  return scaled(format) && column.unit in SCALED_UNITS
+    ? SCALED_UNITS[column.unit]
+    : column.unit
+}
+
+/** The header with its unit, such as "Annual demand (MWh)". */
+export function columnHeader<Row>(
+  column: DataColumn<Row>,
+  format?: ColumnFormat,
+): string {
+  const unit = shownUnit(column, format)
+  return unit ? `${column.header} (${unit})` : column.header
+}
+
+export function columnAlign<Row>(
+  column: DataColumn<Row>,
+  format: ColumnFormat | undefined,
+): 'start' | 'end' {
+  return format?.align ?? (isNumeric(column) ? 'end' : 'start')
+}
+
+/** How a value reads in its cell. */
+export function formatCell<Row>(
+  value: string | number | null,
+  column: DataColumn<Row>,
+  format?: ColumnFormat,
+): string {
+  if (value === null || value === '') return column.empty ?? ''
+  if (typeof value !== 'number') return value
+  const isScaled = scaled(format) && canScale(column)
+  const shown = isScaled ? value / 1000 : value
+  const fixed = format?.decimals ?? null
+  const digits = fixed ?? (isScaled ? 1 : (column.decimals ?? 0))
+  return shown.toLocaleString('en-US', {
+    minimumFractionDigits: fixed ?? 0,
+    maximumFractionDigits: digits,
+    useGrouping: format?.grouping ?? true,
+  })
+}
+
+export function visibleColumns<Row>(
+  columns: DataColumn<Row>[],
+  settings: TableSettings,
+): DataColumn<Row>[] {
+  const hidden = new Set(settings.hidden)
+  return columns.filter(
+    (column) =>
+      column.rowHeader || column.hideable === false || !hidden.has(column.id),
+  )
+}
+
+export function matchesFilter(
+  value: string | number | null,
+  filter: ColumnFilter,
+): boolean {
+  switch (filter.kind) {
+    case 'text':
+      return String(value ?? '')
+        .toLowerCase()
+        .includes(filter.contains.trim().toLowerCase())
+    case 'values':
+      return filter.values.includes(String(value ?? ''))
+    case 'range':
+      if (typeof value !== 'number') return false
+      return (
+        (filter.min === null || value >= filter.min) &&
+        (filter.max === null || value <= filter.max)
+      )
+  }
+}
+
+function compareValues(
+  a: string | number | null,
+  b: string | number | null,
+): number {
+  // Missing values sort last in either direction.
+  if (a === null || a === '') return b === null || b === '' ? 0 : 1
+  if (b === null || b === '') return -1
+  if (typeof a === 'number' && typeof b === 'number') return a - b
+  return String(a).localeCompare(String(b), 'en', { numeric: true })
+}
+
+/** Rows that pass every filter, in the chosen order. */
+export function processRows<Row>(
+  rows: Row[],
+  columns: DataColumn<Row>[],
+  settings: TableSettings,
+): Row[] {
+  const byId = new Map(columns.map((column) => [column.id, column]))
+  const filters = Object.entries(settings.filters).flatMap(([id, filter]) => {
+    const column = byId.get(id)
+    return column ? [{ column, filter }] : []
+  })
+  const kept = filters.length
+    ? rows.filter((row) =>
+        filters.every(({ column, filter }) =>
+          matchesFilter(column.value(row), filter),
+        ),
+      )
+    : [...rows]
+  const sortColumn = settings.sort ? byId.get(settings.sort.column) : undefined
+  if (!sortColumn || !settings.sort) return kept
+  const direction = settings.sort.direction === 'ascending' ? 1 : -1
+  return kept
+    .map((row, index) => ({ row, index, value: sortColumn.value(row) }))
+    .sort((a, b) => {
+      const missingA = a.value === null || a.value === ''
+      const missingB = b.value === null || b.value === ''
+      if (missingA !== missingB) return missingA ? 1 : -1
+      return compareValues(a.value, b.value) * direction || a.index - b.index
+    })
+    .map((entry) => entry.row)
+}
+
+/** Most values a checklist filter lists; more and the column filters by text. */
+export const MAX_CHECKLIST_VALUES = 200
+
+/** Distinct values of an enum column, for its checklist filter. */
+export function distinctValues<Row>(
+  rows: Row[],
+  column: DataColumn<Row>,
+): string[] {
+  const values = new Set<string>()
+  for (const row of rows) values.add(String(column.value(row) ?? ''))
+  return [...values].sort((a, b) => a.localeCompare(b, 'en', { numeric: true }))
+}
+
+/**
+ * A filter in words, such as "contains “bay”" or "from 10,000 to 20,000 kWh".
+ * Ranges are stored, and described, in the column's own unit.
+ */
+export function describeFilter(filter: ColumnFilter, unit?: string): string {
+  const number = (value: number) =>
+    `${value.toLocaleString('en-US')}${unit ? ` ${unit}` : ''}`
+  switch (filter.kind) {
+    case 'text':
+      return `contains “${filter.contains.trim()}”`
+    case 'values':
+      return filter.values.length === 0
+        ? 'no values'
+        : `is ${filter.values.map((value) => value || '(empty)').join(' or ')}`
+    case 'range':
+      if (filter.min !== null && filter.max !== null) {
+        return `from ${number(filter.min)} to ${number(filter.max)}`
+      }
+      return filter.min !== null
+        ? `at least ${number(filter.min)}`
+        : `at most ${number(filter.max ?? 0)}`
+  }
+}
+
+const CHAR_PX = 7.2
+const CELL_PADDING_PX = 24
+const HEADER_WIDGETS_PX = 44
+
+/** Widths that fit each column's longest text, within sensible limits. */
+export function fitWidths<Row>(
+  rows: Row[],
+  columns: DataColumn<Row>[],
+  settings: TableSettings,
+): Record<string, number> {
+  const sample = rows.slice(0, 200)
+  const widths: Record<string, number> = {}
+  for (const column of columns) {
+    const format = settings.formats[column.id]
+    let longest = columnHeader(column, format).length * 1.1
+    for (const row of sample) {
+      longest = Math.max(
+        longest,
+        formatCell(column.value(row), column, format).length,
+      )
+    }
+    widths[column.id] = Math.round(
+      Math.min(
+        360,
+        Math.max(72, longest * CHAR_PX + CELL_PADDING_PX + HEADER_WIDGETS_PX),
+      ),
+    )
+  }
+  return widths
+}
+
+/** A machine-readable unit for a CSV column name, such as "kWh" or "m2". */
+function csvUnit(unit: string): string {
+  return unit.replace('²', '2').replace('³', '3')
+}
+
+/**
+ * A CSV of the table as the reader sees it: identifying comment lines, the
+ * shown columns with units in their names, and every row that passes the
+ * filters (not only the rows on screen), in the chosen order. Values are
+ * written unformatted; formula-like text is neutralised.
+ */
+export function tableCsv<Row>({
+  label,
+  columns,
+  rows,
+  total,
+  settings,
+  exportedAt,
+  context = [],
+}: {
+  label: string
+  columns: DataColumn<Row>[]
+  rows: Row[]
+  total: number
+  settings: TableSettings
+  exportedAt: string
+  context?: string[]
+}): string {
+  const shown = visibleColumns(columns, settings).filter(
+    (column) => !column.action,
+  )
+  const byId = new Map(columns.map((column) => [column.id, column]))
+  const filters = Object.entries(settings.filters)
+    .filter(([id]) => byId.has(id))
+    .map(
+      ([id, filter]) =>
+        `${byId.get(id)?.header} ${describeFilter(filter, byId.get(id)?.unit)}`,
+    )
+  const sortColumn = settings.sort ? byId.get(settings.sort.column) : undefined
+  const lines = [
+    '# EnergyAtlas UI demo export (synthetic data)',
+    csvCommentLine(`# table: ${label}`),
+    ...context.map((line) => csvCommentLine(`# ${line}`)),
+    `# rows: ${rows.length} of ${total}`,
+    ...(filters.length
+      ? [csvCommentLine(`# filters: ${filters.join('; ')}`)]
+      : []),
+    ...(sortColumn && settings.sort
+      ? [
+          csvCommentLine(
+            `# sorted by: ${sortColumn.header}, ${settings.sort.direction}`,
+          ),
+        ]
+      : []),
+    `# exported at: ${exportedAt}`,
+    shown
+      .map((column) =>
+        csvField(
+          column.unit
+            ? `${column.header}[${csvUnit(column.unit)}]`
+            : column.header,
+        ),
+      )
+      .join(','),
+    ...rows.map((row) =>
+      shown.map((column) => csvField(column.value(row))).join(','),
+    ),
+  ]
+  return `${lines.join('\n')}\n`
+}

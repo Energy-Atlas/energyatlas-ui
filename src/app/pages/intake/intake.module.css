@@ -61,11 +61,6 @@
   font-size: var(--font-size-small);
 }
 
-.more {
-  margin: 0;
-  font-size: var(--font-size-small);
-}
-
 .apply {
   display: flex;
   flex-wrap: wrap;

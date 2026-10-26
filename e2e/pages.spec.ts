@@ -67,7 +67,7 @@ test('creator validates and creates measures and scenarios through commands', as
     .getByRole('textbox', { name: 'Name' })
     .fill('Envelope retrofit')
   await measureForm.getByRole('button', { name: 'Create measure' }).click()
-  await expect(page.getByRole('table', { name: 'Measures' })).toContainText(
+  await expect(page.getByRole('grid', { name: 'Measures' })).toContainText(
     'Envelope retrofit',
   )
 
@@ -90,7 +90,7 @@ test('creator validates and creates measures and scenarios through commands', as
 
   await page.keyboard.press('Space')
   await scenarioForm.getByRole('button', { name: 'Create scenario' }).click()
-  await expect(page.getByRole('table', { name: 'Scenarios' })).toContainText(
+  await expect(page.getByRole('grid', { name: 'Scenarios' })).toContainText(
     'Half retrofitted',
   )
   expect(await seriousViolations(page)).toEqual([])

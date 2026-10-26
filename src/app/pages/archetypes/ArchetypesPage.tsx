@@ -11,6 +11,7 @@ import {
 import {
   previewAssignment,
   scheduleStats,
+  type CoverageRow,
 } from '../../../domain/archetypes/assignment.ts'
 import { ARCHETYPE_LIBRARY } from '../../../domain/archetypes/library.ts'
 import { stageSubmitBlocker } from '../../../domain/commands.ts'
@@ -29,7 +30,9 @@ import { StateBadge } from '../../components/StateBadge.tsx'
 import componentStyles from '../../components/components.module.css'
 import formStyles from '../../components/forms.module.css'
 import { PanelHeader } from '../../components/PanelHeader.tsx'
+import { WorkbenchTable } from '../../components/WorkbenchTable.tsx'
 import { waitingReason } from '../../service/usePendingReason.ts'
+import type { DataColumn } from '../../tables/tableModel.ts'
 import {
   ScheduleEditor,
   parseProfile,
@@ -46,6 +49,40 @@ const USE_LABELS: Record<BuildingUse, string> = {
   school: 'School',
   mixed: 'Mixed use',
 }
+
+const COVERAGE_COLUMNS: DataColumn<CoverageRow>[] = [
+  {
+    id: 'use',
+    header: 'Use',
+    value: (row) =>
+      row.use === 'unknown' ? 'Use not known' : USE_LABELS[row.use],
+    rowHeader: true,
+  },
+  {
+    id: 'buildings',
+    header: 'Buildings',
+    value: (row) => row.buildings,
+    type: 'number',
+  },
+  {
+    id: 'assigned',
+    header: 'Assigned',
+    value: (row) => row.assigned,
+    type: 'number',
+  },
+  {
+    id: 'unassigned',
+    header: 'Unassigned',
+    value: (row) => row.unassigned,
+    type: 'number',
+  },
+  {
+    id: 'overridden',
+    header: 'Manual overrides',
+    value: (row) => row.overridden,
+    type: 'number',
+  },
+]
 
 const USES = (Object.keys(USE_LABELS) as BuildingUse[]).map((value) => ({
   value,
@@ -628,35 +665,13 @@ export function ArchetypesPage() {
           kept.
         </p>
         {preview.rows.length > 0 ? (
-          <table
-            className={componentStyles.table}
+          <WorkbenchTable
+            id="archetypes.coverage"
             aria-label="Assignment coverage"
-          >
-            <thead>
-              <tr>
-                <th scope="col">Use</th>
-                <th scope="col">Buildings</th>
-                <th scope="col">Assigned</th>
-                <th scope="col">Unassigned</th>
-                <th scope="col">Manual overrides</th>
-              </tr>
-            </thead>
-            <tbody>
-              {preview.rows.map((row) => (
-                <tr key={row.use}>
-                  <td>
-                    {row.use === 'unknown'
-                      ? 'Use not known'
-                      : USE_LABELS[row.use]}
-                  </td>
-                  <td>{row.buildings}</td>
-                  <td>{row.assigned}</td>
-                  <td>{row.unassigned}</td>
-                  <td>{row.overridden}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+            columns={COVERAGE_COLUMNS}
+            rows={preview.rows}
+            rowKey={(row) => row.use}
+          />
         ) : (
           <p className={componentStyles.empty}>
             No buildings yet. Run the workflow from Location setup first.

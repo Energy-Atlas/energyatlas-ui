@@ -31,7 +31,7 @@ test('adds a library archetype, shows coverage, and reassigns as a job', async (
   const archetypes = await openArchetypes(page)
   const list = archetypes.getByRole('listbox', { name: 'Project archetypes' })
   await expect(list.getByRole('option')).toHaveCount(6)
-  const coverage = archetypes.getByRole('table', {
+  const coverage = archetypes.getByRole('grid', {
     name: 'Assignment coverage',
   })
   await expect(

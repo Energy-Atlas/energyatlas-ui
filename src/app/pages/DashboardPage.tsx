@@ -16,6 +16,7 @@ import {
 } from 'react-aria-components'
 import { capabilities } from '../../domain/capabilities.ts'
 import { stageSubmitBlocker } from '../../domain/commands.ts'
+import type { ResultSet } from '../../domain/types.ts'
 import { STAGE_IDS } from '../../domain/workflow.ts'
 import {
   useAppearance,
@@ -33,15 +34,18 @@ import { EmptyState } from '../components/EmptyState.tsx'
 import formStyles from '../components/forms.module.css'
 import { InlineAlert } from '../components/InlineAlert.tsx'
 import { Section } from '../components/Section.tsx'
+import { WorkbenchTable } from '../components/WorkbenchTable.tsx'
 import { PanelHeader } from '../components/PanelHeader.tsx'
 import { cx } from '../cx.ts'
 import { forStage, waitingReason } from '../service/usePendingReason.ts'
+import type { DataColumn } from '../tables/tableModel.ts'
 import { compileChartSpec, type ChartSpec } from '../view/chartSpec.ts'
 import { EChart, useChartFont } from '../viz/EChart.tsx'
 import {
   annualDemandOption,
   formatMwh,
   monthlyDemandOption,
+  toMwh,
   scenarioColor,
   scenarioLabel,
 } from './dashboardCharts.ts'
@@ -49,8 +53,111 @@ import {
   buildDashboardData,
   MAX_CHARTED_SCENARIOS,
   MONTHS,
+  type ChartedScenario,
 } from './dashboardData.ts'
 import styles from './dashboard.module.css'
+
+const NUMBER_TEXT = /^-?[\d,]+(\.\d+)?%?$/
+
+/**
+ * Columns for a chart specification's data table, whose cells arrive as text:
+ * a column whose cells all read as numbers sorts and filters as numbers.
+ */
+function specColumns(
+  headers: string[],
+  rows: string[][],
+): DataColumn<string[]>[] {
+  return headers.map((header, index) => {
+    const numeric =
+      index > 0 &&
+      rows.every((row) => {
+        const cell = row[index] ?? ''
+        return cell === '' || NUMBER_TEXT.test(cell)
+      })
+    return {
+      id: `c${index}`,
+      header,
+      rowHeader: index === 0,
+      value: (row: string[]) => {
+        const cell = row[index] ?? ''
+        if (!numeric || cell === '') return cell || null
+        return Number(cell.replace(/[,%]/g, ''))
+      },
+      type: numeric ? ('number' as const) : ('text' as const),
+    }
+  })
+}
+
+type MonthRow = { month: string; index: number }
+
+function monthlyColumns(
+  baseline: ResultSet,
+  visible: ChartedScenario[],
+): DataColumn<MonthRow>[] {
+  return [
+    {
+      id: 'month',
+      header: 'Month',
+      value: (row) => row.month,
+      rowHeader: true,
+      sortable: false,
+    },
+    {
+      id: 'baseline',
+      header: 'Baseline',
+      value: (row) => toMwh(baseline.monthlyKwh[row.index] ?? 0),
+      type: 'number',
+      unit: 'MWh',
+    },
+    ...visible.map((item): DataColumn<MonthRow> => ({
+      id: item.scenario.id,
+      header: scenarioLabel(item),
+      value: (row) =>
+        item.shown ? toMwh(item.shown.monthlyKwh[row.index] ?? 0) : null,
+      type: 'number',
+      unit: 'MWh',
+    })),
+  ]
+}
+
+type AnnualRow = {
+  id: string
+  label: string
+  result: ResultSet
+  reduction: number | null
+}
+
+const ANNUAL_COLUMNS: DataColumn<AnnualRow>[] = [
+  {
+    id: 'result',
+    header: 'Result',
+    value: (row) => row.label,
+    rowHeader: true,
+  },
+  {
+    id: 'annual',
+    header: 'Annual demand',
+    value: (row) => toMwh(row.result.totalKwh),
+    type: 'number',
+    unit: 'MWh/yr',
+  },
+  {
+    id: 'peak',
+    header: 'Peak',
+    value: (row) => row.result.peakKw,
+    type: 'number',
+    unit: 'kW',
+  },
+  {
+    id: 'reduction',
+    header: 'Reduction vs baseline',
+    value: (row) => row.reduction,
+    type: 'number',
+    unit: '%',
+    decimals: 1,
+    empty: 'n/a',
+  },
+]
 
 type LoadingStatus = {
   label: string
@@ -163,32 +270,13 @@ function AddedChart({ spec }: { spec: ChartSpec }) {
         className={styles.dataTable}
         level={4}
       >
-        <table
-          className={componentStyles.table}
+        <WorkbenchTable
+          id={`dashboard.chart.${spec.id}`}
           aria-label={compiled.table.caption}
-        >
-          <thead>
-            <tr>
-              {compiled.table.columns.map((column) => (
-                <th scope="col" key={column}>
-                  {column}
-                </th>
-              ))}
-            </tr>
-          </thead>
-          <tbody>
-            {compiled.table.rows.map((row) => (
-              <tr key={row[0]}>
-                <th scope="row">{row[0]}</th>
-                {row.slice(1).map((cell, index) => (
-                  <td key={compiled.table.columns[index + 1] ?? index}>
-                    {cell}
-                  </td>
-                ))}
-              </tr>
-            ))}
-          </tbody>
-        </table>
+          columns={specColumns(compiled.table.columns, compiled.table.rows)}
+          rows={compiled.table.rows}
+          rowKey={(row) => row[0] ?? ''}
+        />
       </Section>
     </article>
   )
@@ -509,37 +597,13 @@ export function DashboardPage() {
             className={styles.dataTable}
             level={4}
           >
-            <table
-              className={componentStyles.table}
+            <WorkbenchTable
+              id="dashboard.monthly"
               aria-label="Monthly demand data"
-            >
-              <thead>
-                <tr>
-                  <th scope="col">Month</th>
-                  <th scope="col">Baseline (MWh)</th>
-                  {visible.map((item) => (
-                    <th scope="col" key={item.scenario.id}>
-                      {scenarioLabel(item)} (MWh)
-                    </th>
-                  ))}
-                </tr>
-              </thead>
-              <tbody>
-                {MONTHS.map((month, index) => (
-                  <tr key={month}>
-                    <th scope="row">{month}</th>
-                    <td>{formatMwh(baseline.monthlyKwh[index] ?? 0)}</td>
-                    {visible.map((item) => (
-                      <td key={item.scenario.id}>
-                        {item.shown
-                          ? formatMwh(item.shown.monthlyKwh[index] ?? 0)
-                          : ''}
-                      </td>
-                    ))}
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+              columns={monthlyColumns(baseline, visible)}
+              rows={MONTHS.map((month, index) => ({ month, index }))}
+              rowKey={(row) => row.month}
+            />
           </Section>
         </article>
 
@@ -556,41 +620,32 @@ export function DashboardPage() {
             className={styles.dataTable}
             level={4}
           >
-            <table
-              className={componentStyles.table}
+            <WorkbenchTable
+              id="dashboard.annual"
               aria-label="Annual demand data"
-            >
-              <thead>
-                <tr>
-                  <th scope="col">Result</th>
-                  <th scope="col">Annual demand (MWh/yr)</th>
-                  <th scope="col">Peak (kW)</th>
-                  <th scope="col">Reduction vs baseline</th>
-                </tr>
-              </thead>
-              <tbody>
-                <tr>
-                  <th scope="row">Baseline</th>
-                  <td>{formatMwh(baseline.totalKwh)}</td>
-                  <td>{baseline.peakKw.toLocaleString('en-US')}</td>
-                  <td>n/a</td>
-                </tr>
-                {visible.map((item) =>
-                  item.shown ? (
-                    <tr key={item.scenario.id}>
-                      <th scope="row">{scenarioLabel(item)}</th>
-                      <td>{formatMwh(item.shown.totalKwh)}</td>
-                      <td>{item.shown.peakKw.toLocaleString('en-US')}</td>
-                      <td>
-                        {item.reductionPercent === null
-                          ? ''
-                          : `${item.reductionPercent}%`}
-                      </td>
-                    </tr>
-                  ) : null,
-                )}
-              </tbody>
-            </table>
+              columns={ANNUAL_COLUMNS}
+              rows={[
+                {
+                  id: 'baseline',
+                  label: 'Baseline',
+                  result: baseline,
+                  reduction: null,
+                },
+                ...visible.flatMap((item) =>
+                  item.shown
+                    ? [
+                        {
+                          id: item.scenario.id,
+                          label: scenarioLabel(item),
+                          result: item.shown,
+                          reduction: item.reductionPercent,
+                        },
+                      ]
+                    : [],
+                ),
+              ]}
+              rowKey={(row) => row.id}
+            />
           </Section>
         </article>
 

@@ -1,3 +1,4 @@
+import { current } from 'immer'
 import { z } from 'zod'
 import type { ValidationIssue } from '../../domain/commands.ts'
 import { findDataset } from '../../domain/intake/datasets.ts'
@@ -15,6 +16,14 @@ import {
   MAX_EXAGGERATION,
   MIN_EXAGGERATION,
 } from '../pages/terrain.ts'
+import { describeTableChange, tableChangeIssue } from '../tables/tableChange.ts'
+import { registeredTable, registeredTableIds } from '../tables/tableRegistry.ts'
+import {
+  applyTableChange,
+  defaultTableSettings,
+  tableChangeSchema,
+  type TableSettings,
+} from '../tables/tableSettings.ts'
 import {
   chartSpecInputSchema,
   validateChartSpec,
@@ -67,9 +76,16 @@ export type ViewState = {
     resolution: 'monthly' | 'hourly'
   }
   nextChartNumber: number
+  /**
+   * How the reader arranged each table, by table id (decision 0027). Kept per
+   * user in this browser and across project switches.
+   */
+  tables: Record<string, TableSettings>
 }
 
-export function createInitialViewState(): ViewState {
+export function createInitialViewState(
+  tables: Record<string, TableSettings> = {},
+): ViewState {
   return {
     map: {
       metric: 'floors',
@@ -86,6 +102,7 @@ export function createInitialViewState(): ViewState {
     intake: { datasetId: null, mapping: {} },
     results: { resultId: 'baseline', buildingId: null, resolution: 'monthly' },
     nextChartNumber: 1,
+    tables,
   }
 }
 
@@ -128,7 +145,9 @@ export const viewOperationDefinitions = {
       'Clear project-specific view state when the project session changes.',
     input: z.object({}),
     run(view) {
-      Object.assign(view, createInitialViewState())
+      // Table arrangements belong to the reader, not the project. The draft
+      // is copied out first: Immer drops a draft assigned back onto itself.
+      Object.assign(view, createInitialViewState(current(view.tables)))
       return applied('Reset project-specific views for the new session.')
     },
   }),
@@ -414,6 +433,35 @@ export const viewOperationDefinitions = {
     run(view, { filter }) {
       view.jobs.filter = filter
       return applied(`Jobs list shows: ${JOB_FILTERS[filter].toLowerCase()}.`)
+    },
+  }),
+
+  'table.change': defineViewOperation({
+    title: 'Arrange table',
+    description:
+      'Change how a table on screen shows its rows: hide or show a column, sort, filter a column (text "contains", a list of values for enum columns, or a numeric range), format a column (decimals, thousands separators, alignment, kWh shown as MWh), set the table style (compact or comfortable rows, shaded alternate rows, wrapped text, column widths fitted or even, first column frozen), or reset it. A table id and its column ids are named in the rejection when unknown.',
+    input: z.object({
+      tableId: z.string().min(1, 'Name the table.').max(100),
+      change: tableChangeSchema,
+    }),
+    run(view, { tableId, change }) {
+      const table = registeredTable(tableId)
+      if (!table) {
+        const open = registeredTableIds()
+        return rejected(
+          open.length
+            ? `No table "${tableId}" is on screen. Tables on screen: ${open.join(', ')}.`
+            : `No table "${tableId}" is on screen, and no table is open now.`,
+          'tableId',
+        )
+      }
+      const issue = tableChangeIssue(table, change)
+      if (issue) return rejected(issue.message, issue.path)
+      view.tables[tableId] = applyTableChange(
+        view.tables[tableId] ?? defaultTableSettings(),
+        change,
+      )
+      return applied(describeTableChange(table, change))
     },
   }),
 

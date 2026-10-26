@@ -1,4 +1,3 @@
-import { useState } from 'react'
 import { sourceKey } from '../../../domain/intake/fusion.ts'
 import {
   BUILDING_ITEM_STAGES,
@@ -9,9 +8,18 @@ import type { Task, WorkbenchState } from '../../../domain/types.ts'
 import { STAGE_IDS } from '../../../domain/workflow.ts'
 import { useServices } from '../../WorkbenchContext.tsx'
 import componentStyles from '../../components/components.module.css'
+import { WorkbenchTable } from '../../components/WorkbenchTable.tsx'
+import type { DataColumn } from '../../tables/tableModel.ts'
 import styles from './jobs.module.css'
 
 const PAGE_SIZE = 25
+
+type FailedItem = {
+  id: string
+  label: string
+  reason: string
+  building: string | null
+}
 
 /**
  * The failed items of one attempt, with their reasons. Building items, and
@@ -25,7 +33,6 @@ export function JobItems({
   state: WorkbenchState
 }) {
   const { client, showInspection } = useServices()
-  const [shown, setShown] = useState(PAGE_SIZE)
   const failures = Object.entries(task.items?.failures ?? {})
   if (failures.length === 0) return null
   const group = groupOf(state, task)
@@ -45,7 +52,15 @@ export function JobItems({
     const building = buildingOf(id)
     return building ? [building] : []
   })
-  const visible = failures.slice(0, shown)
+  const items: FailedItem[] = failures.map(([id, reason]) => ({
+    id,
+    label:
+      group?.stageId === STAGE_IDS.scenarioModeling
+        ? (state.scenarios[id]?.name ?? id)
+        : id,
+    reason,
+    building: buildingOf(id),
+  }))
 
   function select(ids: string[]) {
     void client
@@ -57,6 +72,41 @@ export function JobItems({
         if (result.outcome.status === 'applied') showInspection()
       })
   }
+
+  const columns: DataColumn<FailedItem>[] = [
+    {
+      id: 'item',
+      header: fusion ? 'Source ID' : buildings ? 'Building' : 'Item',
+      value: (item) => item.label,
+      type: 'identifier',
+      rowHeader: true,
+      width: 140,
+    },
+    {
+      id: 'reason',
+      header: 'Reason',
+      value: (item) => item.reason,
+      wrap: true,
+    },
+    {
+      id: 'actions',
+      header: 'Actions',
+      value: () => null,
+      action: true,
+      width: 90,
+      render: ({ building }) =>
+        building ? (
+          <button
+            type="button"
+            className={componentStyles.button}
+            aria-label={`Select building ${building}`}
+            onClick={() => select([building])}
+          >
+            Select
+          </button>
+        ) : null,
+    },
+  ]
 
   return (
     <section aria-label={title} className={styles.section}>
@@ -73,58 +123,15 @@ export function JobItems({
           </button>
         ) : null}
       </div>
-      <table className={componentStyles.table} aria-label={title}>
-        <thead>
-          <tr>
-            <th scope="col">
-              {fusion ? 'Source ID' : buildings ? 'Building' : 'Item'}
-            </th>
-            <th scope="col">Reason</th>
-            <th scope="col">
-              <span className="visually-hidden">Actions</span>
-            </th>
-          </tr>
-        </thead>
-        <tbody>
-          {visible.map(([id, reason]) => {
-            const building = buildingOf(id)
-            return (
-              <tr key={id}>
-                <td>
-                  {group?.stageId === STAGE_IDS.scenarioModeling
-                    ? (state.scenarios[id]?.name ?? id)
-                    : id}
-                </td>
-                <td>{reason}</td>
-                <td>
-                  {building ? (
-                    <button
-                      type="button"
-                      className={componentStyles.button}
-                      aria-label={`Select building ${building}`}
-                      onClick={() => select([building])}
-                    >
-                      Select
-                    </button>
-                  ) : null}
-                </td>
-              </tr>
-            )
-          })}
-        </tbody>
-      </table>
-      {failures.length > shown ? (
-        <p className={styles.more}>
-          Showing {shown} of {failures.length}.{' '}
-          <button
-            type="button"
-            className={componentStyles.button}
-            onClick={() => setShown(shown + PAGE_SIZE)}
-          >
-            Show {Math.min(PAGE_SIZE, failures.length - shown)} more
-          </button>
-        </p>
-      ) : null}
+      <WorkbenchTable
+        id="jobs.failedItems"
+        aria-label={title}
+        columns={columns}
+        rows={items}
+        rowKey={(item) => item.id}
+        pageSize={PAGE_SIZE}
+        exportContext={[`job: ${task.label}, attempt ${task.attempt}`]}
+      />
     </section>
   )
 }

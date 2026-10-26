@@ -73,7 +73,7 @@ test('dashboard compares a modeled scenario and previews adoption before applyin
     .focus()
   await page.keyboard.press('Space')
   await scenarioForm.getByRole('button', { name: 'Create scenario' }).click()
-  await expect(page.getByRole('table', { name: 'Scenarios' })).toContainText(
+  await expect(page.getByRole('grid', { name: 'Scenarios' })).toContainText(
     'Half retrofitted',
   )
 
@@ -108,7 +108,7 @@ test('dashboard compares a modeled scenario and previews adoption before applyin
 
   await page.getByText('Show monthly data table').click()
   await expect(
-    page.getByRole('table', { name: 'Monthly demand data' }),
+    page.getByRole('grid', { name: 'Monthly demand data' }),
   ).toContainText('Dec')
   expect(await seriousViolations(page)).toEqual([])
 })

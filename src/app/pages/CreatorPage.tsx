@@ -44,7 +44,9 @@ import { CapabilityBadge, StatusTag } from '../components/CapabilityBadge.tsx'
 import componentStyles from '../components/components.module.css'
 import formStyles from '../components/forms.module.css'
 import { InlineAlert } from '../components/InlineAlert.tsx'
+import { WorkbenchTable } from '../components/WorkbenchTable.tsx'
 import { cx } from '../cx.ts'
+import type { DataColumn } from '../tables/tableModel.ts'
 import styles from './creator.module.css'
 
 // Validation comes from the shared commands. Each field shows its own command
@@ -134,6 +136,102 @@ export function CreatorPage() {
   const scenarios = useWorkbenchSnapshot((snapshot) => snapshot.state.scenarios)
   const measureList = Object.values(measures)
   const scenarioList = Object.values(scenarios)
+  const measureColumns: DataColumn<Measure>[] = [
+    {
+      id: 'name',
+      header: 'Name',
+      value: (measure) => measure.name,
+      rowHeader: true,
+    },
+    {
+      id: 'kind',
+      header: 'Kind',
+      value: (measure) => measure.kind,
+      type: 'enum',
+    },
+    {
+      id: 'savings',
+      header: 'Savings',
+      value: (measure) =>
+        measure.kind === 'pv' ? null : measure.savingsPercent,
+      type: 'number',
+      unit: '%',
+      decimals: 1,
+      empty: 'From PV yield',
+    },
+    {
+      id: 'appliesTo',
+      header: 'Applies to',
+      value: (measure) => measure.appliesTo,
+      type: 'enum',
+    },
+    {
+      id: 'source',
+      header: 'Source',
+      value: (measure) => sourceLabel(measure.source),
+      type: 'enum',
+    },
+    {
+      id: 'actions',
+      header: 'Actions',
+      value: () => null,
+      action: true,
+      width: 80,
+      render: (measure) => (
+        <Button
+          className={componentStyles.button}
+          aria-label={`Edit measure ${measure.name}`}
+          onPress={() => setEditingMeasure(measure.id)}
+        >
+          Edit
+        </Button>
+      ),
+    },
+  ]
+  const scenarioColumns: DataColumn<Scenario>[] = [
+    {
+      id: 'name',
+      header: 'Name',
+      value: (scenario) => scenario.name,
+      rowHeader: true,
+    },
+    {
+      id: 'measures',
+      header: 'Measures',
+      wrap: true,
+      value: (scenario) =>
+        scenario.measureIds.map((id) => measures[id]?.name ?? id).join(', '),
+    },
+    {
+      id: 'adoption',
+      header: 'Adoption',
+      value: (scenario) => scenario.adoptionPercent,
+      type: 'number',
+      unit: '%',
+    },
+    {
+      id: 'comparison',
+      header: 'Comparison',
+      value: (scenario) => (scenario.included ? 'Included' : 'Left out'),
+      type: 'enum',
+    },
+    {
+      id: 'actions',
+      header: 'Actions',
+      value: () => null,
+      action: true,
+      width: 80,
+      render: (scenario) => (
+        <Button
+          className={componentStyles.button}
+          aria-label={`Edit scenario ${scenario.name}`}
+          onPress={() => setEditingScenario(scenario.id)}
+        >
+          Edit
+        </Button>
+      ),
+    },
+  ]
   const [editingMeasure, setEditingMeasure] = useState<string | null>(null)
   const [editingScenario, setEditingScenario] = useState<string | null>(null)
   // An item removed while edited (for example by undo) returns the form to create mode.
@@ -167,86 +265,26 @@ export function CreatorPage() {
       {measureList.length === 0 ? (
         <p className={componentStyles.empty}>No measures yet.</p>
       ) : (
-        <table className={componentStyles.table} aria-label="Measures">
-          <thead>
-            <tr>
-              <th scope="col">Name</th>
-              <th scope="col">Kind</th>
-              <th scope="col">Savings</th>
-              <th scope="col">Applies to</th>
-              <th scope="col">Source</th>
-              <th scope="col">
-                <span className="visually-hidden">Actions</span>
-              </th>
-            </tr>
-          </thead>
-          <tbody>
-            {measureList.map((measure) => (
-              <tr key={measure.id}>
-                <td>{measure.name}</td>
-                <td>{measure.kind}</td>
-                <td>
-                  {measure.kind === 'pv'
-                    ? 'From PV yield'
-                    : `${measure.savingsPercent}%`}
-                </td>
-                <td>{measure.appliesTo}</td>
-                <td>{sourceLabel(measure.source)}</td>
-                <td>
-                  <Button
-                    className={componentStyles.button}
-                    aria-label={`Edit measure ${measure.name}`}
-                    onPress={() => setEditingMeasure(measure.id)}
-                  >
-                    Edit
-                  </Button>
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
+        <WorkbenchTable
+          id="creator.measures"
+          aria-label="Measures"
+          columns={measureColumns}
+          rows={measureList}
+          rowKey={(measure) => measure.id}
+        />
       )}
 
       <h3>Scenarios</h3>
       {scenarioList.length === 0 ? (
         <p className={componentStyles.empty}>No scenarios yet.</p>
       ) : (
-        <table className={componentStyles.table} aria-label="Scenarios">
-          <thead>
-            <tr>
-              <th scope="col">Name</th>
-              <th scope="col">Measures</th>
-              <th scope="col">Adoption</th>
-              <th scope="col">Comparison</th>
-              <th scope="col">
-                <span className="visually-hidden">Actions</span>
-              </th>
-            </tr>
-          </thead>
-          <tbody>
-            {scenarioList.map((scenario) => (
-              <tr key={scenario.id}>
-                <td>{scenario.name}</td>
-                <td>
-                  {scenario.measureIds
-                    .map((id) => measures[id]?.name ?? id)
-                    .join(', ')}
-                </td>
-                <td>{scenario.adoptionPercent}%</td>
-                <td>{scenario.included ? 'Included' : 'Left out'}</td>
-                <td>
-                  <Button
-                    className={componentStyles.button}
-                    aria-label={`Edit scenario ${scenario.name}`}
-                    onPress={() => setEditingScenario(scenario.id)}
-                  >
-                    Edit
-                  </Button>
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
+        <WorkbenchTable
+          id="creator.scenarios"
+          aria-label="Scenarios"
+          columns={scenarioColumns}
+          rows={scenarioList}
+          rowKey={(scenario) => scenario.id}
+        />
       )}
 
       <ScenarioComparison />

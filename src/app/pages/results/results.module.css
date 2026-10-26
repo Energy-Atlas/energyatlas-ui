@@ -59,21 +59,8 @@
   color: var(--tone-warning-text);
 }
 
-.tableWrap {
-  overflow-x: auto;
-}
-
 .rowActions {
   display: flex;
   gap: var(--space-1);
   white-space: nowrap;
-}
-
-.currentRow {
-  background: var(--color-surface-raised);
-  box-shadow: inset 2px 0 0 var(--color-accent);
-}
-
-.more {
-  font-size: var(--font-size-small);
 }

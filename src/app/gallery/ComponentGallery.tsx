@@ -17,6 +17,7 @@ import {
 } from '../appearance/appearances.ts'
 import { StatusTag } from '../components/CapabilityBadge.tsx'
 import componentStyles from '../components/components.module.css'
+import { DataTable } from '../components/DataTable.tsx'
 import { InlineAlert } from '../components/InlineAlert.tsx'
 import { MenuButton } from '../components/MenuButton.tsx'
 import { HeaderCount, PanelHeader } from '../components/PanelHeader.tsx'
@@ -26,6 +27,11 @@ import { SegmentedFilter } from '../components/SegmentedFilter.tsx'
 import { StateBadge } from '../components/StateBadge.tsx'
 import { Toolbar, type ToolbarItem } from '../components/Toolbar.tsx'
 import { cx } from '../cx.ts'
+import type { DataColumn } from '../tables/tableModel.ts'
+import {
+  applyTableChange,
+  defaultTableSettings,
+} from '../tables/tableSettings.ts'
 import {
   formatCount,
   formatDateTime,
@@ -63,6 +69,65 @@ function initialAppearance(): AppearanceId {
 
 type JobFilter = 'all' | 'active' | 'attention'
 
+type GalleryBuilding = {
+  id: string
+  name: string
+  use: string
+  floors: number | null
+  demandKwh: number
+  peakKw: number
+}
+
+const USES = ['Office', 'Residential', 'Retail', 'Mixed use']
+
+// Synthetic rows, generated so every reader sees the same table.
+const BUILDINGS: GalleryBuilding[] = Array.from({ length: 40 }, (_, index) => {
+  const floors = index % 9 === 4 ? null : 2 + ((index * 7) % 11)
+  return {
+    id: `B${String(index + 1).padStart(4, '0')}`,
+    name: `Building ${index + 1}`,
+    use: USES[index % USES.length] ?? 'Office',
+    floors,
+    demandKwh: 80_000 + ((index * 37_919) % 900_000),
+    peakKw: 40 + ((index * 53) % 400) + (index % 3) * 0.25,
+  }
+})
+
+const BUILDING_COLUMNS: DataColumn<GalleryBuilding>[] = [
+  {
+    id: 'id',
+    header: 'Building',
+    value: (row) => row.id,
+    type: 'identifier',
+    rowHeader: true,
+    width: 110,
+  },
+  { id: 'name', header: 'Name', value: (row) => row.name },
+  { id: 'use', header: 'Use', value: (row) => row.use, type: 'enum' },
+  {
+    id: 'floors',
+    header: 'Floors',
+    value: (row) => row.floors,
+    type: 'number',
+    empty: 'No data',
+  },
+  {
+    id: 'demand',
+    header: 'Annual demand',
+    value: (row) => row.demandKwh,
+    type: 'number',
+    unit: 'kWh',
+  },
+  {
+    id: 'peak',
+    header: 'Peak load',
+    value: (row) => row.peakKw,
+    type: 'number',
+    unit: 'kW',
+    decimals: 2,
+  },
+]
+
 /**
  * Every shared panel component in its states (decision 0027), at
  * `/?gallery`. It doubles as the living guideline: browser tests check it in
@@ -75,6 +140,7 @@ export default function ComponentGallery() {
   const [resolution, setResolution] = useState<'monthly' | 'hourly'>('monthly')
   const [shaded, setShaded] = useState(false)
   const [columns, setColumns] = useState(new Set(['id', 'name', 'demand']))
+  const [tableSettings, setTableSettings] = useState(defaultTableSettings)
 
   useEffect(() => {
     const found = APPEARANCE_LIST.find((item) => item.id === appearance)
@@ -184,6 +250,41 @@ export default function ComponentGallery() {
               description="Synthetic buildings in Back Bay."
             />
           </div>
+        </section>
+
+        <section className={cx(styles.cell, styles.wide)}>
+          <h2>Data table</h2>
+          <p className={componentStyles.muted}>
+            Hover the table for its tools and a column header for its filter and
+            format; tools in use stay visible.
+          </p>
+          <DataTable
+            id="gallery.buildings"
+            aria-label="Gallery buildings"
+            columns={BUILDING_COLUMNS}
+            rows={BUILDINGS}
+            rowKey={(row) => row.id}
+            settings={tableSettings}
+            onChange={(change) => {
+              setTableSettings((current) => applyTableChange(current, change))
+              note(`Table change: ${change.kind}.`)
+            }}
+            pageSize={15}
+            exportOptions={{ fileName: 'gallery-buildings.csv' }}
+            onExport={(_csv, fileName, rowCount) =>
+              note(`Exported ${rowCount} rows as ${fileName}.`)
+            }
+          />
+          <DataTable
+            id="gallery.empty"
+            aria-label="Gallery empty table"
+            columns={BUILDING_COLUMNS}
+            rows={[]}
+            rowKey={(row) => row.id}
+            settings={defaultTableSettings()}
+            onChange={() => note('Empty table changed.')}
+            emptyText="No buildings yet. Run Geospatial preprocessing."
+          />
         </section>
 
         <section className={styles.cell}>

@@ -7,10 +7,12 @@ import {
   fusionSubmitBlocker,
   prepareDataset,
   type PreparedDataset,
+  type PreparedRow,
 } from '../../../domain/intake/fusion.ts'
 import { discardNote, heldCount } from '../../../domain/jobs/runGroups.ts'
 import { STAGE_IDS } from '../../../domain/workflow.ts'
 import type {
+  AppliedDataset,
   HeldFusionOutput,
   ImportedFields,
   TargetField,
@@ -27,9 +29,11 @@ import componentStyles from '../../components/components.module.css'
 import formStyles from '../../components/forms.module.css'
 import { PanelHeader } from '../../components/PanelHeader.tsx'
 import { PropertyList } from '../../components/PropertyList.tsx'
+import { WorkbenchTable } from '../../components/WorkbenchTable.tsx'
 import { cx } from '../../cx.ts'
 import { formatTime } from '../../format.ts'
 import { waitingReason } from '../../service/usePendingReason.ts'
+import type { DataColumn } from '../../tables/tableModel.ts'
 import styles from './intake.module.css'
 
 const PAGE_SIZE = 20
@@ -52,39 +56,110 @@ function describeFields(fields: ImportedFields): string {
   return parts.length > 0 ? parts.join('; ') : 'No changes'
 }
 
-function Paged<Row>({
-  rows,
-  label,
-  render,
-  header,
-}: {
-  rows: Row[]
-  label: string
-  header: React.ReactNode
-  render: (row: Row) => React.ReactNode
-}) {
-  const [shown, setShown] = useState(PAGE_SIZE)
-  return (
-    <>
-      <table className={componentStyles.table} aria-label={label}>
-        <thead>{header}</thead>
-        <tbody>{rows.slice(0, shown).map(render)}</tbody>
-      </table>
-      {rows.length > shown ? (
-        <p className={styles.more}>
-          Showing {shown} of {rows.length}.{' '}
-          <button
-            type="button"
-            className={componentStyles.button}
-            onClick={() => setShown(shown + PAGE_SIZE)}
-          >
-            Show {Math.min(PAGE_SIZE, rows.length - shown)} more
-          </button>
-        </p>
-      ) : null}
-    </>
-  )
-}
+const REJECTED_COLUMNS: DataColumn<PreparedRow>[] = [
+  {
+    id: 'row',
+    header: 'Row',
+    value: (row) => row.index + 1,
+    type: 'number',
+    rowHeader: true,
+    width: 80,
+  },
+  {
+    id: 'source',
+    header: 'Source ID',
+    value: (row) => row.key,
+    type: 'identifier',
+    empty: '—',
+  },
+  {
+    id: 'problem',
+    header: 'Problem',
+    wrap: true,
+    value: (row) => row.issues.map((issue) => issue.message).join('; '),
+    render: (row) =>
+      row.issues.map((issue) => (
+        <span key={issue.path + issue.message} className={styles.issue}>
+          {issue.message}
+        </span>
+      )),
+  },
+]
+
+const CHANGE_COLUMNS: DataColumn<HeldFusionOutput>[] = [
+  {
+    id: 'source',
+    header: 'Source ID',
+    value: (plan) => plan.sourceKey,
+    type: 'identifier',
+    rowHeader: true,
+  },
+  {
+    id: 'building',
+    header: 'Building',
+    value: (plan) => plan.buildingId,
+    type: 'identifier',
+  },
+  {
+    id: 'action',
+    header: 'Action',
+    value: (plan) => (plan.action === 'add' ? 'Add' : 'Update'),
+    type: 'enum',
+  },
+  {
+    id: 'values',
+    header: 'Values',
+    value: (plan) => describeFields(plan.fields),
+    wrap: true,
+  },
+  {
+    id: 'override',
+    header: 'Manual override kept',
+    wrap: true,
+    value: (plan) =>
+      plan.conflicts
+        .map(
+          (conflict) =>
+            `Floors stay ${String(conflict.manual)} (import says ${conflict.imported})`,
+        )
+        .join('; '),
+  },
+]
+
+const APPLIED_COLUMNS: DataColumn<AppliedDataset>[] = [
+  {
+    id: 'dataset',
+    header: 'Dataset',
+    value: (entry) => entry.label,
+    rowHeader: true,
+  },
+  {
+    id: 'updated',
+    header: 'Updated',
+    value: (entry) => entry.updated,
+    type: 'number',
+  },
+  {
+    id: 'added',
+    header: 'Added',
+    value: (entry) => entry.added,
+    type: 'number',
+  },
+  {
+    id: 'conflicts',
+    header: 'Overrides kept',
+    value: (entry) => entry.conflicts,
+    type: 'number',
+  },
+  {
+    id: 'appliedAt',
+    header: 'Applied',
+    value: (entry) => entry.appliedAt,
+    render: (entry) => (
+      <time dateTime={entry.appliedAt}>{formatTime(entry.appliedAt)}</time>
+    ),
+  },
+]
 
 function Preview({ prepared }: { prepared: PreparedDataset }) {
   const { counts } = prepared
@@ -104,32 +179,14 @@ function Preview({ prepared }: { prepared: PreparedDataset }) {
           rejected. Rejected records are not applied.
         </p>
         {rejected.length > 0 ? (
-          <Paged
+          <WorkbenchTable
+            id="intake.rejected"
+            aria-label="Rejected records"
+            columns={REJECTED_COLUMNS}
             rows={rejected}
-            label="Rejected records"
-            header={
-              <tr>
-                <th scope="col">Row</th>
-                <th scope="col">Source ID</th>
-                <th scope="col">Problem</th>
-              </tr>
-            }
-            render={(row) => (
-              <tr key={row.index}>
-                <td>{row.index + 1}</td>
-                <td>{row.key ?? '—'}</td>
-                <td>
-                  {row.issues.map((issue) => (
-                    <span
-                      key={issue.path + issue.message}
-                      className={styles.issue}
-                    >
-                      {issue.message}
-                    </span>
-                  ))}
-                </td>
-              </tr>
-            )}
+            rowKey={(row) => String(row.index)}
+            pageSize={PAGE_SIZE}
+            exportContext={[`dataset: ${prepared.dataset.label}`]}
           />
         ) : null}
       </section>
@@ -151,34 +208,14 @@ function Preview({ prepared }: { prepared: PreparedDataset }) {
           ]}
         />
         {changes.length > 0 ? (
-          <Paged<HeldFusionOutput>
+          <WorkbenchTable
+            id="intake.changes"
+            aria-label="Planned changes"
+            columns={CHANGE_COLUMNS}
             rows={changes}
-            label="Planned changes"
-            header={
-              <tr>
-                <th scope="col">Source ID</th>
-                <th scope="col">Building</th>
-                <th scope="col">Action</th>
-                <th scope="col">Values</th>
-                <th scope="col">Manual override kept</th>
-              </tr>
-            }
-            render={(plan) => (
-              <tr key={plan.sourceKey}>
-                <td>{plan.sourceKey}</td>
-                <td>{plan.buildingId}</td>
-                <td>{plan.action === 'add' ? 'Add' : 'Update'}</td>
-                <td>{describeFields(plan.fields)}</td>
-                <td>
-                  {plan.conflicts
-                    .map(
-                      (conflict) =>
-                        `Floors stay ${String(conflict.manual)} (import says ${conflict.imported})`,
-                    )
-                    .join('; ')}
-                </td>
-              </tr>
-            )}
+            rowKey={(plan) => plan.sourceKey}
+            pageSize={PAGE_SIZE}
+            exportContext={[`dataset: ${prepared.dataset.label}`]}
           />
         ) : null}
       </section>
@@ -413,35 +450,13 @@ export function IntakePage() {
         {applied.length === 0 ? (
           <p className={componentStyles.empty}>No dataset has been applied.</p>
         ) : (
-          <table
-            className={componentStyles.table}
+          <WorkbenchTable
+            id="intake.applied"
             aria-label="Applied datasets"
-          >
-            <thead>
-              <tr>
-                <th scope="col">Dataset</th>
-                <th scope="col">Updated</th>
-                <th scope="col">Added</th>
-                <th scope="col">Overrides kept</th>
-                <th scope="col">Applied</th>
-              </tr>
-            </thead>
-            <tbody>
-              {applied.map((entry) => (
-                <tr key={entry.datasetId}>
-                  <td>{entry.label}</td>
-                  <td>{entry.updated}</td>
-                  <td>{entry.added}</td>
-                  <td>{entry.conflicts}</td>
-                  <td>
-                    <time dateTime={entry.appliedAt}>
-                      {formatTime(entry.appliedAt)}
-                    </time>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+            columns={APPLIED_COLUMNS}
+            rows={applied}
+            rowKey={(entry) => entry.datasetId}
+          />
         )}
       </section>
     </section>

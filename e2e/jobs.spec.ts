@@ -76,7 +76,7 @@ test('holds partial results, opens the job from its notice, and retries only fai
   await expect(detail).toContainText('attempt 1')
   await expect(detail).toContainText(/\d+ results? held, not published/)
   await expect(detail).toContainText('Unchanged since submission.')
-  const failed = detail.getByRole('table', { name: 'Failed items' })
+  const failed = detail.getByRole('grid', { name: 'Failed items' })
   await expect(failed).toContainText('Transient worker fault')
   const failedCount = await failed.locator('tbody tr').count()
   expect(failedCount).toBeGreaterThan(0)

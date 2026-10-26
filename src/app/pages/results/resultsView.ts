@@ -5,6 +5,7 @@ import type {
   WorkbenchState,
 } from '../../../domain/types.ts'
 import { STAGE_IDS } from '../../../domain/workflow.ts'
+import { csvCommentLine, csvField, fileSlug } from '../../csv.ts'
 
 // Results (jobs rollout plan, slice 8): read-only views over published
 // results. Held outputs, calibrated variants that are not adopted, and drafts
@@ -230,20 +231,6 @@ export function hourlyProfile(
 }
 
 /**
- * One CSV field. Text that a spreadsheet would read as a formula (starting
- * with =, +, -, @, tab, or carriage return) is prefixed with an apostrophe;
- * numbers are written as they are.
- */
-function csvField(value: string | number | null): string {
-  if (value === null) return ''
-  const text =
-    typeof value === 'string' && /^[=+\-@\t\r]/.test(value)
-      ? `'${value}`
-      : String(value)
-  return /[",\n]/.test(text) ? `"${text.replace(/"/g, '""')}"` : text
-}
-
-/**
  * A CSV of one published result: identifying comment lines, one row per
  * building with units in the column names, and a total row equal to the
  * result's summary total.
@@ -256,11 +243,7 @@ export function resultCsv(
   const rows = buildingRows(state, entry)
   const scenario = entry.compareTo !== null
   // Header values are one line each: control characters become spaces.
-  const line = (text: string) =>
-    Array.from(text, (char) => {
-      const code = char.charCodeAt(0)
-      return code < 32 || code === 127 ? ' ' : char
-    }).join('')
+  const line = csvCommentLine
   const lines = [
     `# EnergyAtlas UI demo export (synthetic results)`,
     line(`# result: ${entry.label}`),
@@ -319,9 +302,5 @@ export function resultCsv(
 
 /** A file name naming the result and run. */
 export function csvFileName(entry: ResultEntry): string {
-  const slug = entry.label
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, '-')
-    .replace(/^-|-$/g, '')
-  return `energyatlas-${slug || 'result'}-${entry.result.runId}.csv`
+  return `energyatlas-${fileSlug(entry.label, 'result')}-${entry.result.runId}.csv`
 }

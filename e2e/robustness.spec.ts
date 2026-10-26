@@ -70,11 +70,11 @@ test('a failed request is shown and the same action works on retry', async ({
   await fit.click()
   await expect(page.getByTestId('status-notice')).toContainText(/server|error/i)
   await expect(
-    calibration.getByRole('table', { name: 'Calibrated variants' }),
+    calibration.getByRole('grid', { name: 'Calibrated variants' }),
   ).toHaveCount(0)
   await fit.click()
   await expect(
-    calibration.getByRole('table', { name: 'Calibrated variants' }),
+    calibration.getByRole('grid', { name: 'Calibrated variants' }),
   ).toContainText('Available', { timeout: 15_000 })
 })
 

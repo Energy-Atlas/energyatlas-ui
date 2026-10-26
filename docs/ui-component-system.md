@@ -1,8 +1,9 @@
 # Unified panel components: audit and proposal
 
 Status: accepted as [decision 0027](decisions/0027-unified-panel-components.md) on 2026-10-26, with the owner's
-choices recorded at the end. Step 1 (primitives and gallery) is built on `claude/ui-component-system`; see
-[step 1 status](#step-1-status). Steps 2 to 5 are not started. It answers the owner's
+choices recorded at the end. Steps 1 (primitives and gallery) and 2 (the shared data table) are built on
+`claude/ui-component-system`; see [step 1 status](#step-1-status) and [step 2 status](#step-2-status). Steps 3 to 5
+are not started. It answers the owner's
 review comments of 2026-10-26 after testing local `master` at `4400c69`:
 
 1. one design (reusable components, or at least one guideline) for each kind of component inside any panel: tables,
@@ -209,3 +210,60 @@ dialogs, and the start screen as `InlineAlert`.
 **Verification (2026-10-26):** typecheck, lint, and format clean; 325 unit tests, 96 development browser tests
 (including `e2e/gallery.spec.ts`: axe in all six appearances, toolbar overflow, keyboard use), and 3 production-preview
 tests passed; `git diff --check` clean. The Jobs page was checked by eye in Dark.
+
+## Step 2 status
+
+Built on `claude/ui-component-system` (2026-10-26), not merged into `master`.
+
+**Real:**
+
+- `src/app/components/DataTable.tsx`: React Aria's `Table` (a grid: one tab stop, arrow keys between cells, row
+  buttons reached the same way) inside a `ResizableTableContainer`. A tool bar above it holds **Columns** (a
+  checklist; the row-naming column stays), **Filters** (the active filters, each removable, and Clear all),
+  **Download** (CSV), and **Style** (compact or comfortable rows, shaded alternate rows, wrapped text, column widths
+  default, fitted to content, or even, the first column frozen, and Reset table). Each column header holds **Filter
+  and sort** (unsorted, ascending, descending; a "contains" filter for text, a checklist of values for enum columns,
+  an at-least and at-most range for numbers, drafted and then applied) and **Format** (decimals, thousands
+  separators, kWh shown as MWh where the unit scales, alignment, Hide column, Reset format). Clicking a header
+  sorts; dragging its edge resizes.
+- Widgets appear while the pointer is over the table (tool bar) or the column (its widgets), while focus is inside,
+  and while their popover is open; a widget in use (a filter, a sort, hidden columns, a format, a style) stays
+  visible, and touch screens always show them. A filtered table says "12 of 340 rows" and lists its filters as
+  removable chips; long tables page with "Show 25 more".
+- Settings live in view state under a stable table id and change only through the `table.change` view operation,
+  so the agent can arrange a table too; tables on screen register their columns (`src/app/tables/tableRegistry.ts`)
+  so the operation names unknown ids and columns. Settings are kept per user in this browser (`eaui.tables.v1`) and
+  across project switches; a stored entry that no longer parses is dropped.
+- The CSV is the view: identifying comment lines (table, project, context such as the run, rows shown of total,
+  filters, sort, time), the shown columns with units in their names, every row that passes the filters in order,
+  raw values, and formula-like text neutralised. `src/app/csv.ts` is shared with the Results export.
+- Shaded alternate rows are off by default, as decision 0027 amends decision 0021.
+
+**Migrated:** Job failed items, Results buildings and series (the series table now has a row per month or hour),
+the modeled comparison, Creator measures and scenarios, the Dashboard's monthly, annual, and added-chart data
+tables, Intake rejected records, planned changes, and applied datasets, Archetype assignment coverage, Calibration
+meter preview, variants, and residuals, Issues, and the Settings capability overview.
+
+**Not migrated, on purpose:** the Intake field mapping and the archetype schedule editor are forms whose cells are
+inputs, and the Help dialog's shortcut lists are reference text.
+
+- Default column widths share the pane but never cut a value short: each column's minimum is its fitted width, so
+  a narrow pane scrolls sideways; long-text columns (`wrap`) wrap from a readable minimum.
+- A range filter is entered in the unit shown (MWh when the column shows MWh) and stored and described in the
+  column's own unit ("at least 1,000 kWh"); a checklist that has every value checked is no filter.
+
+**Review:** an independent review found no high-severity defect. Its findings were fixed: ranges ignoring the MWh
+scale, the current row no longer announced (it now reads "(current)" in its row header) and losing its mark when
+the first column is frozen, format entries that could not return to the default (null now does), the text filter
+without a length cap, CSV comment lines that a comma could split into a formula cell and values with a carriage
+return, the agent path sorting or filtering columns the controls do not allow, and a checklist capped at 50 values.
+Two remain by choice: `jobs.failedItems` is one arrangement for every job kind, and each added chart keeps its own
+arrangement in this browser after the chart is removed.
+
+**Deferred:** column reordering, saved per-project arrangements (the owner has not chosen; the default is per user
+in this browser), row selection inside tables, and the Table page's AG Grid, which gets the same tool bar and
+column widgets in step 3.
+
+**Verification (2026-10-26):** typecheck, lint, and format clean; 344 unit tests, 98 development browser tests
+(including `e2e/tables.spec.ts` and the gallery's axe checks in six appearances with the data table), and 3
+production-preview tests passed; `git diff --check` clean. Results was checked by eye in a narrow pane.

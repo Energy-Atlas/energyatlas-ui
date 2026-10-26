@@ -1,33 +1,56 @@
-import { capabilities, type CapabilityId } from '../../domain/capabilities.ts'
+import {
+  capabilities,
+  type Capability,
+  type CapabilityId,
+} from '../../domain/capabilities.ts'
+import type { DataColumn } from '../tables/tableModel.ts'
 import { StatusTag } from './CapabilityBadge.tsx'
-import styles from './components.module.css'
+import { WorkbenchTable } from './WorkbenchTable.tsx'
 
+const STATUS_LABELS = {
+  working: 'Working',
+  simulated: 'Simulated',
+  planned: 'Planned',
+} satisfies Record<Capability['status'], string>
+
+type CapabilityRow = Capability & { id: CapabilityId }
+
+const COLUMNS: DataColumn<CapabilityRow>[] = [
+  {
+    id: 'feature',
+    header: 'Feature',
+    value: (capability) => capability.label,
+    rowHeader: true,
+    width: 220,
+  },
+  {
+    id: 'status',
+    header: 'Status',
+    value: (capability) => STATUS_LABELS[capability.status],
+    type: 'enum',
+    width: 130,
+    render: (capability) => <StatusTag status={capability.status} />,
+  },
+  {
+    id: 'explanation',
+    header: 'Explanation',
+    value: (capability) => capability.explanation,
+    wrap: true,
+  },
+]
+
+/** What each feature is in this prototype: working, simulated, or planned. */
 export function CapabilityTable() {
-  const ids = Object.keys(capabilities) as CapabilityId[]
   return (
-    <table className={styles.table}>
-      <caption>What each feature is in this prototype</caption>
-      <thead>
-        <tr>
-          <th scope="col">Feature</th>
-          <th scope="col">Status</th>
-          <th scope="col">Explanation</th>
-        </tr>
-      </thead>
-      <tbody>
-        {ids.map((id) => {
-          const capability = capabilities[id]
-          return (
-            <tr key={id}>
-              <td>{capability.label}</td>
-              <td>
-                <StatusTag status={capability.status} />
-              </td>
-              <td>{capability.explanation}</td>
-            </tr>
-          )
-        })}
-      </tbody>
-    </table>
+    <WorkbenchTable
+      id="settings.capabilities"
+      aria-label="What each feature is in this prototype"
+      columns={COLUMNS}
+      rows={(Object.keys(capabilities) as CapabilityId[]).map((id) => ({
+        id,
+        ...capabilities[id],
+      }))}
+      rowKey={(capability) => capability.id}
+    />
   )
 }

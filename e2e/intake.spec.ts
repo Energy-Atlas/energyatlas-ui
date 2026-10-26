@@ -41,7 +41,7 @@ test('maps, validates, previews, and applies a dataset as a job', async ({
     mapping.getByRole('combobox', { name: 'assessed_note' }),
   ).toHaveValue('')
   await expect(intake).toContainText('60 records: 53 valid, 7 rejected.')
-  const rejected = intake.getByRole('table', { name: 'Rejected records' })
+  const rejected = intake.getByRole('grid', { name: 'Rejected records' })
   await expect(rejected).toContainText('appears 2 times')
   await expect(rejected).toContainText('No building has source ID "way/0"')
   await expect(
@@ -69,7 +69,7 @@ test('maps, validates, previews, and applies a dataset as a job', async ({
     'Data fusion: Assessor attributes completed.',
     { timeout: 15_000 },
   )
-  const applied = intake.getByRole('table', { name: 'Applied datasets' })
+  const applied = intake.getByRole('grid', { name: 'Applied datasets' })
   await expect(applied).toContainText('Assessor attributes')
   // Fused attributes change enrichment's output, so later stages are outdated.
   await expect(

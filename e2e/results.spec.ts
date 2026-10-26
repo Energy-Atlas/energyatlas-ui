@@ -32,8 +32,8 @@ test('drills into a building and exports the published result as CSV', async ({
   )
   await expect(provenance).toContainText(/Baseline model setup, run run-\d+/)
 
-  const table = results.getByRole('table', { name: 'Building results' })
-  const firstId = await table.locator('tbody tr th').first().innerText()
+  const table = results.getByRole('grid', { name: 'Building results' })
+  const firstId = await table.getByRole('rowheader').first().innerText()
   await table
     .getByRole('button', { name: `Show results of ${firstId}` })
     .click()
@@ -63,7 +63,7 @@ test('drills into a building and exports the published result as CSV', async ({
   await results.getByRole('radio', { name: /^Envelope retrofit/ }).focus()
   await page.keyboard.press('Space')
   await expect(
-    results.getByRole('table', { name: 'Building results' }),
+    results.getByRole('grid', { name: 'Building results' }),
   ).toContainText('Saving vs baseline (kWh)')
 })
 

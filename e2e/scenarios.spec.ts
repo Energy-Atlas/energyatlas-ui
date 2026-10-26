@@ -33,7 +33,7 @@ async function addFromLibrary(page: Page, name: string) {
       name: 'Add the chosen library measure to the project',
     })
     .click()
-  await expect(creator.getByRole('table', { name: 'Measures' })).toContainText(
+  await expect(creator.getByRole('grid', { name: 'Measures' })).toContainText(
     name,
   )
 }
@@ -56,7 +56,7 @@ test('composes, previews, edits, and compares scenarios as one modeled set', asy
   await addFromLibrary(page, 'Wall and roof insulation')
   await expect(
     creator
-      .getByRole('table', { name: 'Measures' })
+      .getByRole('grid', { name: 'Measures' })
       .getByRole('row')
       .filter({ hasText: 'LED lighting' }),
   ).toContainText('Library')
@@ -80,7 +80,7 @@ test('composes, previews, edits, and compares scenarios as one modeled set', asy
   await measures.getByRole('checkbox', { name: /^Envelope retrofit/ }).focus()
   await page.keyboard.press('Space')
   await scenarioForm.getByRole('button', { name: 'Create scenario' }).click()
-  const scenarios = creator.getByRole('table', { name: 'Scenarios' })
+  const scenarios = creator.getByRole('grid', { name: 'Scenarios' })
   await expect(scenarios).toContainText('Lighting')
 
   // Leave the original scenario out of the comparison.
@@ -100,7 +100,7 @@ test('composes, previews, edits, and compares scenarios as one modeled set', asy
   await showWorkflow(page)
   await runStage(page, 'Scenario definitions')
   await runStage(page, 'Scenario modeling')
-  const comparison = creator.getByRole('table', { name: 'Modeled comparison' })
+  const comparison = creator.getByRole('grid', { name: 'Modeled comparison' })
   await expect(comparison.getByRole('row')).toHaveCount(3)
   await expect(comparison).toContainText('Lighting')
   await expect(comparison).not.toContainText('Envelope retrofit')

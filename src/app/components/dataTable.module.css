@@ -1,0 +1,403 @@
+/* The shared data table (decision 0027): a ruled data sheet (decision 0021)
+   with a tool bar and per-column widgets that appear on hover or focus. A
+   widget in use stays visible; touch screens, which cannot hover, always
+   show them. */
+.frame {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  min-width: 0;
+  --cell-pad-y: 0.25rem;
+}
+
+.comfortable {
+  --cell-pad-y: 0.5rem;
+}
+
+.bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-1) var(--space-2);
+  min-height: 1.625rem;
+}
+
+.count {
+  color: var(--color-text-muted);
+  font-size: var(--font-size-small);
+  font-variant-numeric: tabular-nums;
+}
+
+.chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-1);
+}
+
+.chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  padding: 0 0.375rem;
+  border: 1px solid var(--color-accent);
+  border-radius: var(--radius-sm);
+  background: var(--color-selected-bg);
+  color: var(--color-text);
+  font: inherit;
+  font-size: var(--font-size-small);
+  cursor: pointer;
+}
+
+.chip:hover {
+  border-color: var(--color-text);
+}
+
+.tools {
+  display: flex;
+  gap: var(--space-1);
+  margin-left: auto;
+}
+
+.tool {
+  position: relative;
+  min-width: 1.625rem;
+  justify-content: center;
+  padding: 0 0.25rem;
+}
+
+/* Hidden at rest; shown while the table is hovered or holds focus, while a
+   popover from it is open, and always when in use. */
+.tool,
+.columnTool {
+  opacity: 0;
+  transition: opacity var(--transition);
+}
+
+.frame:hover .tool,
+.frame:focus-within .tool,
+.tool[aria-expanded='true'],
+.tool.active,
+.th:hover .columnTool,
+.th:focus-within .columnTool,
+.th[data-focused] .columnTool,
+.columnTool[aria-expanded='true'],
+.columnTool.active {
+  opacity: 1;
+}
+
+@media (hover: none) {
+  .tool,
+  .columnTool {
+    opacity: 1;
+  }
+}
+
+.tool.active {
+  border-color: var(--color-accent);
+}
+
+.badge {
+  margin-left: 0.125rem;
+  font-variant-numeric: tabular-nums;
+}
+
+.scroll {
+  position: relative;
+  max-width: 100%;
+  overflow: auto;
+  border: var(--rule);
+}
+
+.table {
+  width: 100%;
+  border-collapse: separate;
+  border-spacing: 0;
+  font-size: var(--font-size-base);
+  font-variant-numeric: tabular-nums;
+  outline: none;
+}
+
+.table[data-focus-visible] {
+  outline: 2px solid var(--color-focus);
+  outline-offset: -2px;
+}
+
+.th,
+.td {
+  box-sizing: border-box;
+  padding: var(--cell-pad-y) 0.5rem;
+  border-right: 1px solid var(--color-border-subtle);
+  border-bottom: 1px solid var(--color-border-subtle);
+  text-align: left;
+  vertical-align: top;
+  outline: none;
+}
+
+.th:last-child,
+.td:last-child {
+  border-right: 0;
+}
+
+.th {
+  position: relative;
+  white-space: nowrap;
+  background: var(--color-surface-raised);
+  color: var(--color-text-muted);
+  font-family: var(--label-font);
+  font-size: var(--label-size);
+  font-weight: var(--label-weight);
+  letter-spacing: var(--label-tracking);
+  text-transform: var(--label-case);
+  vertical-align: bottom;
+  cursor: default;
+}
+
+.th[data-allows-sorting] {
+  cursor: pointer;
+}
+
+.th[data-hovered] {
+  color: var(--color-text);
+}
+
+.th[data-focus-visible],
+.td[data-focus-visible],
+.tr[data-focus-visible] {
+  outline: 2px solid var(--color-focus);
+  outline-offset: -2px;
+}
+
+.td {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.wrap .td,
+.td.wrapCell {
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+
+.end {
+  text-align: right;
+}
+
+.end .head {
+  justify-content: flex-end;
+}
+
+.tr:hover > .td {
+  background: color-mix(in srgb, var(--color-accent) 8%, transparent);
+}
+
+.shaded .tr:nth-child(even) > .td {
+  background: color-mix(in srgb, var(--color-text) 4%, var(--color-surface));
+}
+
+.shaded .tr:nth-child(even):hover > .td {
+  background: color-mix(in srgb, var(--color-accent) 8%, transparent);
+}
+
+.current > .td {
+  background: var(--color-selected-bg);
+}
+
+.current > .td:first-child {
+  box-shadow: inset 2px 0 0 var(--color-accent);
+}
+
+/* Freezing keeps the first column in place while the rest scroll under it. */
+.freeze .th:first-child,
+.freeze .td:first-child {
+  position: sticky;
+  left: 0;
+  z-index: 1;
+  background: var(--color-surface);
+  box-shadow: 1px 0 0 var(--color-border);
+}
+
+.freeze .th:first-child {
+  background: var(--color-surface-raised);
+}
+
+/* A frozen cell keeps its row's shading, hover, and current mark. */
+.freeze.shaded .tr:nth-child(even) > .td:first-child {
+  background: color-mix(in srgb, var(--color-text) 4%, var(--color-surface));
+}
+
+.freeze .tr:hover > .td:first-child {
+  background: color-mix(in srgb, var(--color-accent) 8%, var(--color-surface));
+}
+
+.freeze .current > .td:first-child {
+  background: var(--color-selected-bg);
+}
+
+.head {
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
+  min-width: 0;
+}
+
+.headLabel {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.wrap .th {
+  white-space: normal;
+}
+
+/* In right-aligned columns the widgets lead, so the name lines up with the
+   numbers below it. */
+.end .columnTools {
+  order: -1;
+}
+
+.sortMark {
+  display: inline-flex;
+  flex-shrink: 0;
+  color: var(--color-accent-text);
+}
+
+.columnTools {
+  display: inline-flex;
+  flex-shrink: 0;
+  gap: 0.125rem;
+}
+
+.columnTool {
+  display: inline-grid;
+  place-items: center;
+  width: 1.25rem;
+  height: 1.25rem;
+  padding: 0;
+  border: 1px solid transparent;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--color-text-muted);
+  cursor: pointer;
+  outline: none;
+}
+
+.columnTool[data-hovered] {
+  border-color: var(--color-border-interactive);
+  color: var(--color-text);
+}
+
+.columnTool[data-focus-visible] {
+  outline: 2px solid var(--color-focus);
+  outline-offset: 1px;
+}
+
+.columnTool.active {
+  color: var(--color-accent-text);
+}
+
+.resizer {
+  position: absolute;
+  top: 0;
+  right: -3px;
+  bottom: 0;
+  z-index: 2;
+  width: 6px;
+  cursor: col-resize;
+  outline: none;
+  touch-action: none;
+}
+
+/* The last resizer stays inside the table, or it would make it scroll. */
+.th:last-child .resizer {
+  right: 0;
+}
+
+.resizer[data-hovered],
+.resizer[data-resizing] {
+  background: var(--color-accent);
+}
+
+.resizer[data-focus-visible] {
+  background: var(--color-focus);
+}
+
+.emptyRow {
+  margin: 0;
+  padding: var(--space-2);
+  color: var(--color-text-muted);
+}
+
+.more {
+  margin: 0;
+  color: var(--color-text-muted);
+  font-size: var(--font-size-small);
+}
+
+.popover {
+  max-width: 22rem;
+}
+
+.dialog {
+  display: grid;
+  gap: var(--space-2);
+  padding: var(--space-2) var(--space-3) var(--space-3);
+  outline: none;
+}
+
+.dialogTitle {
+  margin: 0 calc(-1 * var(--space-3));
+  padding: 0 var(--space-3) var(--space-1);
+  border-bottom: var(--rule);
+  font-size: var(--font-size-base);
+}
+
+.fieldLabel {
+  margin: 0;
+  color: var(--color-text-muted);
+  font-family: var(--label-font);
+  font-size: var(--label-size);
+  font-weight: var(--label-weight);
+  letter-spacing: var(--label-tracking);
+  text-transform: var(--label-case);
+}
+
+.filterForm {
+  display: grid;
+  gap: var(--space-2);
+}
+
+.range {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: var(--space-2);
+}
+
+.values {
+  display: grid;
+  gap: 0.25rem;
+  max-height: 14rem;
+  overflow: auto;
+}
+
+.filterList {
+  display: grid;
+  gap: var(--space-1);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.filterList li {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+}
+
+.dialogActions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-1);
+}

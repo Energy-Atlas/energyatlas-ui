@@ -1,4 +1,4 @@
-import { useId, useMemo, useState } from 'react'
+import { useId, useMemo } from 'react'
 import { Label, Radio, RadioGroup } from 'react-aria-components'
 import { STAGE_IDS } from '../../../domain/workflow.ts'
 import {
@@ -17,8 +17,11 @@ import { PanelHeader } from '../../components/PanelHeader.tsx'
 import { PropertyList } from '../../components/PropertyList.tsx'
 import { Section } from '../../components/Section.tsx'
 import { SegmentedFilter } from '../../components/SegmentedFilter.tsx'
+import { downloadText } from '../../csv.ts'
+import { WorkbenchTable } from '../../components/WorkbenchTable.tsx'
 import { cx } from '../../cx.ts'
 import { formatDateTime, formatEnergy, formatNumber } from '../../format.ts'
+import type { DataColumn } from '../../tables/tableModel.ts'
 import { EChart, useChartFont, type EChartOption } from '../../viz/EChart.tsx'
 import {
   MONTH_LABELS,
@@ -28,12 +31,39 @@ import {
   listResults,
   monthlySeries,
   resultCsv,
+  type BuildingRow,
 } from './resultsView.ts'
 import styles from './results.module.css'
 
 const PAGE_SIZE = 25
 const NUMBER = new Intl.NumberFormat('en-US', { maximumFractionDigits: 0 })
 const HOURS = Array.from({ length: 24 }, (_, hour) => `${hour}:00`)
+
+type SeriesRow = { category: string; value: number | null }
+
+function seriesColumns(
+  unit: string,
+  resolution: 'monthly' | 'hourly',
+): DataColumn<SeriesRow>[] {
+  return [
+    {
+      id: 'category',
+      header: resolution === 'hourly' ? 'Hour' : 'Month',
+      value: (row) => row.category,
+      rowHeader: true,
+      sortable: false,
+      width: 110,
+    },
+    {
+      id: 'value',
+      header: 'Demand',
+      value: (row) => row.value,
+      type: 'number',
+      unit,
+      decimals: resolution === 'hourly' ? 1 : 0,
+    },
+  ]
+}
 
 /** A one-series line chart in the dashboard's style. */
 function lineOption(
@@ -84,19 +114,6 @@ function lineOption(
 }
 
 /** Starts a browser download of text as a file. */
-function download(name: string, text: string) {
-  const url = URL.createObjectURL(new Blob([text], { type: 'text/csv' }))
-  const anchor = document.createElement('a')
-  anchor.href = url
-  anchor.download = name
-  anchor.hidden = true
-  document.body.append(anchor)
-  anchor.click()
-  anchor.remove()
-  // Revoke later so the browser has started the download.
-  window.setTimeout(() => URL.revokeObjectURL(url), 1000)
-}
-
 /**
  * Results (jobs rollout plan, slice 8): published results only, with
  * provenance and currentness, per-building drill-down, monthly and
@@ -110,7 +127,6 @@ export function ResultsPage() {
   const state = useWorkbenchSnapshot((snapshot) => snapshot.state)
   const states = useStageStates()
   const choice = useViewState((current) => current.results)
-  const [shown, setShown] = useState(PAGE_SIZE)
   const entries = useMemo(() => listResults(state, states), [state, states])
   const entry =
     entries.find((candidate) => candidate.id === choice.resultId) ?? entries[0]
@@ -162,6 +178,97 @@ export function ResultsPage() {
     [series, palette, font],
   )
 
+  const buildingColumns: DataColumn<BuildingRow>[] = [
+    {
+      id: 'id',
+      header: 'Building',
+      value: (row) => row.id,
+      type: 'identifier',
+      rowHeader: true,
+      width: 110,
+    },
+    { id: 'use', header: 'Use', value: (row) => row.use, type: 'enum' },
+    {
+      id: 'archetype',
+      header: 'Archetype',
+      value: (row) => row.archetype,
+      type: 'enum',
+    },
+    {
+      id: 'floorArea',
+      header: 'Floor area',
+      value: (row) => row.floorAreaM2,
+      type: 'number',
+      unit: 'm²',
+      empty: '—',
+    },
+    {
+      id: 'annual',
+      header: 'Annual demand',
+      value: (row) => row.annualKwh,
+      type: 'number',
+      unit: 'kWh',
+    },
+    {
+      id: 'eui',
+      header: 'EUI',
+      value: (row) => row.euiKwhPerM2,
+      type: 'number',
+      unit: 'kWh/m²',
+      decimals: 1,
+      empty: '—',
+    },
+    ...(entry?.compareTo
+      ? [
+          {
+            id: 'saving',
+            header: 'Saving vs baseline',
+            value: (row: BuildingRow) => row.savingKwh,
+            type: 'number' as const,
+            unit: 'kWh',
+            empty: '—',
+          },
+        ]
+      : []),
+    {
+      id: 'actions',
+      header: 'Actions',
+      value: () => null,
+      action: true,
+      width: 150,
+      render: (row) => (
+        <span className={styles.rowActions}>
+          <button
+            type="button"
+            className={componentStyles.button}
+            aria-label={`Show results of ${row.id}`}
+            onClick={() =>
+              view.execute({
+                type: 'results.showBuilding',
+                input: { buildingId: row.id },
+              })
+            }
+          >
+            Show
+          </button>
+          <button
+            type="button"
+            className={componentStyles.button}
+            aria-label={`Select ${row.id} on the map and table`}
+            onClick={() =>
+              void client.execute({
+                type: 'selection.set',
+                input: { entityType: 'building', ids: [row.id] },
+              })
+            }
+          >
+            Select
+          </button>
+        </span>
+      ),
+    },
+  ]
+
   if (!entry) {
     return (
       <section className={componentStyles.page} aria-labelledby={headingId}>
@@ -174,8 +281,6 @@ export function ResultsPage() {
       </section>
     )
   }
-
-  const visibleRows = rows.slice(0, shown)
 
   return (
     <section
@@ -194,7 +299,6 @@ export function ResultsPage() {
         value={entry.id}
         onChange={(resultId) => {
           view.execute({ type: 'results.select', input: { resultId } })
-          setShown(PAGE_SIZE)
         }}
       >
         <Label className={styles.label}>Published result</Label>
@@ -252,7 +356,10 @@ export function ResultsPage() {
             disabledReason={null}
             onPress={() => {
               const exportedAt = new Date().toISOString()
-              download(csvFileName(entry), resultCsv(state, entry, exportedAt))
+              downloadText(
+                csvFileName(entry),
+                resultCsv(state, entry, exportedAt),
+              )
               workbench.record({
                 type: 'results.export',
                 title: 'Export results as CSV',
@@ -327,27 +434,19 @@ export function ResultsPage() {
               id="results.series"
               level={4}
             >
-              <table
-                className={componentStyles.table}
+              <WorkbenchTable
+                id="results.series"
                 aria-label={series.title}
-              >
-                <thead>
-                  <tr>
-                    {series.categories.map((category) => (
-                      <th key={category} scope="col">
-                        {category}
-                      </th>
-                    ))}
-                  </tr>
-                </thead>
-                <tbody>
-                  <tr>
-                    {series.values.map((value, index) => (
-                      <td key={index}>{NUMBER.format(value)}</td>
-                    ))}
-                  </tr>
-                </tbody>
-              </table>
+                columns={seriesColumns(series.unit, resolution)}
+                rows={series.categories.map((category, index) => ({
+                  category,
+                  value: series.values[index] ?? null,
+                }))}
+                rowKey={(row) => row.category}
+                exportContext={[
+                  `result: ${entry.label}, run ${entry.result.runId}`,
+                ]}
+              />
             </Section>
           </>
         ) : null}
@@ -357,96 +456,21 @@ export function ResultsPage() {
         <h3 className={styles.label}>
           Buildings in {entry.label}, highest demand first
         </h3>
-        <div className={styles.tableWrap}>
-          <table
-            className={componentStyles.table}
-            aria-label="Building results"
-          >
-            <thead>
-              <tr>
-                <th scope="col">Building</th>
-                <th scope="col">Use</th>
-                <th scope="col">Archetype</th>
-                <th scope="col">Floor area (m²)</th>
-                <th scope="col">Annual demand (kWh)</th>
-                <th scope="col">EUI (kWh/m²)</th>
-                {entry.compareTo ? (
-                  <th scope="col">Saving vs baseline (kWh)</th>
-                ) : null}
-                <th scope="col">
-                  <span className="visually-hidden">Actions</span>
-                </th>
-              </tr>
-            </thead>
-            <tbody>
-              {visibleRows.map((row) => (
-                <tr
-                  key={row.id}
-                  aria-current={row.id === buildingId ? 'true' : undefined}
-                  className={cx(row.id === buildingId && styles.currentRow)}
-                >
-                  <th scope="row">{row.id}</th>
-                  <td>{row.use}</td>
-                  <td>{row.archetype}</td>
-                  <td>
-                    {row.floorAreaM2 === null
-                      ? '—'
-                      : NUMBER.format(row.floorAreaM2)}
-                  </td>
-                  <td>{NUMBER.format(row.annualKwh)}</td>
-                  <td>{row.euiKwhPerM2 ?? '—'}</td>
-                  {entry.compareTo ? (
-                    <td>
-                      {row.savingKwh === null
-                        ? '—'
-                        : NUMBER.format(row.savingKwh)}
-                    </td>
-                  ) : null}
-                  <td className={styles.rowActions}>
-                    <button
-                      type="button"
-                      className={componentStyles.button}
-                      aria-label={`Show results of ${row.id}`}
-                      onClick={() =>
-                        view.execute({
-                          type: 'results.showBuilding',
-                          input: { buildingId: row.id },
-                        })
-                      }
-                    >
-                      Show
-                    </button>
-                    <button
-                      type="button"
-                      className={componentStyles.button}
-                      aria-label={`Select ${row.id} on the map and table`}
-                      onClick={() =>
-                        void client.execute({
-                          type: 'selection.set',
-                          input: { entityType: 'building', ids: [row.id] },
-                        })
-                      }
-                    >
-                      Select
-                    </button>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-        {rows.length > shown ? (
-          <p className={styles.more}>
-            Showing {shown} of {rows.length}.{' '}
-            <button
-              type="button"
-              className={componentStyles.button}
-              onClick={() => setShown(shown + PAGE_SIZE)}
-            >
-              Show {Math.min(PAGE_SIZE, rows.length - shown)} more
-            </button>
-          </p>
-        ) : null}
+        <WorkbenchTable
+          // A new result starts from its first page.
+          key={entry.id}
+          id="results.buildings"
+          aria-label="Building results"
+          columns={buildingColumns}
+          rows={rows}
+          rowKey={(row) => row.id}
+          pageSize={PAGE_SIZE}
+          currentKey={buildingId}
+          exportContext={[
+            `result: ${entry.label}, run ${entry.result.runId}`,
+            `currentness: ${entry.currentness}`,
+          ]}
+        />
       </section>
     </section>
   )

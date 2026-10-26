@@ -137,7 +137,7 @@ test('data representation session colors the map and adds a chart from a specifi
   await expect(chart).toBeVisible()
   await chart.getByText('Show data table for Baseline monthly demand').click()
   await expect(
-    chart.getByRole('table', { name: 'Baseline monthly demand data' }),
+    chart.getByRole('grid', { name: 'Baseline monthly demand data' }),
   ).toContainText('Dec')
   expect(await seriousViolations(page)).toEqual([])
 })

@@ -64,14 +64,14 @@ test('validates meters, fits a variant, and adopts it only on request', async ({
       timeout: 15_000,
     },
   )
-  const variants = calibration.getByRole('table', {
+  const variants = calibration.getByRole('grid', {
     name: 'Calibrated variants',
   })
   await expect(variants).toContainText('Available')
   // Publishing a variant leaves the working baseline as it was.
   await expect(calibration).toContainText('Working baseline: modeled baseline')
   await expect(
-    calibration.getByRole('table', { name: /^Monthly residuals of/ }),
+    calibration.getByRole('grid', { name: /^Monthly residuals of/ }),
   ).toContainText('Jan')
 
   await variants

@@ -166,7 +166,7 @@ function createCoreServices(): CoreServices {
     })
   }
   const layout = createLayoutController(workbench, storage)
-  const view = createViewStore(workbench)
+  const view = createViewStore(workbench, storage)
   const lifecycle = createProjectLifecycle({ workbench, client })
   const agent = createScriptedAgent({
     workbench,

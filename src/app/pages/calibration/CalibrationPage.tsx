@@ -31,11 +31,11 @@ import { CapabilityBadge } from '../../components/CapabilityBadge.tsx'
 import componentStyles from '../../components/components.module.css'
 import formStyles from '../../components/forms.module.css'
 import { PanelHeader } from '../../components/PanelHeader.tsx'
+import { WorkbenchTable } from '../../components/WorkbenchTable.tsx'
 import { cx } from '../../cx.ts'
 import { waitingReason } from '../../service/usePendingReason.ts'
+import type { DataColumn } from '../../tables/tableModel.ts'
 import styles from './calibration.module.css'
-
-const KWH = new Intl.NumberFormat('en-US', { maximumFractionDigits: 0 })
 
 function isUnit(value: string): value is MeterUnit {
   return value in UNITS
@@ -45,44 +45,133 @@ function metrics(value: FitMetrics): string {
   return `CV(RMSE) ${value.cvrmsePercent}%, NMBE ${value.nmbePercent}%`
 }
 
-function residualPercent(modeled: number, metered: number): string {
-  if (metered === 0) return '—'
-  return `${Math.round(((metered - modeled) / metered) * 1000) / 10}%`
+/** How far a modeled value misses the meter, in percent of the meter. */
+function residualPercent(modeled: number, metered: number): number | null {
+  if (metered === 0) return null
+  return Math.round(((metered - modeled) / metered) * 1000) / 10
+}
+
+type ResidualRow = {
+  month: string
+  metered: number
+  modeled: number
+  calibrated: number
+}
+
+const KWH_COLUMN = { type: 'number', unit: 'kWh' } as const
+const RESIDUAL_COLUMN = {
+  type: 'number',
+  unit: '%',
+  decimals: 1,
+  empty: '—',
+} as const
+
+const RESIDUAL_COLUMNS: DataColumn<ResidualRow>[] = [
+  {
+    id: 'month',
+    header: 'Month',
+    value: (row) => row.month,
+    rowHeader: true,
+    sortable: false,
+  },
+  {
+    id: 'metered',
+    header: 'Metered',
+    value: (row) => row.metered,
+    ...KWH_COLUMN,
+  },
+  {
+    id: 'modeled',
+    header: 'Modeled',
+    value: (row) => row.modeled,
+    ...KWH_COLUMN,
+  },
+  {
+    id: 'before',
+    header: 'Residual before',
+    value: (row) => residualPercent(row.modeled, row.metered),
+    ...RESIDUAL_COLUMN,
+  },
+  {
+    id: 'calibrated',
+    header: 'Calibrated',
+    value: (row) => row.calibrated,
+    ...KWH_COLUMN,
+  },
+  {
+    id: 'after',
+    header: 'Residual after',
+    value: (row) => residualPercent(row.calibrated, row.metered),
+    ...RESIDUAL_COLUMN,
+  },
+]
+
+type PreviewRow = {
+  month: string
+  value: number | null
+  metered: number | null
+  modeled: number | null
+}
+
+function previewColumns(unit: MeterUnit): DataColumn<PreviewRow>[] {
+  return [
+    {
+      id: 'month',
+      header: 'Month',
+      value: (row) => row.month,
+      rowHeader: true,
+      sortable: false,
+    },
+    {
+      id: 'value',
+      header: 'Value',
+      value: (row) => row.value,
+      type: 'number',
+      unit,
+      decimals: 3,
+      empty: 'Missing',
+    },
+    {
+      id: 'metered',
+      header: 'Metered',
+      value: (row) => row.metered,
+      ...KWH_COLUMN,
+      empty: '—',
+    },
+    {
+      id: 'modeled',
+      header: 'Modeled',
+      value: (row) => row.modeled,
+      ...KWH_COLUMN,
+      empty: '—',
+    },
+    {
+      id: 'residual',
+      header: 'Residual',
+      value: (row) =>
+        row.metered === null || row.modeled === null
+          ? null
+          : residualPercent(row.modeled, row.metered),
+      ...RESIDUAL_COLUMN,
+    },
+  ]
 }
 
 function VariantDetail({ variant }: { variant: CalibratedVariant }) {
   return (
-    <table
-      className={componentStyles.table}
+    <WorkbenchTable
+      id="calibration.residuals"
       aria-label={`Monthly residuals of ${variant.label}`}
-    >
-      <thead>
-        <tr>
-          <th scope="col">Month</th>
-          <th scope="col">Metered (kWh)</th>
-          <th scope="col">Modeled (kWh)</th>
-          <th scope="col">Residual before</th>
-          <th scope="col">Calibrated (kWh)</th>
-          <th scope="col">Residual after</th>
-        </tr>
-      </thead>
-      <tbody>
-        {variant.meteredKwh.map((metered, index) => {
-          const modeled = variant.modeledKwh[index] ?? 0
-          const calibrated = variant.calibratedKwh[index] ?? 0
-          return (
-            <tr key={index}>
-              <th scope="row">{MONTHS[index]}</th>
-              <td>{KWH.format(metered)}</td>
-              <td>{KWH.format(modeled)}</td>
-              <td>{residualPercent(modeled, metered)}</td>
-              <td>{KWH.format(calibrated)}</td>
-              <td>{residualPercent(calibrated, metered)}</td>
-            </tr>
-          )
-        })}
-      </tbody>
-    </table>
+      columns={RESIDUAL_COLUMNS}
+      rows={variant.meteredKwh.map((metered, index) => ({
+        month: MONTHS[index] ?? String(index + 1),
+        metered,
+        modeled: variant.modeledKwh[index] ?? 0,
+        calibrated: variant.calibratedKwh[index] ?? 0,
+      }))}
+      rowKey={(row) => row.month}
+      exportContext={[`variant: ${variant.label}`]}
+    />
   )
 }
 
@@ -119,6 +208,101 @@ export function CalibrationPage() {
   const fitReason =
     waitingReason(pending, 'calibration.fit', 'the fit is being queued') ??
     fitBlocker(state, { meterId, unit })
+  const statusOf = (variant: CalibratedVariant) => {
+    if (calibration.adoptedVariantId === variant.id) return 'Working baseline'
+    if (variant.unitMismatch) return 'Unit does not match the export'
+    return source?.result.runId !== variant.baselineRunId
+      ? 'Outdated: baseline changed'
+      : 'Available'
+  }
+  const variantColumns: DataColumn<CalibratedVariant>[] = [
+    {
+      id: 'variant',
+      header: 'Variant',
+      value: (variant) => variant.label,
+      rowHeader: true,
+      render: (variant) => (
+        <button
+          type="button"
+          className={styles.link}
+          aria-pressed={detail?.id === variant.id}
+          onClick={() => setShown(variant.id)}
+        >
+          {variant.label}
+        </button>
+      ),
+    },
+    {
+      id: 'factor',
+      header: 'Factor',
+      value: (variant) => variant.factor,
+      type: 'number',
+      decimals: 3,
+    },
+    {
+      id: 'before',
+      header: 'Before',
+      value: (variant) => metrics(variant.before),
+    },
+    {
+      id: 'after',
+      header: 'After',
+      value: (variant) => metrics(variant.after),
+    },
+    {
+      id: 'thresholds',
+      header: 'Thresholds',
+      value: (variant) => (meetsThresholds(variant.after) ? 'Met' : 'Not met'),
+      type: 'enum',
+    },
+    { id: 'status', header: 'Status', value: statusOf, type: 'enum' },
+    {
+      id: 'actions',
+      header: 'Actions',
+      value: () => null,
+      action: true,
+      width: 100,
+      render: (variant) =>
+        calibration.adoptedVariantId === variant.id ? (
+          <ActionButton
+            label="Revert to the modeled baseline"
+            disabledReason={
+              waitingReason(
+                pending,
+                'calibration.revert',
+                'the baseline is being reverted',
+              ) ?? runLockReason(state)
+            }
+            onPress={() =>
+              void client.execute({ type: 'calibration.revert', input: {} })
+            }
+          >
+            Revert
+          </ActionButton>
+        ) : (
+          <ActionButton
+            label={`Adopt ${variant.label} as the working baseline`}
+            disabledReason={
+              waitingReason(
+                pending,
+                'calibration.adopt',
+                'the variant is being adopted',
+              ) ??
+              runLockReason(state) ??
+              adoptBlocker(state, variant.id)
+            }
+            onPress={() =>
+              void client.execute({
+                type: 'calibration.adopt',
+                input: { variantId: variant.id },
+              })
+            }
+          >
+            Adopt
+          </ActionButton>
+        ),
+    },
+  ]
 
   return (
     <section
@@ -204,36 +388,19 @@ export function CalibrationPage() {
               ))}
             </ul>
           ) : null}
-          <table className={componentStyles.table} aria-label="Meter preview">
-            <thead>
-              <tr>
-                <th scope="col">Month</th>
-                <th scope="col">Value ({unit})</th>
-                <th scope="col">Metered (kWh)</th>
-                <th scope="col">Modeled (kWh)</th>
-                <th scope="col">Residual</th>
-              </tr>
-            </thead>
-            <tbody>
-              {series.rows.map((row, index) => {
-                const kwh = metered?.[index]
-                const modeled = source?.result.monthlyKwh[index]
-                return (
-                  <tr key={row.month}>
-                    <th scope="row">{row.month}</th>
-                    <td>{row.value === null ? 'Missing' : row.value}</td>
-                    <td>{kwh === undefined ? '—' : KWH.format(kwh)}</td>
-                    <td>{modeled === undefined ? '—' : KWH.format(modeled)}</td>
-                    <td>
-                      {kwh === undefined || modeled === undefined
-                        ? '—'
-                        : residualPercent(modeled, kwh)}
-                    </td>
-                  </tr>
-                )
-              })}
-            </tbody>
-          </table>
+          <WorkbenchTable
+            id="calibration.meterPreview"
+            aria-label="Meter preview"
+            columns={previewColumns(unit)}
+            rows={series.rows.map((row, index) => ({
+              month: row.month,
+              value: row.value,
+              metered: metered?.[index] ?? null,
+              modeled: source?.result.monthlyKwh[index] ?? null,
+            }))}
+            rowKey={(row) => row.month}
+            exportContext={[`meter series: ${series.label}`]}
+          />
           <div className={styles.actions}>
             <ActionButton
               label={`Fit the modeled baseline to ${series.label}`}
@@ -291,104 +458,13 @@ export function CalibrationPage() {
             No calibrated variants yet. Run a fit to publish one.
           </p>
         ) : (
-          <table
-            className={componentStyles.table}
+          <WorkbenchTable
+            id="calibration.variants"
             aria-label="Calibrated variants"
-          >
-            <thead>
-              <tr>
-                <th scope="col">Variant</th>
-                <th scope="col">Factor</th>
-                <th scope="col">Before</th>
-                <th scope="col">After</th>
-                <th scope="col">Thresholds</th>
-                <th scope="col">Status</th>
-                <th scope="col">
-                  <span className="visually-hidden">Actions</span>
-                </th>
-              </tr>
-            </thead>
-            <tbody>
-              {variants.map((variant) => {
-                const blocker = adoptBlocker(state, variant.id)
-                const isAdopted = calibration.adoptedVariantId === variant.id
-                const outdated =
-                  !isAdopted && source?.result.runId !== variant.baselineRunId
-                return (
-                  <tr key={variant.id}>
-                    <th scope="row">
-                      <button
-                        type="button"
-                        className={styles.link}
-                        aria-pressed={detail?.id === variant.id}
-                        onClick={() => setShown(variant.id)}
-                      >
-                        {variant.label}
-                      </button>
-                    </th>
-                    <td>{variant.factor}</td>
-                    <td>{metrics(variant.before)}</td>
-                    <td>{metrics(variant.after)}</td>
-                    <td>
-                      {meetsThresholds(variant.after) ? 'Met' : 'Not met'}
-                    </td>
-                    <td>
-                      {isAdopted
-                        ? 'Working baseline'
-                        : variant.unitMismatch
-                          ? 'Unit does not match the export'
-                          : outdated
-                            ? 'Outdated: baseline changed'
-                            : 'Available'}
-                    </td>
-                    <td>
-                      {isAdopted ? (
-                        <ActionButton
-                          label="Revert to the modeled baseline"
-                          disabledReason={
-                            waitingReason(
-                              pending,
-                              'calibration.revert',
-                              'the baseline is being reverted',
-                            ) ?? runLockReason(state)
-                          }
-                          onPress={() =>
-                            void client.execute({
-                              type: 'calibration.revert',
-                              input: {},
-                            })
-                          }
-                        >
-                          Revert
-                        </ActionButton>
-                      ) : (
-                        <ActionButton
-                          label={`Adopt ${variant.label} as the working baseline`}
-                          disabledReason={
-                            waitingReason(
-                              pending,
-                              'calibration.adopt',
-                              'the variant is being adopted',
-                            ) ??
-                            runLockReason(state) ??
-                            blocker
-                          }
-                          onPress={() =>
-                            void client.execute({
-                              type: 'calibration.adopt',
-                              input: { variantId: variant.id },
-                            })
-                          }
-                        >
-                          Adopt
-                        </ActionButton>
-                      )}
-                    </td>
-                  </tr>
-                )
-              })}
-            </tbody>
-          </table>
+            columns={variantColumns}
+            rows={variants}
+            rowKey={(variant) => variant.id}
+          />
         )}
         {detail ? <VariantDetail variant={detail} /> : null}
         {adopted ? (
