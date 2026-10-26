@@ -8,15 +8,8 @@
 }
 
 .header {
-  display: flex;
-  align-items: center;
-  gap: var(--space-2);
-  padding: var(--space-2) var(--space-4);
-}
-
-.header h2 {
   margin: 0;
-  font-size: var(--font-size-title);
+  padding: var(--space-2) var(--space-4);
 }
 
 .body {
@@ -122,21 +115,6 @@
 .stageName {
   margin: 0 0 var(--space-1);
   font-size: var(--font-size-title);
-}
-
-.facts {
-  display: grid;
-  grid-template-columns: max-content 1fr;
-  gap: 0.25rem var(--space-2);
-  margin: 0;
-}
-
-.facts dt {
-  color: var(--color-text-muted);
-}
-
-.facts dd {
-  margin: 0;
 }
 
 .actions {

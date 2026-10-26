@@ -18,6 +18,7 @@ import { cx } from '../cx.ts'
 import { AccountAvatar } from '../components/AccountAvatar.tsx'
 import { DEMO_ACCOUNT } from '../demoAccount.ts'
 import { toAriaKeyShortcut } from '../shortcuts.ts'
+import menuStyles from '../components/menus.module.css'
 import styles from './shell.module.css'
 import markUrl from '../../assets/brand/energyatlas-mark.svg'
 
@@ -75,7 +76,7 @@ export function Ribbon({ actions, invoke }: RibbonProps) {
             onClick={() => invoke(palette)}
           >
             Search commands
-            <kbd className={styles.kbd}>{palette.shortcut}</kbd>
+            <kbd className={menuStyles.kbd}>{palette.shortcut}</kbd>
           </button>
         ) : null}
         <Separator orientation="vertical" className={styles.separator} />
@@ -186,22 +187,22 @@ function ActionItem({ action }: { action: AppAction }) {
     <MenuItem
       id={action.id}
       textValue={action.label}
-      className={styles.menuItem}
+      className={menuStyles.menuItem}
     >
-      <span className={styles.menuCheck} aria-hidden="true">
+      <span className={menuStyles.menuCheck} aria-hidden="true">
         {action.pressed ? <Check size={14} /> : null}
       </span>
-      <Text slot="label" className={styles.menuLabel}>
+      <Text slot="label" className={menuStyles.menuLabel}>
         {action.label}
         {action.pressed ? <span className="visually-hidden"> (on)</span> : null}
       </Text>
       {action.disabledReason ? (
-        <Text slot="description" className={styles.menuDescription}>
+        <Text slot="description" className={menuStyles.menuDescription}>
           {action.disabledReason}
         </Text>
       ) : null}
       {action.shortcut ? (
-        <Keyboard className={styles.kbd}>{action.shortcut}</Keyboard>
+        <Keyboard className={menuStyles.kbd}>{action.shortcut}</Keyboard>
       ) : null}
     </MenuItem>
   )
@@ -242,8 +243,8 @@ function ActionMenu({
       </Button>
       <Popover
         className={cx(
-          styles.popover,
-          placement === 'bottom end' && styles.popoverEnd,
+          menuStyles.popover,
+          placement === 'bottom end' && menuStyles.popoverEnd,
         )}
         placement={placement}
       >
@@ -288,7 +289,7 @@ function MenuLevel({
   return (
     <Menu
       aria-label={`${label} menu`}
-      className={styles.menu}
+      className={menuStyles.menu}
       disabledKeys={disabledIds(here)}
       onAction={onAction}
     >
@@ -297,18 +298,18 @@ function MenuLevel({
       ))}
       {submenus.map((submenu) => (
         <SubmenuTrigger key={submenu}>
-          <MenuItem textValue={submenu} className={styles.menuItem}>
-            <span className={styles.menuCheck} aria-hidden="true" />
-            <Text slot="label" className={styles.menuLabel}>
+          <MenuItem textValue={submenu} className={menuStyles.menuItem}>
+            <span className={menuStyles.menuCheck} aria-hidden="true" />
+            <Text slot="label" className={menuStyles.menuLabel}>
               {submenu}
             </Text>
             <ChevronRight
               size={14}
               aria-hidden="true"
-              className={styles.submenuChevron}
+              className={menuStyles.submenuChevron}
             />
           </MenuItem>
-          <Popover className={styles.popover} placement="right top">
+          <Popover className={menuStyles.popover} placement="right top">
             <MenuLevel
               label={submenu}
               actions={actions.filter(

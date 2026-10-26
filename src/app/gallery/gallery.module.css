@@ -1,0 +1,89 @@
+/* The component gallery (decision 0027): every shared component in its
+   states, on the app's own tokens. The page scrolls itself because the
+   workbench stylesheet hides overflow on the body. */
+.page {
+  box-sizing: border-box;
+  height: 100%;
+  overflow: auto;
+  padding: var(--space-3) var(--space-4) var(--space-6);
+  background: var(--color-bg);
+  color: var(--color-text);
+  font-family: var(--font-sans);
+  font-size: var(--font-size-base);
+}
+
+.page h1 {
+  margin: 0;
+  font-size: var(--font-size-title);
+}
+
+.intro {
+  max-width: 48rem;
+  margin: 0 0 var(--space-3);
+  color: var(--color-text-muted);
+}
+
+.grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, 26rem), 1fr));
+  border-top: var(--rule);
+  border-left: var(--rule);
+}
+
+.cell {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  min-width: 0;
+  padding: var(--space-3);
+  border-right: var(--rule);
+  border-bottom: var(--rule);
+}
+
+.cell > h2 {
+  margin: 0;
+  color: var(--color-text-muted);
+  font-family: var(--label-font);
+  font-size: var(--label-size);
+  font-weight: var(--label-weight);
+  letter-spacing: var(--label-tracking);
+  text-transform: var(--label-case);
+}
+
+.wide {
+  grid-column: 1 / -1;
+}
+
+.row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+/* A frame the reader can drag narrower to watch the toolbar overflow. */
+.resizable {
+  min-width: 8rem;
+  max-width: 100%;
+  padding: var(--space-2);
+  overflow: hidden;
+  border: 1px dashed var(--color-border-interactive);
+  resize: horizontal;
+}
+
+.narrow {
+  width: 14rem;
+}
+
+.pane {
+  padding: var(--space-2);
+  border: var(--rule);
+  background: var(--color-surface);
+}
+
+.log {
+  margin: 0;
+  color: var(--color-text-muted);
+  font-family: var(--font-mono);
+  font-size: var(--font-size-small);
+}

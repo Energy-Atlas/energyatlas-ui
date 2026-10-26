@@ -3,6 +3,7 @@ import { useId, useMemo, type ReactNode } from 'react'
 import { useServices, useWorkbenchSnapshot } from '../WorkbenchContext.tsx'
 import { ActionButton } from '../components/ActionButton.tsx'
 import { CapabilityBadge } from '../components/CapabilityBadge.tsx'
+import { PropertyList } from '../components/PropertyList.tsx'
 import { MapProperties } from './MapProperties.tsx'
 import styles from './inspection.module.css'
 import {
@@ -25,14 +26,9 @@ function Section({ title, children }: { title: string; children: ReactNode }) {
 
 function Facts({ facts }: { facts: Fact[] }) {
   return (
-    <dl className={styles.facts}>
-      {facts.map((fact) => (
-        <div key={fact.label} className={styles.fact}>
-          <dt>{fact.label}</dt>
-          <dd>{fact.value}</dd>
-        </div>
-      ))}
-    </dl>
+    <PropertyList
+      items={facts.map((fact) => ({ label: fact.label, value: fact.value }))}
+    />
   )
 }
 

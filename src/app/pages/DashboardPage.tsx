@@ -31,6 +31,9 @@ import { CapabilityBadge, StatusTag } from '../components/CapabilityBadge.tsx'
 import componentStyles from '../components/components.module.css'
 import { EmptyState } from '../components/EmptyState.tsx'
 import formStyles from '../components/forms.module.css'
+import { InlineAlert } from '../components/InlineAlert.tsx'
+import { Section } from '../components/Section.tsx'
+import { PanelHeader } from '../components/PanelHeader.tsx'
 import { cx } from '../cx.ts'
 import { forStage, waitingReason } from '../service/usePendingReason.ts'
 import { compileChartSpec, type ChartSpec } from '../view/chartSpec.ts'
@@ -155,8 +158,11 @@ function AddedChart({ spec }: { spec: ChartSpec }) {
         height={compiled.height}
         label={compiled.summary}
       />
-      <details className={styles.dataTable}>
-        <summary>Show data table for {spec.title}</summary>
+      <Section
+        title={`Show data table for ${spec.title}`}
+        className={styles.dataTable}
+        level={4}
+      >
         <table
           className={componentStyles.table}
           aria-label={compiled.table.caption}
@@ -183,7 +189,7 @@ function AddedChart({ spec }: { spec: ChartSpec }) {
             ))}
           </tbody>
         </table>
-      </details>
+      </Section>
     </article>
   )
 }
@@ -226,10 +232,12 @@ export function DashboardPage() {
   )
 
   const header = (
-    <header className={styles.header}>
-      <h2 id={headingId}>Dashboard</h2>
-      <CapabilityBadge id="dashboard.comparison" />
-    </header>
+    <PanelHeader
+      className={styles.header}
+      title="Dashboard"
+      headingId={headingId}
+      meta={<CapabilityBadge id="dashboard.comparison" />}
+    />
   )
 
   const baseline = data.baseline
@@ -265,33 +273,34 @@ export function DashboardPage() {
       {header}
 
       {staleStage && staleStageId ? (
-        <div className={cx(componentStyles.notice, styles.staleNotice)}>
-          <TriangleAlert size={16} aria-hidden="true" />
-          <span>
-            Scenario results are outdated: scenario inputs changed after the
-            last run. Rerun &ldquo;{staleStage.name}&rdquo; and the stages after
-            it.
-          </span>
-          <ActionButton
-            label={`Run ${staleStage.name}`}
-            disabledReason={
-              waitingReason(
-                pending,
-                'workflow.runStage',
-                'the run was requested',
-                forStage(staleStageId),
-              ) ?? stageSubmitBlocker(state, staleStageId)
-            }
-            onPress={() =>
-              void client.execute({
-                type: 'workflow.runStage',
-                input: { stageId: staleStageId },
-              })
-            }
-          >
-            Run {staleStage.name}
-          </ActionButton>
-        </div>
+        <InlineAlert
+          tone="warning"
+          className={styles.staleNotice}
+          actions={
+            <ActionButton
+              label={`Run ${staleStage.name}`}
+              disabledReason={
+                waitingReason(
+                  pending,
+                  'workflow.runStage',
+                  'the run was requested',
+                  forStage(staleStageId),
+                ) ?? stageSubmitBlocker(state, staleStageId)
+              }
+              onPress={() =>
+                void client.execute({
+                  type: 'workflow.runStage',
+                  input: { stageId: staleStageId },
+                })
+              }
+            >
+              Run {staleStage.name}
+            </ActionButton>
+          }
+        >
+          Scenario results are outdated: scenario inputs changed after the last
+          run. Rerun &ldquo;{staleStage.name}&rdquo; and the stages after it.
+        </InlineAlert>
       ) : null}
 
       <section className={styles.controls} aria-labelledby={controlsHeadingId}>
@@ -494,8 +503,12 @@ export function DashboardPage() {
             height={300}
             label={`Line chart of monthly demand for the baseline and ${visible.length} scenario(s). Values are in the data table below.`}
           />
-          <details className={styles.dataTable}>
-            <summary>Show monthly data table</summary>
+          <Section
+            title="Show monthly data table"
+            id="dashboard.monthly"
+            className={styles.dataTable}
+            level={4}
+          >
             <table
               className={componentStyles.table}
               aria-label="Monthly demand data"
@@ -527,7 +540,7 @@ export function DashboardPage() {
                 ))}
               </tbody>
             </table>
-          </details>
+          </Section>
         </article>
 
         <article className={styles.card} aria-label="Annual demand">
@@ -537,8 +550,12 @@ export function DashboardPage() {
             height={72 + 44 * (visible.length + 1)}
             label={`Bar chart of annual demand for the baseline and ${visible.length} scenario(s). Values are in the data table below.`}
           />
-          <details className={styles.dataTable}>
-            <summary>Show annual data table</summary>
+          <Section
+            title="Show annual data table"
+            id="dashboard.annual"
+            className={styles.dataTable}
+            level={4}
+          >
             <table
               className={componentStyles.table}
               aria-label="Annual demand data"
@@ -574,7 +591,7 @@ export function DashboardPage() {
                 )}
               </tbody>
             </table>
-          </details>
+          </Section>
         </article>
 
         <article className={styles.card} aria-label="Transformer loading">

@@ -31,6 +31,8 @@ import type { Asset, AssetKind, WorkflowState } from '../../domain/types.ts'
 import { useServices, useWorkbenchSnapshot } from '../WorkbenchContext.tsx'
 import { ActionButton } from '../components/ActionButton.tsx'
 import { CapabilityBadge, StatusTag } from '../components/CapabilityBadge.tsx'
+import { PanelHeader } from '../components/PanelHeader.tsx'
+import { PropertyList } from '../components/PropertyList.tsx'
 import { cx } from '../cx.ts'
 import { PAGES, type PageId } from '../layout/layoutController.ts'
 import {
@@ -95,10 +97,11 @@ export function AssetsPanel() {
 
   return (
     <section className={styles.panel} aria-labelledby={headingId}>
-      <header className={styles.panelHeader}>
-        <h2 id={headingId}>Assets</h2>
-        <CapabilityBadge id="assets.tree" />
-      </header>
+      <PanelHeader
+        title="Assets"
+        headingId={headingId}
+        meta={<CapabilityBadge id="assets.tree" />}
+      />
       <Tree
         aria-label="Project assets"
         className={treeStyles.tree}
@@ -199,29 +202,29 @@ function AssetDetails({
       aria-label="Asset details"
     >
       <h3>{asset.name}</h3>
-      <dl className={treeStyles.facts}>
-        <dt>Kind</dt>
-        <dd>{ASSET_KIND_LABELS[asset.kind]}</dd>
-        {asset.summary ? (
-          <>
-            <dt>Summary</dt>
-            <dd>{asset.summary}</dd>
-          </>
-        ) : null}
-        <dt>Provenance</dt>
-        <dd>{describeProvenance(asset, stages)}</dd>
-        {capability ? (
-          <>
-            <dt>Status</dt>
-            <dd>
-              {capability.status === 'working' ? null : (
-                <StatusTag status={capability.status} />
-              )}{' '}
-              {capability.explanation}
-            </dd>
-          </>
-        ) : null}
-      </dl>
+      <PropertyList
+        items={[
+          { label: 'Kind', value: ASSET_KIND_LABELS[asset.kind] },
+          asset.summary ? { label: 'Summary', value: asset.summary } : null,
+          {
+            label: 'Provenance',
+            value: describeProvenance(asset, stages),
+          },
+          capability
+            ? {
+                label: 'Status',
+                value: (
+                  <>
+                    {capability.status === 'working' ? null : (
+                      <StatusTag status={capability.status} />
+                    )}{' '}
+                    {capability.explanation}
+                  </>
+                ),
+              }
+            : null,
+        ]}
+      />
       {pages.length > 0 ? (
         <div className={treeStyles.detailActions}>
           {pages.map((page) => (

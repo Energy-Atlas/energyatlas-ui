@@ -30,6 +30,7 @@ import { ActionButton } from '../../components/ActionButton.tsx'
 import { CapabilityBadge } from '../../components/CapabilityBadge.tsx'
 import componentStyles from '../../components/components.module.css'
 import formStyles from '../../components/forms.module.css'
+import { PanelHeader } from '../../components/PanelHeader.tsx'
 import { cx } from '../../cx.ts'
 import { waitingReason } from '../../service/usePendingReason.ts'
 import styles from './calibration.module.css'
@@ -124,13 +125,17 @@ export function CalibrationPage() {
       className={cx(componentStyles.page, styles.page)}
       aria-labelledby={headingId}
     >
-      <header className={styles.header}>
-        <h2 id={headingId}>Calibration</h2>
-        <CapabilityBadge id="calibration.fit" />
-        <span className={styles.working}>
-          Working baseline: {adopted ? adopted.label : 'modeled baseline'}
-        </span>
-      </header>
+      <PanelHeader
+        className={styles.header}
+        title="Calibration"
+        headingId={headingId}
+        meta={<CapabilityBadge id="calibration.fit" />}
+        actions={
+          <span className={styles.working}>
+            Working baseline: {adopted ? adopted.label : 'modeled baseline'}
+          </span>
+        }
+      />
 
       <section aria-label="Meter series" className={styles.section}>
         <RadioGroup

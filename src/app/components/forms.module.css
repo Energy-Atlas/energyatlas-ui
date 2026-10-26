@@ -192,13 +192,3 @@
   outline: 2px solid var(--color-focus);
   outline-offset: 2px;
 }
-
-.alert {
-  margin: 0;
-  color: var(--tone-danger-text);
-}
-
-.success {
-  margin: 0;
-  color: var(--tone-success-text);
-}

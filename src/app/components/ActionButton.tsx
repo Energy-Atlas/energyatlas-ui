@@ -14,6 +14,22 @@ type ActionButtonProps = {
 }
 
 /**
+ * Records why an unavailable control could not run, in the operation log
+ * shown in the status bar. Toolbar and MenuButton take it as `onBlocked`.
+ */
+export function useRecordBlocked(): (label: string, reason: string) => void {
+  const { workbench } = useServices()
+  return (label, reason) =>
+    workbench.record({
+      type: 'action.blocked',
+      title: label,
+      status: 'rejected',
+      summary: '',
+      issues: [{ path: '', message: reason }],
+    })
+}
+
+/**
  * A button that stays focusable when unavailable. Pressing it records the
  * reason in the operation log (shown in the status bar) instead of silently
  * doing nothing.
@@ -25,7 +41,7 @@ export function ActionButton({
   onPress,
   variant = 'default',
 }: ActionButtonProps) {
-  const { workbench } = useServices()
+  const recordBlocked = useRecordBlocked()
   return (
     <button
       type="button"
@@ -35,13 +51,7 @@ export function ActionButton({
       title={disabledReason ?? label}
       onClick={() => {
         if (disabledReason) {
-          workbench.record({
-            type: 'action.blocked',
-            title: label,
-            status: 'rejected',
-            summary: '',
-            issues: [{ path: '', message: disabledReason }],
-          })
+          recordBlocked(label, disabledReason)
           return
         }
         onPress()

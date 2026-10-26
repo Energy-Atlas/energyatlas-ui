@@ -40,6 +40,9 @@ import { CapabilityBadge } from '../components/CapabilityBadge.tsx'
 import { StateBadge } from '../components/StateBadge.tsx'
 import componentStyles from '../components/components.module.css'
 import formStyles from '../components/forms.module.css'
+import { InlineAlert } from '../components/InlineAlert.tsx'
+import { PanelHeader } from '../components/PanelHeader.tsx'
+import { PropertyList } from '../components/PropertyList.tsx'
 import { cx } from '../cx.ts'
 import { forStage, waitingReason } from '../service/usePendingReason.ts'
 import styles from './roadmap.module.css'
@@ -176,10 +179,12 @@ export function RoadmapPage() {
 
   return (
     <section className={styles.roadmap} aria-labelledby={headingId}>
-      <header className={styles.header}>
-        <h2 id={headingId}>Roadmap</h2>
-        <CapabilityBadge id="workflow.graph" />
-      </header>
+      <PanelHeader
+        className={styles.header}
+        title="Roadmap"
+        headingId={headingId}
+        meta={<CapabilityBadge id="workflow.graph" />}
+      />
       <div className={styles.body}>
         <div
           className={styles.canvas}
@@ -250,14 +255,16 @@ function StageDetails() {
         <StateBadge state={states[stageId] ?? 'future'} />
       </div>
       <p className={componentStyles.muted}>{stage.description}</p>
-      <dl className={styles.facts}>
-        <dt>Depends on</dt>
-        <dd>{names(upstreamIds(workflow, stageId))}</dd>
-        <dt>Feeds</dt>
-        <dd>{names(downstreamIds(workflow, stageId))}</dd>
-        <dt>Last run</dt>
-        <dd>{stage.lastRun?.message ?? 'Not run yet.'}</dd>
-      </dl>
+      <PropertyList
+        items={[
+          { label: 'Depends on', value: names(upstreamIds(workflow, stageId)) },
+          { label: 'Feeds', value: names(downstreamIds(workflow, stageId)) },
+          {
+            label: 'Last run',
+            value: stage.lastRun?.message ?? 'Not run yet.',
+          },
+        ]}
+      />
       <div className={styles.actions}>
         <ActionButton
           label={`${hasRun ? 'Rerun' : 'Run'} ${stage.name}`}
@@ -384,11 +391,7 @@ function InsertStageForm({ afterStageId }: { afterStageId: string }) {
         <Input className={formStyles.input} />
         <FieldError className={formStyles.fieldError}>{nameError}</FieldError>
       </TextField>
-      {general ? (
-        <p className={formStyles.alert} role="alert">
-          {general}
-        </p>
-      ) : null}
+      {general ? <InlineAlert tone="danger">{general}</InlineAlert> : null}
       <Button
         type="submit"
         className={componentStyles.button}

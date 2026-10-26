@@ -136,19 +136,6 @@
   font-size: var(--font-size-base);
 }
 
-/* Notices are ruled cells with a tone edge, like the family's admonitions. */
-.notice {
-  display: flex;
-  align-items: center;
-  gap: var(--space-2);
-  margin: 0 0 var(--space-2);
-  padding: var(--space-2) var(--space-3);
-  border: var(--rule);
-  border-left: 2px solid var(--tone-warning-text);
-  border-radius: var(--radius-sm);
-  background: var(--color-surface-raised);
-}
-
 .muted {
   color: var(--color-text-muted);
 }

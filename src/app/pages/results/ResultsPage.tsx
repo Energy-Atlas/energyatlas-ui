@@ -13,7 +13,12 @@ import { CapabilityBadge } from '../../components/CapabilityBadge.tsx'
 import { EmptyState } from '../../components/EmptyState.tsx'
 import componentStyles from '../../components/components.module.css'
 import formStyles from '../../components/forms.module.css'
+import { PanelHeader } from '../../components/PanelHeader.tsx'
+import { PropertyList } from '../../components/PropertyList.tsx'
+import { Section } from '../../components/Section.tsx'
+import { SegmentedFilter } from '../../components/SegmentedFilter.tsx'
 import { cx } from '../../cx.ts'
+import { formatDateTime, formatEnergy, formatNumber } from '../../format.ts'
 import { EChart, useChartFont, type EChartOption } from '../../viz/EChart.tsx'
 import {
   MONTH_LABELS,
@@ -177,10 +182,11 @@ export function ResultsPage() {
       className={cx(componentStyles.page, styles.page)}
       aria-labelledby={headingId}
     >
-      <header className={styles.header}>
-        <h2 id={headingId}>Results</h2>
-        <CapabilityBadge id="results.drilldown" />
-      </header>
+      <PanelHeader
+        title="Results"
+        headingId={headingId}
+        meta={<CapabilityBadge id="results.drilldown" />}
+      />
 
       <RadioGroup
         className={styles.results}
@@ -212,31 +218,34 @@ export function ResultsPage() {
       </RadioGroup>
 
       <section aria-label="Provenance" className={styles.section}>
-        <dl className={styles.facts}>
-          <dt>Total</dt>
-          <dd>
-            {NUMBER.format(entry.result.totalKwh / 1000)} MWh/yr (synthetic)
-          </dd>
-          <dt>Peak</dt>
-          <dd>{NUMBER.format(entry.result.peakKw)} kW</dd>
-          <dt>Buildings</dt>
-          <dd>{rows.length} with results</dd>
-          <dt>Published by</dt>
-          <dd>
-            {entry.stageName}, run {entry.result.runId}
-            {entry.publishedAt
-              ? ` at ${new Date(entry.publishedAt).toLocaleString()}`
-              : ''}
-          </dd>
-          <dt>Currentness</dt>
-          <dd>
-            {entry.current
-              ? 'Current: produced with the present inputs.'
-              : `${entry.currentness.charAt(0).toUpperCase()}${entry.currentness.slice(1)}.`}
-          </dd>
-          <dt>Source</dt>
-          <dd>{entry.note}</dd>
-        </dl>
+        <PropertyList
+          items={[
+            {
+              label: 'Total',
+              value: `${formatEnergy(entry.result.totalKwh, 'MWh', 0)}/yr (synthetic)`,
+            },
+            {
+              label: 'Peak',
+              value: formatNumber(entry.result.peakKw, { unit: 'kW' }),
+            },
+            { label: 'Buildings', value: `${rows.length} with results` },
+            {
+              label: 'Published by',
+              value: `${entry.stageName}, run ${entry.result.runId}${
+                entry.publishedAt
+                  ? ` at ${formatDateTime(entry.publishedAt)}`
+                  : ''
+              }`,
+            },
+            {
+              label: 'Currentness',
+              value: entry.current
+                ? 'Current: produced with the present inputs.'
+                : `${entry.currentness.charAt(0).toUpperCase()}${entry.currentness.slice(1)}.`,
+            },
+            { label: 'Source', value: entry.note },
+          ]}
+        />
         <div className={styles.actions}>
           <ActionButton
             label={`Export ${entry.label} as CSV`}
@@ -266,31 +275,26 @@ export function ResultsPage() {
       <section aria-label="Time series" className={styles.section}>
         <div className={styles.seriesHeader}>
           <h3 className={styles.label}>{series?.title}</h3>
-          <RadioGroup
-            className={styles.resolution}
-            orientation="horizontal"
+          <SegmentedFilter
+            aria-label="Resolution"
+            segments={[
+              { id: 'monthly', label: 'Monthly' },
+              {
+                id: 'hourly',
+                label: 'Typical weekday (hourly)',
+                disabledReason: buildingId
+                  ? null
+                  : 'Select a building to see its typical weekday.',
+              },
+            ]}
             value={resolution}
-            onChange={(value) => {
-              if (value === 'monthly' || value === 'hourly') {
-                view.execute({
-                  type: 'results.setResolution',
-                  input: { resolution: value },
-                })
-              }
-            }}
-          >
-            <Label className="visually-hidden">Resolution</Label>
-            <Radio value="monthly" className={formStyles.radio}>
-              Monthly
-            </Radio>
-            <Radio
-              value="hourly"
-              className={formStyles.radio}
-              isDisabled={!buildingId}
-            >
-              Typical weekday (hourly)
-            </Radio>
-          </RadioGroup>
+            onChange={(value) =>
+              view.execute({
+                type: 'results.setResolution',
+                input: { resolution: value },
+              })
+            }
+          />
           {buildingId ? (
             <button
               type="button"
@@ -318,8 +322,11 @@ export function ResultsPage() {
               label={`Line chart: ${series.title}. Values are in the table below.`}
             />
             <p className={componentStyles.muted}>{series.basis}</p>
-            <details className={styles.details}>
-              <summary>Show the series as a table</summary>
+            <Section
+              title="Show the series as a table"
+              id="results.series"
+              level={4}
+            >
               <table
                 className={componentStyles.table}
                 aria-label={series.title}
@@ -341,7 +348,7 @@ export function ResultsPage() {
                   </tr>
                 </tbody>
               </table>
-            </details>
+            </Section>
           </>
         ) : null}
       </section>

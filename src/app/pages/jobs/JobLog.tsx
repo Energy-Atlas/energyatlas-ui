@@ -1,4 +1,5 @@
 import type { Task } from '../../../domain/types.ts'
+import { formatTime } from '../../format.ts'
 import styles from './jobs.module.css'
 
 /** A job's retained log, oldest first, in the mono face of the operation log. */
@@ -8,10 +9,7 @@ export function JobLog({ task }: { task: Task }) {
       <ol aria-label={`Log of ${task.label}, attempt ${task.attempt}`}>
         {task.log.map((line, index) => (
           <li key={index}>
-            <time dateTime={line.at}>
-              {new Date(line.at).toLocaleTimeString()}
-            </time>{' '}
-            {line.message}
+            <time dateTime={line.at}>{formatTime(line.at)}</time> {line.message}
           </li>
         ))}
       </ol>

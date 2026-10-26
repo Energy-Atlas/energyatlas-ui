@@ -107,7 +107,7 @@ Key domain rules:
 | Layout | `layout/layoutController.ts` (`PAGES`, `PANELS`, `DEFAULT_PAGES`, `openPage`, `togglePanel`, `toggleMaximize`, `setCompact`, `reset`, `placePage`, `splitActiveTab`, `moveActiveTabToNextGroup`, `handleUserAction`), `layout/flexlayout-theme.css` |
 | Appearance | `appearance/appearances.ts` (six appearances: chrome tokens, data palette, `resolveAppearance`), `appearance/contrast.ts`, `theme.ts` (stored preference, `applyAppearance`) |
 | Shell | `shell/WorkbenchShell.tsx`, `Ribbon.tsx` (menus, quick buttons, Run split button), `StatusBar.tsx`, `CommandPalette.tsx`, `HelpDialogs.tsx` |
-| Shared components | `components/ActionButton.tsx` (explains unavailable actions), `StateBadge.tsx` (semantic stage states), `CapabilityBadge.tsx` (`CapabilityBadge` and `StatusTag`), `CapabilityTable.tsx`, `EmptyState.tsx`, `forms.module.css` |
+| Shared components | `components/ActionButton.tsx` (explains unavailable actions; `useRecordBlocked`), `StateBadge.tsx` (semantic stage states), `CapabilityBadge.tsx` (`CapabilityBadge` and `StatusTag`), `CapabilityTable.tsx`, `EmptyState.tsx`, `forms.module.css`; panel components of [decision 0027](decisions/0027-unified-panel-components.md): `PanelHeader.tsx`, `Toolbar.tsx` + `toolbarFit.ts`, `MenuButton.tsx`, `SegmentedFilter.tsx`, `InlineAlert.tsx`, `PropertyList.tsx`, `Section.tsx`, `menus.module.css` (one menu look), `primitives.module.css`; `format.ts` (numbers, energy, counts, times); the gallery `gallery/ComponentGallery.tsx` at `/?gallery` |
 | Panels | `panels/AssetsPanel.tsx` + `assetTree.ts`, `panels/WorkflowPanel.tsx`, `panels/InspectionPanel.tsx` + `inspection.ts` (read-only Inspection view model), `panels/MapProperties.tsx` (the map's scene lighting, shown by Inspection while the map is the worked surface), `panels/ReasoningPanel.tsx` (agent transcript, approvals, composer) + `agent/modes.ts` (send and permission modes) + `agent/suggestions.ts` (suggested next steps) |
 | Pages | `pages/*Page.tsx`; pure helpers `mapMetrics.ts`, `dashboardData.ts`, `dashboardCharts.ts`; `basemapStyle.ts` (recolors the OpenFreeMap style from appearance tokens, attribution) and `useBasemap.ts` (loading, failure, retry); `silhouette.ts` (projects a building's ground, roof, and walls with a camera matrix) and `SelectionSilhouette.tsx` (the 3D selection outline: a custom layer supplies the matrix every frame, and the silhouette's boundary is drawn on an overlay canvas); `terrain.ts` (the Mapterhorn source, hillshade paint from appearance tokens, attribution, legend wording) and `useTerrain.ts` (applies terrain once its source exists, with loading, failure, and retry); `sunPosition.ts` (`subsolarPoint`, the globe's one solar state from the season and the UTC time, and `sunFromSubsolar`, any place's own sun derived from it, on NOAA's equations), `lighting.ts` (the controls mapped onto MapLibre's light and sky, mixing colour from the appearance's `data.sky` tokens) and `useSceneLighting.ts` (applies both, and reapplies after a style swap) |
 | Visualization | `viz/EChart.tsx` (modular ECharts wrapper and `useChartFont`), `grid/agGrid.ts` (AG Grid theme from CSS tokens) |
@@ -253,6 +253,26 @@ Stage states use `StateBadge`: routine states are muted text with an icon, Faile
 
 Use React Aria fields with `isInvalid` and a `FieldError` per field, filled from command issues via `splitIssues` in `src/app/commandErrors.ts`. Editing a field clears only that field's issue. Do not use React Aria `Form` `validationErrors`: it kept corrected fields invalid and blocked resubmission. See `CreatorPage.tsx`.
 
+### Panel components
+
+Build panels from the shared components of [decision 0027](decisions/0027-unified-panel-components.md) instead of
+page markup, and see each one in its states at `/?gallery` (`?appearance=<id>` picks an appearance):
+
+- A page, panel, or pane header is a `PanelHeader`: the title and its badges in `meta`, controls in `actions`.
+- A row of actions is a `Toolbar` of items. Give it `onBlocked={(item, reason) => recordBlocked(item.label, reason)}`
+  with `useRecordBlocked()`, so an unavailable item explains itself in the status bar as `ActionButton` does. Mark the
+  main action `primary`; it never moves into More.
+- A choice among a few views of the same content is a `SegmentedFilter`; a choice that changes the model stays a form
+  field.
+- Menus are `MenuButton` with groups; entries that cannot run keep a `disabledReason` and stay focusable.
+- Labels beside values are a `PropertyList`; content read on demand (chart data tables, details) is a `Section`.
+- State shown where it applies (errors, stale results, warnings) is an `InlineAlert`. Events that happened elsewhere
+  will go to the message system (step 4 of the [proposal](ui-component-system.md)).
+- Format numbers, energy, counts, and times with `src/app/format.ts`.
+
+A new shared component gets its states in the gallery; `e2e/gallery.spec.ts` checks the gallery with axe in every
+appearance.
+
 ### Visual design
 
 The [UI design guidelines](20260915_energyatlas_ui_design_guidelines.md) (decisions 0009 and 0010) govern visual choices; [design alignment](design-alignment.md) records how the build follows them.
@@ -283,13 +303,14 @@ Only packages from decisions 0007, 0008, and 0010 are allowed. Record a reason i
 
 | Command | What it covers |
 | --- | --- |
-| `npm test` | 302 Vitest tests after roadmap slices 3–8 and their follow-up fixes (Jobs, intake, archetypes, scenarios, calibration, results, and their save migrations); earlier: 224 Vitest tests: domain/views/agent, appearance contrast, spatial helpers, fixtures and service conditions, plus catalog migration/validation, explicit sessions, shared lifecycle guards, mutation fencing, project tool parity, and queued-agent resets |
-| `npm run test:e2e` | 68 Playwright tests in Edge with 4 local workers and axe; default 1280x800, plus lifecycle appearance captures at 1600x1000 and 900x700 (no serious or critical violations allowed) |
+| `npm test` | 325 Vitest tests after step 1 of the unified panel components (formatting, toolbar fit, and component behaviour); 302 after roadmap slices 3–8 and their follow-up fixes (Jobs, intake, archetypes, scenarios, calibration, results, and their save migrations); earlier: 224 Vitest tests: domain/views/agent, appearance contrast, spatial helpers, fixtures and service conditions, plus catalog migration/validation, explicit sessions, shared lifecycle guards, mutation fencing, project tool parity, and queued-agent resets |
+| `npm run test:e2e` | 96 Playwright tests (including the component gallery) in Edge with 4 local workers and axe; default 1280x800, plus lifecycle appearance captures at 1600x1000 and 900x700 (no serious or critical violations allowed) |
 | `npm run typecheck`, `npm run lint`, `npm run format:check` | Must be clean before committing |
 
 End-to-end specs:
 
 - `e2e/project-lifecycle.spec.ts`: start, named creation/validation, multi-project save/open/recent, equal names, draft and job guards, failed Save, malformed storage, held-request recovery, all six appearances at three sizes, axe, keyboard focus, and reproducible screenshots in `tmp/`.
+- `e2e/gallery.spec.ts`: the component gallery in all six appearances with axe, the appearance switch, toolbar overflow into More with the primary action kept, and keyboard use of toolbars, filters, checkable menus, and sections.
 - `e2e/robustness.spec.ts`: a slow server with pending explanations, a failed request and its recovery, page drafts reset on a project switch, and the command palette's focus from a focused control.
 - `e2e/results.spec.ts`: provenance and currentness, drill-down into a building, the typical-weekday profile, a real CSV download with its header, scenario savings, and light and dark rendering with axe.
 - `e2e/calibration.spec.ts`: series validation, unit choice and warning, a fit job with a notice, a published variant that leaves the working baseline alone, Adopt with outdated dependents, Revert, and light, dark, and 900 px rendering with axe.

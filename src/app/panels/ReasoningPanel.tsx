@@ -1,4 +1,5 @@
 import {
+  Check,
   ChevronDown,
   CircleCheck,
   CircleX,
@@ -42,6 +43,7 @@ import type {
 import { ActionButton } from '../components/ActionButton.tsx'
 import { CapabilityBadge } from '../components/CapabilityBadge.tsx'
 import componentStyles from '../components/components.module.css'
+import menuStyles from '../components/menus.module.css'
 import { cx } from '../cx.ts'
 import styles from './reasoning.module.css'
 
@@ -275,9 +277,9 @@ function PermissionMenu({
         {permissionModeOption(selected).label}
         <ChevronDown size={12} aria-hidden="true" />
       </Button>
-      <Popover className={styles.popover} placement="top start">
+      <Popover className={menuStyles.popover} placement="top start">
         <Menu
-          className={styles.menu}
+          className={menuStyles.menu}
           onAction={(key) => onSelect(key as PermissionMode)}
           selectionMode="single"
           selectedKeys={[selected]}
@@ -286,15 +288,25 @@ function PermissionMenu({
             <MenuItem
               key={option.id}
               id={option.id}
-              className={styles.menuItem}
+              className={menuStyles.menuItem}
               textValue={option.label}
             >
-              <Text slot="label" className={styles.menuLabel}>
-                {option.label}
-              </Text>
-              <Text slot="description" className={styles.menuDescription}>
-                {option.description}
-              </Text>
+              {({ isSelected }) => (
+                <>
+                  <span className={menuStyles.menuCheck} aria-hidden="true">
+                    {isSelected ? <Check size={14} /> : null}
+                  </span>
+                  <Text slot="label" className={menuStyles.menuLabel}>
+                    {option.label}
+                  </Text>
+                  <Text
+                    slot="description"
+                    className={menuStyles.menuDescription}
+                  >
+                    {option.description}
+                  </Text>
+                </>
+              )}
             </MenuItem>
           ))}
         </Menu>
@@ -314,20 +326,21 @@ function ModelMenu({ label }: { label: string }) {
         {label}
         <ChevronDown size={12} aria-hidden="true" />
       </Button>
-      <Popover className={styles.popover} placement="top start">
-        <Menu className={styles.menu} disabledKeys={unavailable}>
+      <Popover className={menuStyles.popover} placement="top start">
+        <Menu className={menuStyles.menu} disabledKeys={unavailable}>
           {MODEL_OPTIONS.map((option) => (
             <MenuItem
               key={option.id}
               id={option.id}
-              className={styles.menuItem}
+              className={menuStyles.menuItem}
               textValue={option.label}
             >
-              <Text slot="label" className={styles.menuLabel}>
+              <span className={menuStyles.menuCheck} aria-hidden="true" />
+              <Text slot="label" className={menuStyles.menuLabel}>
                 {option.label}
               </Text>
               {option.unavailableReason ? (
-                <Text slot="description" className={styles.menuDescription}>
+                <Text slot="description" className={menuStyles.menuDescription}>
                   {option.unavailableReason}
                 </Text>
               ) : null}
@@ -573,9 +586,9 @@ export function ReasoningPanel() {
                 >
                   <ChevronDown size={14} aria-hidden="true" />
                 </Button>
-                <Popover className={styles.popover} placement="top end">
+                <Popover className={menuStyles.popover} placement="top end">
                   <Menu
-                    className={styles.menu}
+                    className={menuStyles.menu}
                     onAction={(key) => {
                       const option = SEND_MODES.find(
                         (candidate) => candidate.id === key,
@@ -589,15 +602,19 @@ export function ReasoningPanel() {
                         <MenuItem
                           key={option.id}
                           id={option.id}
-                          className={styles.menuItem}
+                          className={menuStyles.menuItem}
                           textValue={option.label}
                         >
-                          <Text slot="label" className={styles.menuLabel}>
+                          <span
+                            className={menuStyles.menuCheck}
+                            aria-hidden="true"
+                          />
+                          <Text slot="label" className={menuStyles.menuLabel}>
                             {option.label}
                           </Text>
                           <Text
                             slot="description"
-                            className={styles.menuDescription}
+                            className={menuStyles.menuDescription}
                           >
                             {blocker ?? option.description}
                           </Text>

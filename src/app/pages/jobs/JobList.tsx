@@ -2,6 +2,7 @@ import { ListBox, ListBoxItem } from 'react-aria-components'
 import type { Task } from '../../../domain/types.ts'
 import { useServices } from '../../WorkbenchContext.tsx'
 import componentStyles from '../../components/components.module.css'
+import { formatTime } from '../../format.ts'
 import { JobStatusBadge } from './JobStatusBadge.tsx'
 import { JOB_STATUS_LABELS, outcomeLabel } from './jobView.ts'
 import styles from './jobs.module.css'
@@ -47,7 +48,7 @@ export function JobList({
             <span className={componentStyles.muted}>
               Attempt {task.attempt} · {outcomeLabel(task, nounOf(task))} ·{' '}
               <time dateTime={task.updatedAt}>
-                {new Date(task.updatedAt).toLocaleTimeString()}
+                {formatTime(task.updatedAt)}
               </time>
             </span>
           </span>

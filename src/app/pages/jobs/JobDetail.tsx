@@ -10,7 +10,9 @@ import type { Task, WorkbenchState } from '../../../domain/types.ts'
 import { useClientSnapshot, useServices } from '../../WorkbenchContext.tsx'
 import { ActionButton } from '../../components/ActionButton.tsx'
 import componentStyles from '../../components/components.module.css'
+import { PropertyList } from '../../components/PropertyList.tsx'
 import { cx } from '../../cx.ts'
+import { formatTime } from '../../format.ts'
 import { JobItems } from './JobItems.tsx'
 import { JobLog } from './JobLog.tsx'
 import { freshRunAndSelect, retryAndSelect } from './jobActions.ts'
@@ -25,10 +27,6 @@ import {
   retryLabel,
 } from './jobView.ts'
 import styles from './jobs.module.css'
-
-function time(value: string): string {
-  return new Date(value).toLocaleTimeString()
-}
 
 /** The selected job: summary, scoped progress, actions, attempts, failed items, and log. */
 export function JobDetail({
@@ -123,24 +121,30 @@ export function JobDetail({
         )}
       </ProgressBar>
 
-      <dl className={styles.facts}>
-        <dt>Stage</dt>
-        <dd>{stageName}</dd>
-        <dt>Started by</dt>
-        <dd>{task.source}</dd>
-        <dt>Queued</dt>
-        <dd>
-          <time dateTime={task.createdAt}>{time(task.createdAt)}</time>
-        </dd>
-        <dt>Updated</dt>
-        <dd>
-          <time dateTime={task.updatedAt}>{time(task.updatedAt)}</time>
-        </dd>
-        {counts ? (
-          <>
-            <dt>{group?.kind === 'fusion' ? 'Records' : 'Items'}</dt>
-            <dd>
-              {counts.total === 0
+      <PropertyList
+        items={[
+          { label: 'Stage', value: stageName },
+          { label: 'Started by', value: task.source },
+          {
+            label: 'Queued',
+            value: (
+              <time dateTime={task.createdAt}>
+                {formatTime(task.createdAt)}
+              </time>
+            ),
+          },
+          {
+            label: 'Updated',
+            value: (
+              <time dateTime={task.updatedAt}>
+                {formatTime(task.updatedAt)}
+              </time>
+            ),
+          },
+          counts && {
+            label: group?.kind === 'fusion' ? 'Records' : 'Items',
+            value:
+              counts.total === 0
                 ? 'Publication only'
                 : [
                     `${counts.succeeded} succeeded`,
@@ -152,29 +156,19 @@ export function JobDetail({
                     `of ${counts.total}`,
                   ]
                     .filter(Boolean)
-                    .join(', ')}
-            </dd>
-          </>
-        ) : null}
-        {publication ? (
-          <>
-            <dt>Results</dt>
-            <dd>{publication}</dd>
-          </>
-        ) : null}
-        {group ? (
-          <>
-            <dt>Inputs</dt>
-            <dd>
-              {changed
-                ? `Changed since submission: ${changed}. A retry is not possible; start a fresh run.`
-                : group.status === 'open'
-                  ? 'Unchanged since submission.'
-                  : `Captured at submission (${group.signature.membership.length || 'whole-stage'}${group.signature.membership.length ? ` ${itemNoun(group)}` : ''}).`}
-            </dd>
-          </>
-        ) : null}
-      </dl>
+                    .join(', '),
+          },
+          publication ? { label: 'Results', value: publication } : null,
+          group && {
+            label: 'Inputs',
+            value: changed
+              ? `Changed since submission: ${changed}. A retry is not possible; start a fresh run.`
+              : group.status === 'open'
+                ? 'Unchanged since submission.'
+                : `Captured at submission (${group.signature.membership.length || 'whole-stage'}${group.signature.membership.length ? ` ${itemNoun(group)}` : ''}).`,
+          },
+        ]}
+      />
 
       {attempts.length > 1 ? (
         <section aria-label="Attempts" className={styles.section}>

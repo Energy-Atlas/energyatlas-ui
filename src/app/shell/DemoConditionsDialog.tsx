@@ -17,6 +17,7 @@ import { FIXTURES, FIXTURE_IDS, type FixtureId } from '../../server/fixtures.ts'
 import { useClientSnapshot, useServices } from '../WorkbenchContext.tsx'
 import componentStyles from '../components/components.module.css'
 import formStyles from '../components/forms.module.css'
+import { InlineAlert } from '../components/InlineAlert.tsx'
 import { cx } from '../cx.ts'
 import pageStyles from '../pages/pages.module.css'
 import { usePendingReason } from '../service/usePendingReason.ts'
@@ -113,10 +114,10 @@ export function DemoConditionsDialog({
         onChange={setFixture}
       />
       {dirty ? (
-        <p className={componentStyles.notice}>
+        <InlineAlert tone="warning">
           The project has unsaved changes. Loading a fixture replaces it; the
           copy saved in this browser is unchanged.
-        </p>
+        </InlineAlert>
       ) : null}
       <div className={styles.dialogActions}>
         <Button

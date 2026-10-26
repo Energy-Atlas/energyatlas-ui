@@ -1,7 +1,8 @@
 # Unified panel components: audit and proposal
 
 Status: accepted as [decision 0027](decisions/0027-unified-panel-components.md) on 2026-10-26, with the owner's
-choices recorded at the end. Nothing here is implemented yet. It answers the owner's
+choices recorded at the end. Step 1 (primitives and gallery) is built on `claude/ui-component-system`; see
+[step 1 status](#step-1-status). Steps 2 to 5 are not started. It answers the owner's
 review comments of 2026-10-26 after testing local `master` at `4400c69`:
 
 1. one design (reusable components, or at least one guideline) for each kind of component inside any panel: tables,
@@ -143,7 +144,7 @@ and become a per-table style choice in the Style menu, which amends 0021 for tha
    forgets them.
 8. **Keyboard map per component** (arrow keys inside, Tab between components, Escape closes menus, F6 between
    regions) documented once in the developer guide.
-9. **A component gallery page** (`/?spike=components`) showing every component in every state; browser tests run axe
+9. **A component gallery page** (built at `/?gallery`) showing every component in every state; browser tests run axe
    and the appearance checks against it, so it becomes the living guideline.
 10. **Per-user table and panel preferences** (column choices, density, open sections) stored per table id in this
     browser, separate from the project, until saved layouts are designed.
@@ -167,3 +168,44 @@ Each step is reviewable on its own and ends with the full check list from `AGENT
 3. Toasts: **only asynchronous events and failures**; applied commands go to the status bar and the history.
 4. Messages panel: **the right border**, beside Reasoning and Inspection (not the proposed bottom border).
 5. Table preferences: not asked yet; the default is per user in this browser, keyed by table id.
+
+## Step 1 status
+
+Built on `claude/ui-component-system` (2026-10-26), not merged into `master`.
+
+**Real:**
+
+- `src/app/format.ts`: `formatNumber`, `formatEnergy`, `formatCount`, `formatTime`, `formatDateTime`, and `NO_DATA`.
+  Inspection, the map legend, Jobs, Results, Intake, the project list, and the status bar format through it. Numbers
+  keep en-US grouping and times the browser's locale, as before.
+- `src/app/components/`: `PanelHeader` (with `HeaderCount`), `Toolbar` (arrow keys; items that do not fit move into
+  More from the end, primary actions stay; the fit rule is `toolbarFit.ts`), `MenuButton` (action or checkable
+  entries in groups; unavailable entries stay focusable and show their reason), `SegmentedFilter` (a radio group of
+  joined cells with optional counts; unavailable choices are disabled and described), `InlineAlert` (four tones with
+  an icon; errors are alerts, notices are silent unless `live`), `PropertyList`, and `Section` (a disclosure that
+  remembers its open state by id for the session). `useRecordBlocked` in `ActionButton.tsx` records an unavailable
+  control's reason in the operation log, for `onBlocked`.
+- `src/app/components/menus.module.css`: one menu look, now shared by the ribbon menus, the command palette, the
+  Reasoning panel's menus (which gained the check column), and `MenuButton`.
+- The gallery at `/?gallery` (`src/app/gallery/`), with an appearance switch and `?appearance=<id>`.
+
+**Adopted in pages:** page and panel headers (Jobs, Results, Intake, Archetypes, Calibration, Table, Roadmap,
+Dashboard, Assets, Workflow); the Jobs filter (now with counts) and the Results resolution choice as
+`SegmentedFilter`; property lists in Job details, Results provenance, the Roadmap stage details, the Intake fusion
+preview, Assets details, and Inspection; chart data tables on the Dashboard and Results as `Section`; the dashboard's
+stale notice, the Demo conditions warning, and the form and page errors of Table, Roadmap, Creator, the project
+dialogs, and the start screen as `InlineAlert`.
+
+**Deferred:**
+
+- `Toolbar` and `MenuButton` are in the gallery but not yet in pages: the table toolbars of steps 2 and 3 are their
+  first users. The Table page's edit row mixes a search field and counts with buttons and is redone in step 3.
+- The ribbon's own menus share the menu styles but keep their component; moving them onto `MenuButton` would change
+  the Run split button and the account menu without a user-visible gain.
+- Inspection and the map's scene properties keep their eyebrow-and-title header, an object header rather than a
+  panel header.
+- Archetype form results and agent notices stay as they are until the message system (step 4).
+
+**Verification (2026-10-26):** typecheck, lint, and format clean; 325 unit tests, 96 development browser tests
+(including `e2e/gallery.spec.ts`: axe in all six appearances, toolbar overflow, keyboard use), and 3 production-preview
+tests passed; `git diff --check` clean. The Jobs page was checked by eye in Dark.

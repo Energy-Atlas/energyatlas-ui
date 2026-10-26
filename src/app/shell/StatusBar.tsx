@@ -17,6 +17,7 @@ import {
 import { StatusTag } from '../components/CapabilityBadge.tsx'
 import { StateBadge } from '../components/StateBadge.tsx'
 import { cx } from '../cx.ts'
+import { formatTime } from '../format.ts'
 import type { PageId } from '../layout/layoutController.ts'
 import styles from './shell.module.css'
 
@@ -75,7 +76,7 @@ export function StatusBar({
       : dirty || Object.keys(state.pendingEdits).length > 0
         ? 'Unsaved changes'
         : savedAt
-          ? `Saved ${new Date(savedAt).toLocaleTimeString()}`
+          ? `Saved ${formatTime(savedAt)}`
           : 'Not saved'
   const rejected = lastOperation?.status === 'rejected'
   const notice = lastOperation

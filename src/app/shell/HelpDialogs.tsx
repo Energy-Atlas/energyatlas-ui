@@ -11,6 +11,7 @@ import {
 import type { AppAction } from '../actions.ts'
 import { CapabilityTable } from '../components/CapabilityTable.tsx'
 import componentStyles from '../components/components.module.css'
+import menuStyles from '../components/menus.module.css'
 import { cx } from '../cx.ts'
 import styles from './shell.module.css'
 
@@ -102,7 +103,7 @@ export function ShortcutsDialog({
           {withShortcuts.map((action) => (
             <tr key={action.id}>
               <td>
-                <Keyboard className={styles.kbd}>
+                <Keyboard className={menuStyles.kbd}>
                   {[action.shortcut, ...(action.alternateShortcuts ?? [])].join(
                     ' or ',
                   )}
@@ -125,7 +126,7 @@ export function ShortcutsDialog({
           {LAYOUT_KEYS.map(([keys, effect]) => (
             <tr key={keys}>
               <td>
-                <Keyboard className={styles.kbd}>{keys}</Keyboard>
+                <Keyboard className={menuStyles.kbd}>{keys}</Keyboard>
               </td>
               <td>{effect}</td>
             </tr>

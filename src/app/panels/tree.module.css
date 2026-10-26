@@ -81,21 +81,6 @@
   margin: 0 0 var(--space-2);
 }
 
-.facts {
-  display: grid;
-  grid-template-columns: max-content 1fr;
-  gap: 0.25rem var(--space-2);
-  margin: 0;
-}
-
-.facts dt {
-  color: var(--color-text-muted);
-}
-
-.facts dd {
-  margin: 0;
-}
-
 .detailActions {
   display: flex;
   flex-wrap: wrap;

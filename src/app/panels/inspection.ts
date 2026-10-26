@@ -7,6 +7,7 @@ import type {
   SelectableEntity,
   WorkbenchState,
 } from '../../domain/types.ts'
+import { NO_DATA, formatEnergy, formatNumber } from '../format.ts'
 
 // Read-only view model for the Inspection mode of the context panel
 // (guidelines section 10). It follows the shared selection and never changes
@@ -52,8 +53,6 @@ export type Inspection =
 /** Longest list of linked or selected objects shown before "and N more". */
 export const LIST_LIMIT = 10
 
-const NO_DATA = 'No data'
-
 const USE_LABELS: Record<NonNullable<Building['use']>, string> = {
   residential: 'Residential',
   office: 'Office',
@@ -78,14 +77,12 @@ const FIELD_LABELS: Record<EditableBuildingField, string> = {
 const STAGE_PROVENANCE =
   'Other values come from the latest runs of the workflow stages.'
 
-function formatNumber(value: number | null, unit = ''): string {
-  if (value === null) return NO_DATA
-  const text = value.toLocaleString('en-US', { maximumFractionDigits: 1 })
-  return unit ? `${text} ${unit}` : text
+function formatValue(value: number | null, unit?: string): string {
+  return formatNumber(value, { maxDigits: 1, unit })
 }
 
 function formatDemand(kwh: number): string {
-  return `${(kwh / 1000).toLocaleString('en-US', { maximumFractionDigits: 1 })} MWh/yr`
+  return `${formatEnergy(kwh)}/yr`
 }
 
 function formatEditValue(
@@ -238,14 +235,14 @@ function inspectBuilding(
         value:
           building.yearBuilt === null ? NO_DATA : String(building.yearBuilt),
       },
-      { label: 'Floors', value: formatNumber(building.floors) },
-      { label: 'Height', value: formatNumber(building.heightM, 'm') },
+      { label: 'Floors', value: formatValue(building.floors) },
+      { label: 'Height', value: formatValue(building.heightM, 'm') },
       {
         label: 'Footprint area',
-        value: formatNumber(building.footprintAreaM2, 'm²'),
+        value: formatValue(building.footprintAreaM2, 'm²'),
       },
-      { label: 'Floor area', value: formatNumber(building.floorAreaM2, 'm²') },
-      { label: 'Thermal zones', value: formatNumber(building.zoneCount) },
+      { label: 'Floor area', value: formatValue(building.floorAreaM2, 'm²') },
+      { label: 'Thermal zones', value: formatValue(building.zoneCount) },
       { label: 'Archetype', value: archetype?.name ?? NO_DATA },
       {
         label: 'Shading factor',
@@ -254,7 +251,7 @@ function inspectBuilding(
             ? NO_DATA
             : building.shadingFactor.toFixed(2),
       },
-      { label: 'PV yield', value: formatNumber(building.pvYieldKwh, 'kWh/yr') },
+      { label: 'PV yield', value: formatValue(building.pvYieldKwh, 'kWh/yr') },
     ],
     results,
     resultsHint: buildingResultsHint(state, building),
@@ -283,7 +280,7 @@ function inspectBuildings(
       value:
         floorAreas.length === 0
           ? NO_DATA
-          : `${formatNumber(sum(floorAreas), 'm²')}${floorAreas.length < buildings.length ? ` (${floorAreas.length} of ${buildings.length} known)` : ''}`,
+          : `${formatValue(sum(floorAreas), 'm²')}${floorAreas.length < buildings.length ? ` (${floorAreas.length} of ${buildings.length} known)` : ''}`,
     },
     {
       label: 'Floors',
@@ -339,7 +336,7 @@ function inspectGridElement(
     title: element.name,
     properties: [
       { label: 'Kind', value: GRID_KIND_LABELS[element.kind] },
-      { label: 'Rating', value: formatNumber(element.ratingKva, 'kVA') },
+      { label: 'Rating', value: formatValue(element.ratingKva, 'kVA') },
       {
         label: 'Connected buildings',
         value: element.buildingIds.length.toLocaleString('en-US'),
@@ -388,7 +385,7 @@ function inspectGridElements(elements: GridElement[]): MultipleInspection {
       {
         label: 'Total rating',
         value:
-          ratings.length === 0 ? NO_DATA : formatNumber(sum(ratings), 'kVA'),
+          ratings.length === 0 ? NO_DATA : formatValue(sum(ratings), 'kVA'),
       },
     ],
     items: entities,

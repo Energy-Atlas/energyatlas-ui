@@ -7,7 +7,13 @@ import { App } from './App.tsx'
 
 // Package spikes load only with ?spike=<name>, outside the product bundle path.
 const SpikeApp = lazy(() => import('./spikes/SpikeApp.tsx'))
-const spike = new URLSearchParams(window.location.search).get('spike')
+// The component gallery (decision 0027) loads only with ?gallery.
+const ComponentGallery = lazy(
+  () => import('./app/gallery/ComponentGallery.tsx'),
+)
+const params = new URLSearchParams(window.location.search)
+const spike = params.get('spike')
+const gallery = params.has('gallery')
 
 const root = document.getElementById('root')
 if (!root) {
@@ -19,6 +25,10 @@ createRoot(root).render(
     {spike ? (
       <Suspense fallback={<p>Loading spike…</p>}>
         <SpikeApp name={spike} />
+      </Suspense>
+    ) : gallery ? (
+      <Suspense fallback={<p>Loading gallery…</p>}>
+        <ComponentGallery />
       </Suspense>
     ) : (
       <App />

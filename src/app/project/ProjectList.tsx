@@ -1,6 +1,7 @@
 import { Button } from 'react-aria-components'
 import type { ProjectSummary } from '../../server/projectCatalog.ts'
 import { useServices } from '../WorkbenchContext.tsx'
+import { formatDateTime } from '../format.ts'
 import styles from './project.module.css'
 
 export function ProjectList({
@@ -24,9 +25,9 @@ export function ProjectList({
           >
             <span className={styles.projectName}>{project.name}</span>
             <span className={styles.metadata}>
-              Saved {new Date(project.savedAt).toLocaleString()}
+              Saved {formatDateTime(project.savedAt)}
               {project.lastOpenedAt
-                ? ` · Opened ${new Date(project.lastOpenedAt).toLocaleString()}`
+                ? ` · Opened ${formatDateTime(project.lastOpenedAt)}`
                 : ''}
             </span>
             <span className={styles.metadata}>

@@ -10,23 +10,12 @@
 }
 
 .header {
-  display: flex;
-  align-items: center;
-  gap: var(--space-2);
-  padding: var(--space-2) var(--space-4) 0;
-}
-
-.header h2 {
   margin: 0;
-  font-size: var(--font-size-title);
+  padding: var(--space-2) var(--space-4) 0;
 }
 
 .staleNotice {
   margin: 0 var(--space-4);
-}
-
-.staleNotice span {
-  flex: 1;
 }
 
 /* Controls are a ruled cell of the dashboard grid. */
@@ -166,15 +155,6 @@
 }
 
 .dataTable {
-  margin-top: var(--space-2);
-}
-
-.dataTable summary {
-  color: var(--color-accent-text);
-  cursor: pointer;
-}
-
-.dataTable table {
   margin-top: var(--space-2);
 }
 

@@ -13,6 +13,7 @@ import {
   useFilter,
 } from 'react-aria-components'
 import type { AppAction } from '../actions.ts'
+import menuStyles from '../components/menus.module.css'
 import styles from './shell.module.css'
 
 type CommandPaletteProps = {
@@ -104,10 +105,10 @@ export function CommandPalette({
                 <MenuItem
                   id={action.id}
                   textValue={`${action.group} ${action.label}`}
-                  className={styles.menuItem}
+                  className={menuStyles.menuItem}
                 >
-                  <span className={styles.menuCheck} aria-hidden="true" />
-                  <Text slot="label" className={styles.menuLabel}>
+                  <span className={menuStyles.menuCheck} aria-hidden="true" />
+                  <Text slot="label" className={menuStyles.menuLabel}>
                     {action.label}
                     <span className={styles.paletteGroup}>
                       {' '}
@@ -115,12 +116,15 @@ export function CommandPalette({
                     </span>
                   </Text>
                   {action.disabledReason ? (
-                    <Text slot="description" className={styles.menuDescription}>
+                    <Text
+                      slot="description"
+                      className={menuStyles.menuDescription}
+                    >
                       {action.disabledReason}
                     </Text>
                   ) : null}
                   {action.shortcut ? (
-                    <Keyboard className={styles.kbd}>
+                    <Keyboard className={menuStyles.kbd}>
                       {action.shortcut}
                     </Keyboard>
                   ) : null}

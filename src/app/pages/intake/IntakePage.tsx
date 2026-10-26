@@ -25,7 +25,10 @@ import { ActionButton } from '../../components/ActionButton.tsx'
 import { CapabilityBadge } from '../../components/CapabilityBadge.tsx'
 import componentStyles from '../../components/components.module.css'
 import formStyles from '../../components/forms.module.css'
+import { PanelHeader } from '../../components/PanelHeader.tsx'
+import { PropertyList } from '../../components/PropertyList.tsx'
 import { cx } from '../../cx.ts'
+import { formatTime } from '../../format.ts'
 import { waitingReason } from '../../service/usePendingReason.ts'
 import styles from './intake.module.css'
 
@@ -132,18 +135,21 @@ function Preview({ prepared }: { prepared: PreparedDataset }) {
       </section>
       <section aria-label="Fusion preview" className={styles.section}>
         <h3>Fusion preview</h3>
-        <dl className={styles.counts}>
-          <dt>Update</dt>
-          <dd>{counts.updates} buildings</dd>
-          <dt>Add</dt>
-          <dd>{counts.adds} buildings</dd>
-          <dt>Unchanged</dt>
-          <dd>{counts.unchanged} matched records</dd>
-          <dt>Manual overrides kept</dt>
-          <dd>{counts.conflicts}</dd>
-          <dt>Kept as they are</dt>
-          <dd>{counts.retained} buildings no record matches</dd>
-        </dl>
+        <PropertyList
+          items={[
+            { label: 'Update', value: `${counts.updates} buildings` },
+            { label: 'Add', value: `${counts.adds} buildings` },
+            {
+              label: 'Unchanged',
+              value: `${counts.unchanged} matched records`,
+            },
+            { label: 'Manual overrides kept', value: counts.conflicts },
+            {
+              label: 'Kept as they are',
+              value: `${counts.retained} buildings no record matches`,
+            },
+          ]}
+        />
         {changes.length > 0 ? (
           <Paged<HeldFusionOutput>
             rows={changes}
@@ -221,10 +227,11 @@ export function IntakePage() {
 
   return (
     <section className={componentStyles.page} aria-labelledby={headingId}>
-      <header className={styles.header}>
-        <h2 id={headingId}>Data intake</h2>
-        <CapabilityBadge id="intake.fusion" />
-      </header>
+      <PanelHeader
+        title="Data intake"
+        headingId={headingId}
+        meta={<CapabilityBadge id="intake.fusion" />}
+      />
       <p className={componentStyles.muted}>
         Choose a dataset, review how its fields map to the model, then apply it.
         Records match buildings by a stable source ID; nothing changes until you
@@ -428,7 +435,7 @@ export function IntakePage() {
                   <td>{entry.conflicts}</td>
                   <td>
                     <time dateTime={entry.appliedAt}>
-                      {new Date(entry.appliedAt).toLocaleTimeString()}
+                      {formatTime(entry.appliedAt)}
                     </time>
                   </td>
                 </tr>

@@ -32,6 +32,7 @@ import { ActionButton } from '../components/ActionButton.tsx'
 import { CapabilityBadge, StatusTag } from '../components/CapabilityBadge.tsx'
 import { EmptyState } from '../components/EmptyState.tsx'
 import formStyles from '../components/forms.module.css'
+import { formatNumber } from '../format.ts'
 import {
   BASEMAP_SOURCE_ID,
   buildBasemapStyle,
@@ -118,8 +119,7 @@ function boundsOf(points: LngLat[]): [number, number, number, number] | null {
 }
 
 function formatValue(value: number | null, unit: string): string {
-  if (value === null) return 'No data'
-  return `${value.toLocaleString('en-US')}${unit ? ` ${unit}` : ''}`
+  return formatNumber(value, { maxDigits: 3, unit: unit || undefined })
 }
 
 export function MapPage() {

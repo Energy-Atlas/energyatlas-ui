@@ -31,6 +31,8 @@ import { ActionButton } from '../components/ActionButton.tsx'
 import { CapabilityBadge } from '../components/CapabilityBadge.tsx'
 import { EmptyState } from '../components/EmptyState.tsx'
 import formStyles from '../components/forms.module.css'
+import { InlineAlert } from '../components/InlineAlert.tsx'
+import { PanelHeader } from '../components/PanelHeader.tsx'
 import { usePendingReason } from '../service/usePendingReason.ts'
 import { workbenchColumnDefaults, workbenchGridTheme } from '../grid/agGrid.ts'
 import styles from './table.module.css'
@@ -102,10 +104,12 @@ export function TablePage() {
 
   return (
     <section className={styles.page} aria-labelledby={headingId}>
-      <header className={styles.header}>
-        <h2 id={headingId}>Table</h2>
-        <CapabilityBadge id="table.pendingEdits" />
-      </header>
+      <PanelHeader
+        className={styles.header}
+        title="Table"
+        headingId={headingId}
+        meta={<CapabilityBadge id="table.pendingEdits" />}
+      />
       {hasBuildings ? (
         <Tabs
           className={styles.tabs}
@@ -375,9 +379,7 @@ function BuildingsTable() {
         </ActionButton>
       </div>
       {editError ? (
-        <p className={formStyles.alert} role="alert">
-          {editError}
-        </p>
+        <InlineAlert tone="danger">{editError}</InlineAlert>
       ) : (
         <p className={styles.hint}>
           {applying

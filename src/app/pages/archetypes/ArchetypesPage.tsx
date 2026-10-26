@@ -28,6 +28,7 @@ import { CapabilityBadge } from '../../components/CapabilityBadge.tsx'
 import { StateBadge } from '../../components/StateBadge.tsx'
 import componentStyles from '../../components/components.module.css'
 import formStyles from '../../components/forms.module.css'
+import { PanelHeader } from '../../components/PanelHeader.tsx'
 import { waitingReason } from '../../service/usePendingReason.ts'
 import {
   ScheduleEditor,
@@ -515,14 +516,18 @@ export function ArchetypesPage() {
       className={`${componentStyles.page} ${styles.page}`}
       aria-labelledby={headingId}
     >
-      <header className={styles.header}>
-        <h2 id={headingId}>Archetypes and schedules</h2>
-        <CapabilityBadge id="archetypes.library" />
-        <span className={styles.stage}>
-          Archetype modeling{' '}
-          <StateBadge state={stageStates[STAGE_IDS.archetypes] ?? 'future'} />
-        </span>
-      </header>
+      <PanelHeader
+        className={styles.header}
+        title="Archetypes and schedules"
+        headingId={headingId}
+        meta={<CapabilityBadge id="archetypes.library" />}
+        actions={
+          <span className={styles.stage}>
+            Archetype modeling{' '}
+            <StateBadge state={stageStates[STAGE_IDS.archetypes] ?? 'future'} />
+          </span>
+        }
+      />
 
       <div className={styles.split}>
         <div className={styles.listPane}>

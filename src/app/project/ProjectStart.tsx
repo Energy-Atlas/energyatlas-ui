@@ -8,6 +8,7 @@ import {
 import { useClientSnapshot, useServices } from '../WorkbenchContext.tsx'
 import componentStyles from '../components/components.module.css'
 import formStyles from '../components/forms.module.css'
+import { InlineAlert } from '../components/InlineAlert.tsx'
 import { cx } from '../cx.ts'
 import { DemoConditionsDialog } from '../shell/DemoConditionsDialog.tsx'
 import shellStyles from '../shell/shell.module.css'
@@ -101,10 +102,9 @@ export function ProjectStart() {
           </Button>
         </div>
         {error ? (
-          <p role="alert" className={formStyles.alert}>
-            {error} Choose the project again to retry, or change Demo
-            conditions.
-          </p>
+          <InlineAlert tone="danger">
+            {`${error} Choose the project again to retry, or change Demo conditions.`}
+          </InlineAlert>
         ) : null}
         <section className={styles.section} aria-labelledby="recent-heading">
           <h2 id="recent-heading" className={styles.sectionHeading}>
@@ -115,15 +115,19 @@ export function ProjectStart() {
           ) : (
             <>
               {meta.catalogError ? (
-                <div role="alert" className={formStyles.alert}>
-                  <p>{meta.catalogError}</p>
-                  <Button
-                    className={componentStyles.button}
-                    onPress={() => void client.listProjects()}
-                  >
-                    Try loading projects again
-                  </Button>
-                </div>
+                <InlineAlert
+                  tone="danger"
+                  actions={
+                    <Button
+                      className={componentStyles.button}
+                      onPress={() => void client.listProjects()}
+                    >
+                      Try loading projects again
+                    </Button>
+                  }
+                >
+                  {meta.catalogError}
+                </InlineAlert>
               ) : null}
               {meta.projects.length ? (
                 <ProjectList

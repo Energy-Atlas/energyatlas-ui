@@ -16,6 +16,7 @@ import {
 import { ActionButton } from '../components/ActionButton.tsx'
 import componentStyles from '../components/components.module.css'
 import formStyles from '../components/forms.module.css'
+import { InlineAlert } from '../components/InlineAlert.tsx'
 import { cx } from '../cx.ts'
 import { DialogFrame } from '../shell/HelpDialogs.tsx'
 import { DemoConditionsDialog } from '../shell/DemoConditionsDialog.tsx'
@@ -90,11 +91,7 @@ function ProjectDialogsContent({
             discard.
           </p>
         ) : null}
-        {error ? (
-          <p role="alert" className={formStyles.alert}>
-            {error}
-          </p>
-        ) : null}
+        {error ? <InlineAlert tone="danger">{error}</InlineAlert> : null}
         {busy ? (
           <>
             <p role="status">Waiting for the server…</p>
@@ -217,11 +214,7 @@ function ProjectDialogsContent({
               {nameError}
             </FieldError>
           </TextField>
-          {error ? (
-            <p role="alert" className={formStyles.alert}>
-              {error}
-            </p>
-          ) : null}
+          {error ? <InlineAlert tone="danger">{error}</InlineAlert> : null}
           <div className={styles.actions}>
             <Button
               className={componentStyles.button}
@@ -264,9 +257,7 @@ function ProjectDialogsContent({
           connected.
         </p>
         {error || meta.catalogError ? (
-          <p role="alert" className={formStyles.alert}>
-            {error || meta.catalogError}
-          </p>
+          <InlineAlert tone="danger">{error || meta.catalogError}</InlineAlert>
         ) : null}
         {pending ? (
           <p role="status">Loading projects…</p>

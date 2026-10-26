@@ -523,47 +523,6 @@
   outline-offset: 1px;
 }
 
-.popover {
-  max-width: 18rem;
-  border: var(--rule);
-  border-radius: var(--radius-md);
-  background: var(--color-surface-raised);
-  box-shadow: var(--shadow-popover);
-}
-
-.menu {
-  display: grid;
-  gap: 0.125rem;
-  padding: 0.25rem;
-  outline: none;
-}
-
-.menuItem {
-  display: grid;
-  gap: 0.0625rem;
-  padding: 0.25rem 0.5rem;
-  border-radius: var(--radius-sm);
-  cursor: pointer;
-  outline: none;
-}
-
-.menuItem[data-focused] {
-  background: var(--color-selected-bg);
-}
-
-.menuItem[data-selected] .menuLabel::after {
-  content: ' ✓';
-}
-
-.menuLabel {
-  font-weight: 600;
-}
-
-.menuDescription {
-  color: var(--color-text-muted);
-  font-size: var(--font-size-small);
-}
-
 /* Suggestions are prompts the agent will read, so they stay sentence case in
    the sans rather than taking the toolbar buttons' mono labels. */
 .suggestions li > button {

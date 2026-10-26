@@ -43,6 +43,7 @@ import { splitIssues } from '../commandErrors.ts'
 import { CapabilityBadge, StatusTag } from '../components/CapabilityBadge.tsx'
 import componentStyles from '../components/components.module.css'
 import formStyles from '../components/forms.module.css'
+import { InlineAlert } from '../components/InlineAlert.tsx'
 import { cx } from '../cx.ts'
 import styles from './creator.module.css'
 
@@ -118,15 +119,12 @@ function withoutKey(
 
 function Message({ message }: { message: FormMessage }) {
   if (!message) return null
-  return (
-    <p
-      className={
-        message.tone === 'error' ? formStyles.alert : formStyles.success
-      }
-      role={message.tone === 'error' ? 'alert' : 'status'}
-    >
+  return message.tone === 'error' ? (
+    <InlineAlert tone="danger">{message.text}</InlineAlert>
+  ) : (
+    <InlineAlert tone="success" live="polite">
       {message.text}
-    </p>
+    </InlineAlert>
   )
 }
 

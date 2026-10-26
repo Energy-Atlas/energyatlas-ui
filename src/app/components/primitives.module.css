@@ -1,0 +1,342 @@
+/* Shared panel components (decision 0027). Every colour, font, and size comes
+   from the appearance tokens; shapes follow decision 0021. */
+
+/* Panel and page headers: a title, its badges and counts, then controls
+   pushed to the end; the controls wrap under the title when the pane is
+   narrow. */
+.header {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2) var(--space-3);
+  margin: 0 0 var(--space-2);
+}
+
+.headerTitle {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-1) var(--space-2);
+  min-width: 0;
+}
+
+.headerTitle h2,
+.headerTitle h3 {
+  margin: 0;
+  font-size: var(--font-size-title);
+}
+
+.headerTitle h3 {
+  font-size: var(--font-size-base);
+}
+
+.headerActions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2);
+  margin-left: auto;
+}
+
+.description {
+  flex-basis: 100%;
+  margin: 0;
+  color: var(--color-text-muted);
+}
+
+.count {
+  color: var(--color-text-muted);
+  font-family: var(--label-font);
+  font-size: var(--label-size);
+  font-variant-numeric: tabular-nums;
+}
+
+/* Toolbars: one row of buttons; what does not fit moves into More. */
+.toolbarFrame {
+  position: relative;
+  flex-shrink: 1;
+  min-width: 0;
+  max-width: 100%;
+}
+
+.toolbar {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+  min-width: 0;
+}
+
+.toolItem {
+  display: flex;
+  flex-shrink: 0;
+  align-items: center;
+  gap: var(--space-1);
+}
+
+.toolbarSeparator {
+  align-self: stretch;
+  width: 1px;
+  margin: 0.125rem var(--space-1);
+  border: 0;
+  background: var(--color-border);
+}
+
+/* The measuring copy lays every item out once, off screen and inert. */
+.measure {
+  position: absolute;
+  top: 0;
+  left: 0;
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+  visibility: hidden;
+  pointer-events: none;
+  white-space: nowrap;
+}
+
+.toolButton[aria-pressed='true'] {
+  border-color: var(--color-accent);
+  background: var(--color-selected-bg);
+}
+
+.toolButton {
+  white-space: nowrap;
+}
+
+/* Segmented filters: joined square cells; the chosen one is the family's
+   inverted block, like a selected tab. */
+.segmented {
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: stretch;
+}
+
+.segment {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  min-height: 1.625rem;
+  margin-left: -1px;
+  padding: 0 0.5rem;
+  border: 1px solid var(--color-border-interactive);
+  border-radius: var(--radius-sm);
+  background: var(--button-bg);
+  color: var(--color-text);
+  font-family: var(--label-font);
+  font-size: var(--label-size);
+  font-weight: var(--label-weight);
+  letter-spacing: var(--label-tracking);
+  text-transform: var(--label-case);
+  cursor: pointer;
+  outline: none;
+  transition:
+    color var(--transition),
+    background-color var(--transition),
+    border-color var(--transition);
+}
+
+.segment:first-child {
+  margin-left: 0;
+}
+
+.segment[data-hovered]:not([data-selected]) {
+  position: relative;
+  border-color: var(--color-accent);
+  background: var(--button-bg-hover);
+}
+
+.segment[data-selected] {
+  position: relative;
+  border-color: var(--color-text);
+  background: var(--color-text);
+  color: var(--color-surface);
+}
+
+.segment[data-disabled] {
+  border-style: dashed;
+  background: transparent;
+  color: var(--color-text-muted);
+  cursor: not-allowed;
+}
+
+.segment[data-focus-visible] {
+  position: relative;
+  z-index: 1;
+  outline: 2px solid var(--color-focus);
+  outline-offset: 1px;
+}
+
+.segmentCount {
+  font-variant-numeric: tabular-nums;
+  opacity: 0.8;
+}
+
+/* Inline alerts: a ruled cell with a tone edge and icon, so tone is never
+   carried by colour alone. */
+.alert {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: start;
+  gap: var(--space-1) var(--space-2);
+  margin: 0 0 var(--space-2);
+  padding: var(--space-2) var(--space-3);
+  border: var(--rule);
+  border-left-width: 2px;
+  border-radius: var(--radius-sm);
+  background: var(--color-surface-raised);
+  color: var(--color-text);
+}
+
+.alert > svg {
+  margin-top: 0.125rem;
+}
+
+.alertBody {
+  display: grid;
+  gap: 0.125rem;
+  min-width: 0;
+}
+
+.alertBody p {
+  margin: 0;
+}
+
+.alertTitle {
+  font-weight: 600;
+}
+
+.alertActions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-1);
+}
+
+.toneInfo {
+  border-left-color: var(--tone-info-text);
+}
+
+.toneInfo > svg {
+  color: var(--tone-info-text);
+}
+
+.toneSuccess {
+  border-left-color: var(--tone-success-text);
+}
+
+.toneSuccess > svg {
+  color: var(--tone-success-text);
+}
+
+.toneWarning {
+  border-left-color: var(--tone-warning-text);
+}
+
+.toneWarning > svg {
+  color: var(--tone-warning-text);
+}
+
+.toneDanger {
+  border-left-color: var(--tone-danger-text);
+}
+
+.toneDanger > svg {
+  color: var(--tone-danger-text);
+}
+
+/* Property lists: muted labels beside values, in one grid. */
+.properties {
+  display: grid;
+  grid-template-columns: max-content minmax(0, 1fr);
+  gap: var(--space-1) var(--space-3);
+  margin: 0;
+  font-variant-numeric: tabular-nums;
+}
+
+.property {
+  display: contents;
+}
+
+.properties dt {
+  color: var(--color-text-muted);
+  font-family: var(--label-font);
+  font-size: var(--label-size);
+  letter-spacing: var(--label-tracking);
+  text-transform: var(--label-case);
+}
+
+.properties dd {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+.mono {
+  font-family: var(--font-mono);
+  font-size: var(--font-size-small);
+}
+
+/* Sections: a ruled disclosure whose trigger names the content and its count. */
+.section {
+  border-top: var(--rule);
+}
+
+.sectionHeading {
+  margin: 0;
+  font-size: var(--font-size-base);
+}
+
+.sectionTrigger {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+  width: 100%;
+  padding: var(--space-1) 0;
+  border: 0;
+  background: none;
+  color: var(--color-text);
+  font: inherit;
+  font-weight: 600;
+  text-align: left;
+  cursor: pointer;
+  outline: none;
+}
+
+.sectionTrigger[data-hovered] {
+  color: var(--color-accent-text);
+}
+
+.sectionTrigger[data-focus-visible] {
+  outline: 2px solid var(--color-focus);
+  outline-offset: -2px;
+}
+
+.sectionTrigger > svg {
+  flex-shrink: 0;
+  transition: transform var(--transition);
+}
+
+.section[data-expanded] .sectionTrigger > svg {
+  transform: rotate(90deg);
+}
+
+.sectionPanel {
+  padding: 0 0 var(--space-2);
+  overflow-x: auto;
+}
+
+/* Menu triggers share the button look; the quiet variant shows no edge until
+   hovered, like the ribbon's quiet buttons. */
+.menuTrigger[data-pressed],
+.menuTrigger[aria-expanded='true'] {
+  border-color: var(--color-accent);
+  background: var(--button-bg-pressed);
+}
+
+.menuTrigger[data-focus-visible] {
+  outline: 2px solid var(--color-focus);
+  outline-offset: 1px;
+}
+
+.quiet {
+  border-color: transparent;
+  background: transparent;
+}

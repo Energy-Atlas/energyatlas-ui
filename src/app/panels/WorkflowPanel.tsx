@@ -16,6 +16,7 @@ import {
 } from '../WorkbenchContext.tsx'
 import { ActionButton } from '../components/ActionButton.tsx'
 import { CapabilityBadge } from '../components/CapabilityBadge.tsx'
+import { PanelHeader } from '../components/PanelHeader.tsx'
 import { StateBadge } from '../components/StateBadge.tsx'
 import { cx } from '../cx.ts'
 import { forStage, waitingReason } from '../service/usePendingReason.ts'
@@ -33,10 +34,11 @@ export function WorkflowPanel() {
 
   return (
     <section className={styles.panel} aria-labelledby={headingId}>
-      <header className={styles.panelHeader}>
-        <h2 id={headingId}>Workflow</h2>
-        <CapabilityBadge id="workflow.stageRuns" />
-      </header>
+      <PanelHeader
+        title="Workflow"
+        headingId={headingId}
+        meta={<CapabilityBadge id="workflow.stageRuns" />}
+      />
       <ol className={styles.stageList}>
         {workflow.stageIds.map((stageId, index) => {
           const stage = workflow.stages[stageId]
