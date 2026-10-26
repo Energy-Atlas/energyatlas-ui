@@ -1,8 +1,8 @@
-# Project lifecycle: proposed slice
+# Project lifecycle
 
 Date: 2026-10-26
 
-Status: implemented on `codex/project-lifecycle` for review. The dedicated start-screen direction is accepted ([decision 0024](decisions/0024-dedicated-project-start-screen.md)).
+Status: reviewed and integrated into local `master` on 2026-10-26 at `4fb94b1`; not pushed. The dedicated start-screen direction is accepted ([decision 0024](decisions/0024-dedicated-project-start-screen.md)).
 The owner also accepted confirmation before cancelling active jobs when leaving or switching. The remaining details
 below are implementation choices based on those decisions, not additional owner decisions. Implementation follows
 the [plan](project-lifecycle-plan.md), roadmap step 2, and the handoff's discussion checkpoint.
@@ -144,8 +144,8 @@ RC cancels jobs when replacing the project session (`ProjectController.StartSess
 - During development, formatting while the Vite browser run was active caused a stale-context hot reload. Source
   is held fixed during final browser checks. Run development and preview checks sequentially; they share artifacts.
 
-Next: owner review of `codex/project-lifecycle`, then integration if requested. No push or merge of this slice has
-been performed; the next roadmap slice is Jobs after this lifecycle review.
+At the initial implementation checkpoint, the slice awaited owner review on `codex/project-lifecycle`.
+The following merge review supersedes that checkpoint.
 
 ## Merge review, 2026-10-26
 
@@ -164,3 +164,8 @@ browser tests (including the six-appearance/three-size matrix), and the producti
 browser tests all passed. `git diff --check` and 89 local Markdown link targets passed. Browser suites ran
 sequentially. Existing hidden-chart/map-style and large-bundle warnings remain; no check failed. Dependencies
 are unchanged, and the RC checkout remains clean and read-only.
+
+Integrated by `git -C D:/energyatlas-ui merge --ff-only codex/project-lifecycle`, from `1fa90ab` to `4fb94b1`.
+The master checkout was clean before integration. No push, deployment, branch deletion, or merge of
+`feature/agentic` was performed. The implementation branch and all existing worktrees remain available.
+Next: [Jobs discussion](jobs-discussion.md), with surface and behavioral choices pending before implementation.

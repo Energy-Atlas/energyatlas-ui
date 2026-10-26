@@ -2,7 +2,7 @@
 
 Date: 2026-09-15, after first-slice stage 4 (scripted agent) on the `feature/agentic` branch and the OpenFreeMap basemap over Back Bay footprints ([decision 0012](decisions/0012-openfreemap-basemap-back-bay.md)) on the `feature/basemap` branch.
 
-Updated 2026-10-26 for project lifecycle on `codex/project-lifecycle` ([decision 0024](decisions/0024-dedicated-project-start-screen.md)); this slice is not merged or pushed. The [lifecycle record](project-lifecycle-design.md) contains its verification and limits.
+Updated 2026-10-26 for project lifecycle ([decision 0024](decisions/0024-dedicated-project-start-screen.md)), reviewed and integrated into local `master`; not pushed. The [lifecycle record](project-lifecycle-design.md) contains its verification and limits. [Jobs](jobs-discussion.md) is the next design discussion.
 
 This guide is for a developer or agent taking over without the original conversation. It describes the code as built, how to extend it without breaking the accepted rules, how it is tested, and what is still missing. Product intent and accepted choices live in the [decision records](decisions/README.md); evidence lives in the [first-slice implementation status](first-slice-proposal.md#implementation-status) and the [design alignment record](design-alignment.md#implementation-status).
 

@@ -2,7 +2,8 @@
 
 Date: 2026-10-26. Implements [decision 0024](decisions/0024-dedicated-project-start-screen.md) and the
 [lifecycle design](project-lifecycle-design.md). Follow repository checkpoints and commands; no additional workflow
-approval gate. Work stays on `codex/project-lifecycle`; do not merge or push this slice without the owner's request.
+approval gate. Implementation used `codex/project-lifecycle`; the owner requested local merge after review on
+2026-10-26. No push is requested.
 
 ## Architecture and constraints
 
@@ -68,4 +69,4 @@ access. All styling uses the existing appearance tokens and family grammar.
 - Ruling: create submit uses explicit disabled/progress feedback because React Aria 1.21.1 pending-button announcements otherwise outlive the modal and leave invalid label references.
 - Ruling: saved snapshots use a complete typed Zod schema plus graph/index validation; partial shape checks allowed corrupted graphs to crash the workbench.
 - Ruling: Demo conditions stays reachable inside pending lifecycle dialogs, allowing held requests to be released without trapping the user.
-- Ruling: lifecycle remains on this branch for owner review; the earlier reviewed mock-server integration is unchanged on local master.
+- Integration: owner-requested review reproduced and fixed silent Recent-open errors, then all checks passed again (224 unit, 69 development browser, 2 preview). Local `master` fast-forwarded from `1fa90ab` to `4fb94b1`; no push. See the [merge record](project-lifecycle-design.md#merge-review-2026-10-26). Jobs is in discussion, with no implementation yet.

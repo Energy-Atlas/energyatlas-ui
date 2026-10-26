@@ -1,5 +1,6 @@
 # Documentation index
 
+- [Jobs discussion](jobs-discussion.md): read-only RC observations, three directions for roadmap step 3, and pending retry/partial-failure/queue choices.
 - [Project lifecycle design](project-lifecycle-design.md): accepted start screen and job confirmation (decision 0024), implemented behavior, boundaries, verification, and remaining limitations.
 - [Project lifecycle implementation plan](project-lifecycle-plan.md): service, shared guards, UI, and verification stages.
 - [Review and project lifecycle discussion, 2026-10-25](20261025_review-and-project-lifecycle.md): local integration, review fixes, final verification, and pending directions for roadmap step 2.
