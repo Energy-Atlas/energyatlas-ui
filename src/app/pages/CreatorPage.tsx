@@ -48,12 +48,7 @@ const APPLIES_TO: { value: BuildingUse | 'all'; label: string }[] = [
   { value: 'mixed', label: 'Mixed use' },
 ]
 
-const OTHER_CREATORS = [
-  'Building',
-  'Archetype',
-  'Grid element',
-  'View or report',
-]
+const OTHER_CREATORS = ['Building', 'Grid element', 'View or report']
 
 type MeasureDraft = {
   name: string

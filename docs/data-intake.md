@@ -35,7 +35,7 @@ Behavior notes:
   field or as an alert; Apply explains why it is unavailable.
 - Rejected rows are listed with their reasons and are never applied; duplicated source IDs reject every copy.
 - A manual floor override wins over an imported value; the preview lists it as a kept override.
-- Added buildings get the next free `B####` IDs at preparation; the same IDs are planned again at processing and
+- Added buildings get the next free `BX####` IDs at preparation; the same IDs are planned again at processing and
   publication because inputs are locked by the signature and the edit lock.
 
 Review: an independent review found no held-output, signature, ID-determinism, migration, or circular-import defect

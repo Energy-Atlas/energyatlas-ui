@@ -40,6 +40,18 @@ export const capabilities = {
     explanation:
       'Choosing a file from disk or a server is deferred; choose a synthetic dataset instead.',
   },
+  'archetypes.library': {
+    label: 'Archetypes and assignment',
+    status: 'simulated',
+    explanation:
+      'Archetype definitions, the library, validation, coverage, and assignment jobs are real state transitions; the library and energy use intensities are synthetic.',
+  },
+  'archetypes.schedules': {
+    label: 'Schedules',
+    status: 'simulated',
+    explanation:
+      'Daily and weekly schedules are validated and kept with archetypes, with full-load hours; synthetic energy results do not use them yet.',
+  },
   'workflow.freeformEditing': {
     label: 'Free-form graph editing',
     status: 'planned',
@@ -112,7 +124,7 @@ export const capabilities = {
     label: 'Other creators',
     status: 'planned',
     explanation:
-      'Creators for buildings, archetypes, grid elements, and views are planned.',
+      'Creators for buildings, grid elements, and views are planned. Archetypes and schedules are edited on the Archetypes page.',
   },
   'grid.gasNetwork': {
     label: 'Gas network',

@@ -2,11 +2,11 @@ import { GROUP, upsertAsset } from './assets.ts'
 import { addedBuildings, applySourceRecords } from './intake/fusion.ts'
 import backBayBuildings from './fixtures/back-bay-buildings.geo.json'
 import type {
-  Archetype,
   Building,
   BuildingUse,
   EditableBuildingField,
   GridElement,
+  HeldAssignmentOutput,
   HeldPreprocessingOutput,
   LngLat,
   Provenance,
@@ -120,39 +120,6 @@ const MONTHLY_WEIGHT_TOTAL = MONTHLY_WEIGHTS.reduce(
 
 const TRANSFORMER_RATINGS_KVA = [12_000, 12_000, 9_000, 6_000]
 
-const ARCHETYPES: Archetype[] = [
-  {
-    id: 'archetype:residential-pre-1980',
-    name: 'Residential, built before 1980',
-    use: 'residential',
-    euiKwhPerM2: 165,
-  },
-  {
-    id: 'archetype:residential-1980-on',
-    name: 'Residential, built 1980 or later',
-    use: 'residential',
-    euiKwhPerM2: 115,
-  },
-  {
-    id: 'archetype:office',
-    name: 'Office',
-    use: 'office',
-    euiKwhPerM2: 210,
-  },
-  {
-    id: 'archetype:retail',
-    name: 'Retail',
-    use: 'retail',
-    euiKwhPerM2: 240,
-  },
-  {
-    id: 'archetype:school',
-    name: 'School',
-    use: 'school',
-    euiKwhPerM2: 140,
-  },
-]
-
 export function unitRandom(index: number, salt: number): number {
   let t = (index * 0x9e3779b1 + salt * 0x85ebca6b) >>> 0
   t = Math.imul(t ^ (t >>> 15), 1 | t)
@@ -238,23 +205,6 @@ function makeResultSet(
       round((totalKwh * weight) / MONTHLY_WEIGHT_TOTAL),
     ),
     byBuildingKwh,
-  }
-}
-
-function matchArchetype(building: Building): string | null {
-  switch (building.use) {
-    case 'residential':
-      return building.yearBuilt !== null && building.yearBuilt < 1980
-        ? 'archetype:residential-pre-1980'
-        : 'archetype:residential-1980-on'
-    case 'office':
-      return 'archetype:office'
-    case 'retail':
-      return 'archetype:retail'
-    case 'school':
-      return 'archetype:school'
-    default:
-      return null
   }
 }
 
@@ -540,35 +490,62 @@ function estimateShadingAndPv(
   }
 }
 
-function modelArchetypes(
+/** Why held archetype assignments cannot be published, or null. */
+export function validateAssignment(
   state: WorkbenchState,
-  context: StageRunContext,
-): StageRunResult {
-  if (state.buildingIds.some((id) => state.buildings[id]?.use === null)) {
-    return {
-      ok: false,
-      message: 'Building use is missing. Run "Geospatial data enriching".',
+  membership: string[],
+  held: Record<string, HeldAssignmentOutput>,
+): string | null {
+  for (const id of membership) {
+    const output = held[id]
+    if (!state.buildings[id]) return `building ${id} no longer exists`
+    if (!output) return `building ${id} has no held assignment`
+    if (output.archetypeId !== null && !state.archetypes[output.archetypeId]) {
+      return `archetype ${output.archetypeId} no longer exists`
     }
   }
-  state.archetypes = Object.fromEntries(
-    ARCHETYPES.map((archetype) => [archetype.id, { ...archetype }]),
-  )
-  forEachBuilding(state, (building) => {
-    building.archetypeId = matchArchetype(building)
-  })
+  return null
+}
+
+/**
+ * Publishes a complete assignment group at once: every member gets its held
+ * archetype, then manual archetype overrides are applied again so they win.
+ */
+export function publishAssignment(
+  state: WorkbenchState,
+  membership: string[],
+  held: Record<string, HeldAssignmentOutput>,
+  context: StageRunContext,
+): StageRunResult {
+  for (const id of membership) {
+    const building = state.buildings[id]
+    const output = held[id]
+    if (building && output) building.archetypeId = output.archetypeId
+  }
   applyOverrides(state, 'archetypeId')
   const unmatched = state.buildingIds.filter(
     (id) => state.buildings[id]?.archetypeId === null,
   ).length
-
+  const archetypeCount = Object.keys(state.archetypes).length
+  const scheduleCount = Object.keys(state.schedules).length
+  const provenance = fromStage(STAGE_IDS.archetypes, context)
   upsertAsset(state, {
     id: 'asset:archetype-library',
     kind: 'archetypes',
     name: 'Archetype library and assignments',
     parentId: GROUP.archetypes,
-    provenance: fromStage(STAGE_IDS.archetypes, context),
-    capability: 'workflow.stageRuns',
-    summary: `${ARCHETYPES.length} archetypes; ${state.buildingIds.length - unmatched} buildings assigned`,
+    provenance,
+    capability: 'archetypes.library',
+    summary: `${archetypeCount} archetypes; ${state.buildingIds.length - unmatched} buildings assigned`,
+  })
+  upsertAsset(state, {
+    id: 'asset:schedules',
+    kind: 'archetypes',
+    name: 'Schedules',
+    parentId: GROUP.archetypes,
+    provenance,
+    capability: 'archetypes.schedules',
+    summary: `${scheduleCount} daily and weekly schedules (synthetic)`,
   })
   return {
     ok: true,
@@ -576,7 +553,7 @@ function modelArchetypes(
     warnings:
       unmatched > 0
         ? [
-            `${unmatched} buildings have no matching archetype and are excluded from energy results. Assign one in the table.`,
+            `${unmatched} buildings have no matching archetype and are excluded from energy results. Assign one in the table or add an archetype.`,
           ]
         : [],
   }
@@ -1023,7 +1000,6 @@ const STAGE_RUNNERS: Record<
   [STAGE_IDS.enrichment]: enrichFootprints,
   [STAGE_IDS.schema]: matchSchema,
   [STAGE_IDS.shading]: estimateShadingAndPv,
-  [STAGE_IDS.archetypes]: modelArchetypes,
   [STAGE_IDS.baseline]: setUpBaseline,
   [STAGE_IDS.scenarioDefinitions]: confirmScenarioDefinitions,
   [STAGE_IDS.scenarioModeling]: modelScenarios,

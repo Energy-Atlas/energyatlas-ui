@@ -2,6 +2,7 @@ import { Layout, type ITabRenderValues, type TabNode } from 'flexlayout-react'
 import 'flexlayout-react/style/light.css'
 import {
   DatabaseZap,
+  Shapes,
   FolderTree,
   LayoutDashboard,
   ListChecks,
@@ -38,6 +39,7 @@ import { SettingsPage } from '../pages/SettingsPage.tsx'
 import { TablePage } from '../pages/TablePage.tsx'
 import { TasksPage } from '../pages/TasksPage.tsx'
 import { IntakePage } from '../pages/intake/IntakePage.tsx'
+import { ArchetypesPage } from '../pages/archetypes/ArchetypesPage.tsx'
 import { JobNoticeTray } from './JobNoticeTray.tsx'
 import { AssetsPanel } from '../panels/AssetsPanel.tsx'
 import { InspectionPanel } from '../panels/InspectionPanel.tsx'
@@ -72,6 +74,7 @@ const TAB_ICONS: Record<string, LucideIcon> = {
   'page.issues': TriangleAlert,
   'page.tasks': ListChecks,
   'page.intake': DatabaseZap,
+  'page.archetypes': Shapes,
   'page.account': UserRound,
 }
 
@@ -98,6 +101,8 @@ function renderTabContent(node: TabNode) {
       return <TasksPage />
     case 'page.intake':
       return <IntakePage />
+    case 'page.archetypes':
+      return <ArchetypesPage />
     case 'page.account':
       return <AccountPage />
     case 'page.issues':

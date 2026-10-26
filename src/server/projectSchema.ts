@@ -1,5 +1,9 @@
 import { z } from 'zod'
 import { capabilities, type CapabilityId } from '../domain/capabilities.ts'
+import {
+  ARCHETYPE_LIBRARY,
+  SCHEDULE_LIBRARY,
+} from '../domain/archetypes/library.ts'
 import type { WorkbenchState } from '../domain/types.ts'
 
 const id = z.string().min(1)
@@ -75,10 +79,53 @@ const heldFusion = z.object({
   ),
   footprint: ring.nullable(),
 })
+const heldAssignment = z.object({
+  kind: z.literal('assignment'),
+  archetypeId: id.nullable(),
+})
 const heldPreprocessing = z.object({
   heightM: number,
   floorAreaM2: number,
   zoneCount: number,
+})
+const definitionSource = z.discriminatedUnion('kind', [
+  z.object({ kind: z.literal('library'), libraryId: id }),
+  z.object({ kind: z.literal('project'), operationId: id }),
+])
+const archetypeFields = z.object({
+  id,
+  name: text,
+  use,
+  yearFrom: nullableNumber,
+  yearTo: nullableNumber,
+  euiKwhPerM2: number,
+  scheduleId: id.nullable(),
+  source: definitionSource,
+})
+/**
+ * Archetypes saved before definitions had year ranges and schedules take them
+ * from the library entry of the same id, so assignment stays as it was.
+ */
+const archetype = z.preprocess((value) => {
+  if (!value || typeof value !== 'object' || 'source' in value) return value
+  const saved = value as { id?: unknown }
+  const entry = ARCHETYPE_LIBRARY.find((candidate) => candidate.id === saved.id)
+  return entry
+    ? { ...entry, ...saved, source: entry.source }
+    : {
+        yearFrom: null,
+        yearTo: null,
+        scheduleId: null,
+        ...saved,
+        source: { kind: 'project', operationId: 'saved-before-definitions' },
+      }
+}, archetypeFields)
+const schedule = z.object({
+  id,
+  name: text,
+  weekday: z.array(number).length(24),
+  weekend: z.array(number).length(24),
+  source: definitionSource,
 })
 const runGroup = z.object({
   id,
@@ -92,7 +139,7 @@ const runGroup = z.object({
   }),
   fusion: z.object({ datasetId: id, mapping }).nullable().default(null),
   attemptIds: ids,
-  held: record(z.union([heldFusion, heldPreprocessing])),
+  held: record(z.union([heldFusion, heldAssignment, heldPreprocessing])),
   status: z.enum([
     'open',
     'published',
@@ -177,7 +224,8 @@ export const projectStateSchema: z.ZodType<WorkbenchState, unknown> = z
       }),
     ),
     buildingIds: ids,
-    archetypes: record(z.object({ id, name: text, use, euiKwhPerM2: number })),
+    archetypes: record(archetype),
+    schedules: record(schedule).default({}),
     measures: record(
       z.object({
         id,
@@ -317,6 +365,20 @@ export const projectStateSchema: z.ZodType<WorkbenchState, unknown> = z
     ),
     nextId: number.int().positive(),
   })
+  .transform((state) => {
+    // Library archetypes migrated above bring the library schedule they use.
+    for (const item of Object.values(state.archetypes)) {
+      if (item.scheduleId === null || item.scheduleId in state.schedules)
+        continue
+      const entry = SCHEDULE_LIBRARY.find(
+        (candidate) => candidate.id === item.scheduleId,
+      )
+      if (entry && item.source.kind === 'library') {
+        state.schedules[entry.id] = structuredClone(entry)
+      }
+    }
+    return state
+  })
   .superRefine((state, context) => {
     function fail(message: string) {
       context.addIssue({ code: 'custom', message })
@@ -332,6 +394,12 @@ export const projectStateSchema: z.ZodType<WorkbenchState, unknown> = z
     references(state.buildingIds, state.buildings)
     references(state.taskIds, state.tasks)
     references(state.runGroupIds, state.runGroups)
+    for (const item of Object.values(state.archetypes)) {
+      if (item.scheduleId !== null && !(item.scheduleId in state.schedules))
+        fail('An archetype refers to a missing schedule.')
+    }
+    for (const [key, value] of Object.entries(state.schedules))
+      if (key !== value.id) fail('A saved schedule has the wrong identity.')
     references(state.sourceRecordIds, state.sourceRecords)
     for (const [key, sourceRecord] of Object.entries(state.sourceRecords)) {
       if (sourceRecord.sourceKey !== key)

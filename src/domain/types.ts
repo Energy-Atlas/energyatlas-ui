@@ -64,11 +64,30 @@ export type Building = {
   archetypeId: string | null
 }
 
+/** Where a definition came from: the synthetic library, or an operation in this project. */
+export type DefinitionSource =
+  | { kind: 'library'; libraryId: string }
+  | { kind: 'project'; operationId: string }
+
 export type Archetype = {
   id: string
   name: string
   use: BuildingUse
+  /** Construction years the archetype covers; null leaves that end open. */
+  yearFrom: number | null
+  yearTo: number | null
   euiKwhPerM2: number
+  scheduleId: string | null
+  source: DefinitionSource
+}
+
+/** A daily and weekly schedule: 24 hourly fractions for a weekday and a weekend day. */
+export type Schedule = {
+  id: string
+  name: string
+  weekday: number[]
+  weekend: number[]
+  source: DefinitionSource
 }
 
 export type MeasureKind = 'envelope' | 'heating' | 'lighting' | 'pv'
@@ -254,7 +273,14 @@ export type HeldFusionOutput = {
   footprint: LngLat[] | null
 }
 
-export type HeldOutput = HeldPreprocessingOutput | HeldFusionOutput
+/** One building's held archetype assignment, published with the whole group. */
+export type HeldAssignmentOutput = {
+  kind: 'assignment'
+  archetypeId: string | null
+}
+
+export type HeldOutput =
+  HeldPreprocessingOutput | HeldFusionOutput | HeldAssignmentOutput
 
 /** Dataset field name to model field, or null to ignore the field. */
 export type FieldMapping = Record<string, TargetField | null>
@@ -358,6 +384,7 @@ export type WorkbenchState = {
   buildings: Record<string, Building>
   buildingIds: string[]
   archetypes: Record<string, Archetype>
+  schedules: Record<string, Schedule>
   measures: Record<string, Measure>
   scenarios: Record<string, Scenario>
   results: { baseline: ResultSet | null; scenarios: Record<string, ResultSet> }

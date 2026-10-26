@@ -16,6 +16,7 @@ export function createInitialState(): WorkbenchState {
     buildings: {},
     buildingIds: [],
     archetypes: {},
+    schedules: {},
     measures: {},
     scenarios: {},
     results: { baseline: null, scenarios: {} },

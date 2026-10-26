@@ -1,0 +1,229 @@
+/* Archetypes and schedules: definition lists beside compact editors, then
+   assignment coverage. The page is a size container so the pairs stack when
+   its tab is narrow. */
+.page {
+  container-type: inline-size;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+.header {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2) var(--space-3);
+}
+
+.header h2 {
+  margin: 0;
+}
+
+.stage {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  margin-left: auto;
+  color: var(--color-text-muted);
+}
+
+.split {
+  display: grid;
+  grid-template-columns: minmax(14rem, 20rem) minmax(0, 1fr);
+  gap: var(--space-3);
+  align-items: start;
+}
+
+@container (max-width: 44rem) {
+  .split {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+.listPane {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  min-width: 0;
+}
+
+.sectionTitle {
+  margin: 0;
+  color: var(--color-text-muted);
+  font-family: var(--label-font);
+  font-size: var(--label-size);
+  font-weight: var(--label-weight);
+  letter-spacing: var(--label-tracking);
+  text-transform: var(--label-case);
+}
+
+.section {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.section p {
+  margin: 0;
+}
+
+.list {
+  display: flex;
+  flex-direction: column;
+  max-height: 20rem;
+  overflow: auto;
+  border: var(--rule);
+  border-radius: var(--radius-sm);
+  outline: none;
+}
+
+.list[data-focus-visible] {
+  outline: 2px solid var(--color-focus);
+  outline-offset: 2px;
+}
+
+.row {
+  display: flex;
+  flex-direction: column;
+  gap: 0.125rem;
+  padding: var(--space-1) var(--space-2);
+  border-bottom: 1px solid var(--color-border-subtle);
+  cursor: pointer;
+  outline: none;
+}
+
+.row:last-child {
+  border-bottom: none;
+}
+
+.row[data-hovered] {
+  background: color-mix(in srgb, var(--color-accent) 8%, transparent);
+}
+
+.row[data-selected] {
+  background: var(--color-surface-raised);
+  box-shadow: inset 2px 0 0 var(--color-accent);
+}
+
+.row[data-focus-visible] {
+  outline: 2px solid var(--color-focus);
+  outline-offset: -2px;
+}
+
+.rowTitle {
+  font-weight: 500;
+}
+
+.rowMeta {
+  color: var(--color-text-muted);
+  font-size: var(--font-size-small);
+}
+
+.library {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: var(--space-1) var(--space-2);
+}
+
+.library label {
+  flex-basis: 100%;
+}
+
+.library select {
+  flex: 1;
+  min-width: 10rem;
+}
+
+.fields {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(12rem, 1fr));
+  gap: var(--space-2) var(--space-3);
+}
+
+.formActions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2);
+  grid-column: 1 / -1;
+}
+
+.schedule {
+  grid-column: 1 / -1;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  min-width: 0;
+  overflow-x: auto;
+}
+
+.profile {
+  border-collapse: collapse;
+  font-size: var(--font-size-small);
+  font-variant-numeric: tabular-nums;
+}
+
+.profile caption {
+  padding-bottom: var(--space-1);
+  color: var(--color-text-muted);
+  text-align: left;
+}
+
+.profile th {
+  padding: 0 0.125rem;
+  color: var(--color-text-muted);
+  font-family: var(--label-font);
+  font-weight: var(--label-weight);
+  text-align: center;
+}
+
+.profile th[scope='row'] {
+  padding-right: var(--space-2);
+  text-align: left;
+  text-transform: var(--label-case);
+  letter-spacing: var(--label-tracking);
+}
+
+.profile td {
+  position: relative;
+  height: 2.5rem;
+  padding: 0 1px;
+  vertical-align: bottom;
+}
+
+.bar {
+  position: absolute;
+  right: 1px;
+  bottom: 1.5rem;
+  left: 1px;
+  max-height: 1rem;
+  background: color-mix(in srgb, var(--color-accent) 45%, transparent);
+  pointer-events: none;
+}
+
+.hour {
+  box-sizing: border-box;
+  width: 2.25rem;
+  padding: 0.125rem;
+  border: 1px solid var(--color-border-interactive);
+  border-radius: var(--radius-sm);
+  background: var(--color-surface);
+  color: var(--color-text);
+  font: inherit;
+  text-align: right;
+}
+
+.hour[aria-invalid='true'] {
+  border-color: var(--tone-danger-text);
+}
+
+.error {
+  margin: 0;
+  color: var(--tone-danger-text);
+}
+
+.stats {
+  margin: 0;
+  color: var(--color-text-muted);
+}

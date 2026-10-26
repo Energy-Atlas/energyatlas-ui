@@ -339,4 +339,33 @@ describe('project catalog', () => {
       reread.catalog.projects[0]?.state.datasets['dataset:infill'],
     ).toBeTruthy()
   })
+
+  it('migrates archetypes saved before year ranges and schedules', () => {
+    const storage = memoryStorage()
+    const state = buildFixture('complete', () => new Date())
+    const old = JSON.parse(JSON.stringify(state)) as Record<string, unknown>
+    delete old.schedules
+    for (const item of Object.values(
+      old.archetypes as Record<string, Record<string, unknown>>,
+    )) {
+      for (const key of ['yearFrom', 'yearTo', 'scheduleId', 'source'])
+        delete item[key]
+    }
+    storage.setItem(
+      CATALOG_KEY,
+      JSON.stringify({
+        version: 1,
+        projects: [
+          { ...entry(state.project.id), name: state.project.name, state: old },
+        ],
+      }),
+    )
+    const read = readProjectCatalog(storage)
+    expect(read.error).toBeNull()
+    const migrated = read.catalog.projects[0]?.state
+    expect(
+      migrated?.archetypes['archetype:residential-pre-1980'],
+    ).toMatchObject({ yearTo: 1979, scheduleId: 'schedule:residential' })
+    expect(Object.keys(migrated?.schedules ?? {})).toHaveLength(4)
+  })
 })

@@ -115,6 +115,15 @@ export function WorkflowPanel() {
                     </ActionButton>
                   )
                 })()}
+                {stageId === STAGE_IDS.archetypes ? (
+                  <ActionButton
+                    label="Open Archetypes to edit definitions and schedules"
+                    disabledReason={null}
+                    onPress={() => layout.openPage('archetypes')}
+                  >
+                    Archetypes
+                  </ActionButton>
+                ) : null}
                 {stageId === STAGE_IDS.schema ? (
                   <ActionButton
                     label="Open Data intake to map and fuse a dataset"

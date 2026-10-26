@@ -19,6 +19,7 @@ import { STAGE_IDS, stageRunBlocker, upstreamIds } from '../workflow.ts'
 /** Stages whose work is split into independent items with held outputs. */
 export const ITEM_STAGES: ReadonlySet<string> = new Set([
   STAGE_IDS.preprocessing,
+  STAGE_IDS.archetypes,
 ])
 
 export function isItemStage(stageId: string): boolean {

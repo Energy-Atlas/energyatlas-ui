@@ -32,7 +32,11 @@ const archetypes: WorkbenchState['archetypes'] = {
     id: 'ARC-1',
     name: 'Office 1990s',
     use: 'office',
+    yearFrom: 1990,
+    yearTo: 1999,
     euiKwhPerM2: 120,
+    scheduleId: null,
+    source: { kind: 'project', operationId: 'op-1' },
   },
 }
 

@@ -1,5 +1,11 @@
 import { z } from 'zod'
 import { GROUP, upsertAsset } from './assets.ts'
+import { matchArchetype } from './archetypes/assignment.ts'
+import {
+  ARCHETYPE_LIBRARY,
+  DEFAULT_ARCHETYPE_IDS,
+  SCHEDULE_LIBRARY,
+} from './archetypes/library.ts'
 import { findDataset } from './intake/datasets.ts'
 import {
   fusionSubmitBlocker,
@@ -19,7 +25,9 @@ import {
 } from './jobs/runGroups.ts'
 import {
   preprocessBuilding,
+  publishAssignment,
   publishPreprocessing,
+  validateAssignment,
   runSimulatedStage,
   validatePreprocessing,
   type StageRunResult,
@@ -28,8 +36,11 @@ import type {
   Building,
   CommandSource,
   EditValue,
+  Archetype,
   EditableBuildingField,
+  HeldAssignmentOutput,
   HeldFusionOutput,
+  HeldOutput,
   HeldPreprocessingOutput,
   RunGroup,
   StageRecord,
@@ -158,6 +169,7 @@ function itemInputBlocker(
   state: WorkbenchState,
   stageId: string,
 ): string | null {
+  if (stageId === STAGE_IDS.archetypes) return definitionsBlocker(state)
   if (stageId !== STAGE_IDS.preprocessing) return null
   const missing = state.buildingIds.filter(
     (id) => (state.buildings[id]?.floors ?? null) === null,
@@ -165,6 +177,29 @@ function itemInputBlocker(
   return missing > 0
     ? `Floor counts are missing for ${missing} building${missing === 1 ? '' : 's'}. Run "Geospatial data enriching" first.`
     : null
+}
+
+/** Why archetype definitions cannot be assigned, or null; definitions are validated before assignment. */
+export function definitionsBlocker(state: WorkbenchState): string | null {
+  if (state.buildingIds.some((id) => state.buildings[id]?.use === null)) {
+    return 'Building use is missing. Run "Geospatial data enriching".'
+  }
+  for (const archetype of Object.values(state.archetypes)) {
+    if (
+      archetype.scheduleId !== null &&
+      !state.schedules[archetype.scheduleId]
+    ) {
+      return `"${archetype.name}" uses a schedule that no longer exists. Choose another schedule first.`
+    }
+    if (
+      archetype.yearFrom !== null &&
+      archetype.yearTo !== null &&
+      archetype.yearFrom > archetype.yearTo
+    ) {
+      return `"${archetype.name}" has an empty construction-year range.`
+    }
+  }
+  return null
 }
 
 /** An earlier submission with the same key, answered again without creating a job. */
@@ -196,17 +231,74 @@ function fusionPlans(
 }
 
 /** Held outputs of one kind, for the publisher that understands them. */
-function heldOf<Output extends HeldPreprocessingOutput | HeldFusionOutput>(
+function heldOf<Output extends HeldOutput>(
   group: RunGroup,
-  matches: (output: HeldPreprocessingOutput | HeldFusionOutput) => boolean,
+  matches: (output: HeldOutput) => boolean,
 ): Record<string, Output> {
   return Object.fromEntries(
     Object.entries(group.held).filter(([, output]) => matches(output)),
   ) as Record<string, Output>
 }
 
-const isFusionOutput = (output: HeldPreprocessingOutput | HeldFusionOutput) =>
+const isFusionOutput = (output: HeldOutput) =>
   'kind' in output && output.kind === 'fusion'
+
+const isAssignmentOutput = (output: HeldOutput) =>
+  'kind' in output && output.kind === 'assignment'
+
+/** One building's held item output for an item stage, or why it has none. */
+function stageItem(
+  state: WorkbenchState,
+  stageId: string,
+  buildingId: string,
+): { output: HeldOutput | null; missing: string | null } {
+  const building = state.buildings[buildingId]
+  if (!building) {
+    return { output: null, missing: 'The building no longer exists.' }
+  }
+  if (stageId === STAGE_IDS.archetypes) {
+    return {
+      output: {
+        kind: 'assignment',
+        archetypeId: matchArchetype(state.archetypes, building),
+      },
+      missing: null,
+    }
+  }
+  const output = preprocessBuilding(building)
+  return { output, missing: output ? null : 'The floor count is missing.' }
+}
+
+/** Bumps the inputs Archetype modeling owns, so assignments become outdated. */
+function touchArchetypeInputs(state: WorkbenchState) {
+  const stage = state.workflow.stages[STAGE_IDS.archetypes]
+  if (stage) stage.editRevision = nextRevision(state)
+}
+
+/** Copies a library archetype and the schedule it uses into the project. */
+function addLibraryArchetype(state: WorkbenchState, entry: Archetype) {
+  state.archetypes[entry.id] = structuredClone(entry)
+  const schedule = SCHEDULE_LIBRARY.find((item) => item.id === entry.scheduleId)
+  if (schedule && !state.schedules[schedule.id]) {
+    state.schedules[schedule.id] = structuredClone(schedule)
+  }
+}
+
+const hourlyProfileSchema = z
+  .array(
+    z
+      .number({ error: 'Enter a number from 0 to 1 in every hour.' })
+      .min(0, 'Hourly values cannot be below 0.')
+      .max(1, 'Hourly values cannot be above 1.'),
+  )
+  .length(24, 'Give exactly 24 hourly values.')
+
+const yearSchema = z
+  .number({ error: 'Enter a whole year, or leave it empty.' })
+  .int('Use a whole year.')
+  .min(1600, 'Use a year from 1600.')
+  .max(2030, 'Use a year up to 2030.')
+  .nullable()
 
 /** Closes a stage's open runs of one kind when a fresh run replaces them. */
 function supersedeOpenGroups(
@@ -356,6 +448,18 @@ export const commandDefinitions = {
     run(state, { stageId, requestId }, context) {
       const repeated = repeatedSubmission(state, requestId)
       if (repeated) return repeated
+      if (
+        stageId === STAGE_IDS.archetypes &&
+        Object.keys(state.archetypes).length === 0 &&
+        !stageRunBlocker(state.workflow, state.tasks, stageId)
+      ) {
+        // A first assignment starts from the default synthetic library.
+        for (const entry of ARCHETYPE_LIBRARY) {
+          if (DEFAULT_ARCHETYPE_IDS.includes(entry.id)) {
+            addLibraryArchetype(state, entry)
+          }
+        }
+      }
       const blocker =
         stageRunBlocker(state.workflow, state.tasks, stageId) ??
         itemInputBlocker(state, stageId)
@@ -486,6 +590,159 @@ export const commandDefinitions = {
       })
       return applied(
         `Queued a data fusion of "${dataset.label}" for ${prepared.plans.length} valid records; ${prepared.counts.rejected} rejected records are not applied.`,
+      )
+    },
+  }),
+
+  'archetype.save': defineCommand({
+    title: 'Save archetype',
+    description:
+      'Create an archetype, or change one by id: name, building use, optional construction-year range, energy use intensity (kWh/m² per year), and an optional schedule. Archetype modeling becomes outdated so buildings are reassigned with the new definitions.',
+    input: z.object({
+      id: z.string().min(1).optional(),
+      name: nameSchema,
+      use: buildingUseSchema,
+      yearFrom: yearSchema,
+      yearTo: yearSchema,
+      euiKwhPerM2: z
+        .number({ error: 'Enter the energy use intensity as a number.' })
+        .min(20, 'Energy use intensity must be at least 20 kWh/m².')
+        .max(600, 'Energy use intensity must be at most 600 kWh/m².'),
+      scheduleId: z.string().min(1).nullable(),
+    }),
+    undoable: true,
+    run(state, input, context) {
+      const existing = input.id ? state.archetypes[input.id] : undefined
+      if (input.id && !existing) {
+        return rejected(`Unknown archetype "${input.id}".`, 'id')
+      }
+      const others = Object.values(state.archetypes).filter(
+        (archetype) => archetype.id !== input.id,
+      )
+      if (!uniqueName(others, input.name)) {
+        return rejected(
+          `An archetype named "${input.name}" already exists.`,
+          'name',
+        )
+      }
+      if (
+        input.yearFrom !== null &&
+        input.yearTo !== null &&
+        input.yearFrom > input.yearTo
+      ) {
+        return rejected(
+          'The first construction year must not be after the last.',
+          'yearTo',
+        )
+      }
+      if (input.scheduleId !== null && !state.schedules[input.scheduleId]) {
+        return rejected('Choose an existing schedule or none.', 'scheduleId')
+      }
+      const id = existing?.id ?? allocateId(state, 'archetype')
+      state.archetypes[id] = {
+        id,
+        name: input.name,
+        use: input.use,
+        yearFrom: input.yearFrom,
+        yearTo: input.yearTo,
+        euiKwhPerM2: input.euiKwhPerM2,
+        scheduleId: input.scheduleId,
+        source: existing?.source ?? {
+          kind: 'project',
+          operationId: context.operationId,
+        },
+      }
+      touchArchetypeInputs(state)
+      return applied(
+        existing
+          ? `Updated archetype "${input.name}"; run Archetype modeling to reassign buildings.`
+          : `Created archetype "${input.name}"; run Archetype modeling to assign it.`,
+      )
+    },
+  }),
+
+  'archetype.addFromLibrary': defineCommand({
+    title: 'Add archetype from library',
+    description:
+      'Copy an archetype from the synthetic library into the project, with its schedule. The copy keeps its library provenance and can then be edited.',
+    input: z.object({
+      libraryId: z.string().min(1, 'Choose a library archetype.'),
+    }),
+    undoable: true,
+    run(state, { libraryId }) {
+      const entry = ARCHETYPE_LIBRARY.find(
+        (archetype) => archetype.id === libraryId,
+      )
+      if (!entry)
+        return rejected(
+          `Unknown library archetype "${libraryId}".`,
+          'libraryId',
+        )
+      if (state.archetypes[entry.id]) {
+        return rejected(
+          `"${entry.name}" is already in the project.`,
+          'libraryId',
+        )
+      }
+      if (!uniqueName(Object.values(state.archetypes), entry.name)) {
+        return rejected(
+          `An archetype named "${entry.name}" already exists.`,
+          'libraryId',
+        )
+      }
+      addLibraryArchetype(state, entry)
+      touchArchetypeInputs(state)
+      return applied(`Added "${entry.name}" from the synthetic library.`)
+    },
+  }),
+
+  'schedule.save': defineCommand({
+    title: 'Save schedule',
+    description:
+      'Create a schedule, or change one by id: a name and 24 hourly fractions from 0 to 1 for a weekday and for a weekend day. Archetypes using it become outdated.',
+    input: z.object({
+      id: z.string().min(1).optional(),
+      name: nameSchema,
+      weekday: hourlyProfileSchema,
+      weekend: hourlyProfileSchema,
+    }),
+    undoable: true,
+    run(state, input, context) {
+      const existing = input.id ? state.schedules[input.id] : undefined
+      if (input.id && !existing) {
+        return rejected(`Unknown schedule "${input.id}".`, 'id')
+      }
+      const others = Object.values(state.schedules).filter(
+        (schedule) => schedule.id !== input.id,
+      )
+      if (!uniqueName(others, input.name)) {
+        return rejected(
+          `A schedule named "${input.name}" already exists.`,
+          'name',
+        )
+      }
+      if ([...input.weekday, ...input.weekend].every((value) => value === 0)) {
+        return rejected(
+          'A schedule needs at least one hour above 0.',
+          'weekday',
+        )
+      }
+      const id = existing?.id ?? allocateId(state, 'schedule')
+      state.schedules[id] = {
+        id,
+        name: input.name,
+        weekday: [...input.weekday],
+        weekend: [...input.weekend],
+        source: existing?.source ?? {
+          kind: 'project',
+          operationId: context.operationId,
+        },
+      }
+      touchArchetypeInputs(state)
+      return applied(
+        existing
+          ? `Updated schedule "${input.name}".`
+          : `Created schedule "${input.name}".`,
       )
     },
   }),
@@ -667,19 +924,13 @@ export const commandDefinitions = {
       const plans = fusionPlans(state, group)
       let failed = 0
       for (const id of batch) {
-        let output: HeldPreprocessingOutput | HeldFusionOutput | null
+        let output: HeldOutput | null
         let missing: string | null
         if (plans) {
           output = plans.get(id) ?? null
           missing = output ? null : 'The record no longer validates.'
         } else {
-          const building = state.buildings[id]
-          output = building ? preprocessBuilding(building) : null
-          missing = !building
-            ? 'The building no longer exists.'
-            : !output
-              ? 'The floor count is missing.'
-              : null
+          ;({ output, missing } = stageItem(state, group.stageId, id))
         }
         const reason = failures[id] ?? missing
         if (reason || !output) {
@@ -774,15 +1025,22 @@ export const commandDefinitions = {
         }
         const membership = group.signature.membership
         const fusionHeld = heldOf<HeldFusionOutput>(group, isFusionOutput)
+        const assignmentHeld = heldOf<HeldAssignmentOutput>(
+          group,
+          isAssignmentOutput,
+        )
         const preprocessingHeld = heldOf<HeldPreprocessingOutput>(
           group,
-          (output) => !isFusionOutput(output),
+          (output) => !isFusionOutput(output) && !isAssignmentOutput(output),
         )
+        const isAssignment = group.stageId === STAGE_IDS.archetypes && !isFusion
         const invalid =
           failPublication ??
           (isFusion
             ? validateFusion(state, membership, fusionHeld)
-            : validatePreprocessing(state, membership, preprocessingHeld))
+            : isAssignment
+              ? validateAssignment(state, membership, assignmentHeld)
+              : validatePreprocessing(state, membership, preprocessingHeld))
         if (invalid) {
           group.statusReason = `Publication failed: ${invalid}`
           const message = `Publication failed: ${invalid}. All ${membership.length} results stay held; retry publication once the cause is resolved.`
@@ -822,11 +1080,19 @@ export const commandDefinitions = {
           })
           return applied(published.summary)
         }
-        result = publishPreprocessing(state, membership, preprocessingHeld, {
+        const runContext = {
           runId: task.runId,
           operationId: context.operationId,
           attempt: stage.runCount,
-        })
+        }
+        result = isAssignment
+          ? publishAssignment(state, membership, assignmentHeld, runContext)
+          : publishPreprocessing(
+              state,
+              membership,
+              preprocessingHeld,
+              runContext,
+            )
       } else {
         result = runSimulatedStage(state, stage.id, {
           runId: task.runId,
