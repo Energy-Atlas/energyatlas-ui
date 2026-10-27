@@ -444,6 +444,7 @@ export type SelectableEntity =
   | 'measure'
   | 'scenario'
   | 'asset'
+  | 'stage'
   | 'libraryArchetype'
   | 'librarySchedule'
   | 'libraryMeasure'
@@ -456,6 +457,7 @@ export const SELECTABLE_ENTITIES = [
   'measure',
   'scenario',
   'asset',
+  'stage',
   'libraryArchetype',
   'librarySchedule',
   'libraryMeasure',

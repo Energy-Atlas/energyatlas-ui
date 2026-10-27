@@ -17,6 +17,7 @@ import { AssetProperties } from '../properties/AssetProperties.tsx'
 import { MeasureProperties } from '../properties/MeasureProperties.tsx'
 import { ScenarioProperties } from '../properties/ScenarioProperties.tsx'
 import { ScheduleProperties } from '../properties/ScheduleProperties.tsx'
+import { StageProperties } from '../properties/StageProperties.tsx'
 import componentStyles from '../components/components.module.css'
 import { cx } from '../cx.ts'
 import { shownEdits } from '../properties/useEdits.ts'
@@ -235,6 +236,9 @@ function DefinitionProperties() {
   if (entityType === 'asset' && id) {
     const asset = state.assets[id]
     return asset ? <AssetProperties asset={asset} /> : null
+  }
+  if (entityType === 'stage' && id) {
+    return <StageProperties stageId={id} />
   }
   // Library entries are shown read-only, with Add to project where the
   // library offers it (decision 0028).

@@ -12,6 +12,7 @@ import {
   useClientSnapshot,
   useServices,
   useWorkbenchSnapshot,
+  useUnsavedChanges,
 } from '../WorkbenchContext.tsx'
 import { ActionButton } from '../components/ActionButton.tsx'
 import componentStyles from '../components/components.module.css'
@@ -36,6 +37,7 @@ function ProjectDialogsContent({
   const { lifecycle, client } = useServices()
   const snapshot = useStore(lifecycle.store, (current) => current)
   const meta = useClientSnapshot((current) => current.meta)
+  const unsaved = useUnsavedChanges()
   const pending = useClientSnapshot((current) => current.pending.length > 0)
   const transitioning = useClientSnapshot((current) => current.transitioning)
   const state = useWorkbenchSnapshot((current) => current.state)
@@ -76,7 +78,7 @@ function ProjectDialogsContent({
             keeps them running.
           </p>
         ) : null}
-        {!saveOnly && (meta.dirty || drafts) ? (
+        {!saveOnly && (unsaved || drafts) ? (
           <p>
             {drafts ? `${drafts} unsent table edit(s) and ` : ''}Unsaved changes
             will be lost unless you save. The saved copy is unchanged if you

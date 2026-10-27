@@ -12,39 +12,17 @@ import {
   type NodeProps,
 } from '@xyflow/react'
 import '@xyflow/react/dist/style.css'
-import { useEffect, useId, useMemo, useState } from 'react'
-import {
-  Button,
-  FieldError,
-  Form,
-  Input,
-  Label,
-  TextField,
-} from 'react-aria-components'
-import { stageSubmitBlocker } from '../../domain/commands.ts'
+import { useEffect, useId, useMemo } from 'react'
 import type { StageState, WorkflowState } from '../../domain/types.ts'
 import {
-  downstreamIds,
-  hasActiveTask,
-  upstreamIds,
-} from '../../domain/workflow.ts'
-import {
-  useClientSnapshot,
   useServices,
   useStageStates,
   useWorkbenchSnapshot,
 } from '../WorkbenchContext.tsx'
-import { splitIssues } from '../commandErrors.ts'
-import { ActionButton } from '../components/ActionButton.tsx'
 import { CapabilityBadge } from '../components/CapabilityBadge.tsx'
 import { StateBadge } from '../components/StateBadge.tsx'
-import componentStyles from '../components/components.module.css'
-import formStyles from '../components/forms.module.css'
-import { InlineAlert } from '../components/InlineAlert.tsx'
 import { PanelHeader } from '../components/PanelHeader.tsx'
-import { PropertyList } from '../components/PropertyList.tsx'
 import { cx } from '../cx.ts'
-import { forStage, waitingReason } from '../service/usePendingReason.ts'
 import styles from './roadmap.module.css'
 
 const NODE_WIDTH = 210
@@ -56,16 +34,24 @@ type StageNodeData = {
   name: string
   state: StageState
   isCurrent: boolean
-  onFocusStage: (stageId: string) => void
+  /** Shown in Properties. */
+  isSelected: boolean
 }
 
 type StageFlowNode = Node<StageNodeData, 'stage'>
 
 // Each node is a real button so stages are reachable with Tab; React Flow's
-// own node focus is off to avoid a second, non-activating tab stop.
+// own node focus is off to avoid a second, non-activating tab stop. Its click,
+// from the pointer or from Enter, reaches React Flow's onNodeClick.
 function StageNode({ data }: NodeProps<StageFlowNode>) {
   return (
-    <div className={cx(styles.node, data.isCurrent && styles.nodeCurrent)}>
+    <div
+      className={cx(
+        styles.node,
+        data.isCurrent && styles.nodeCurrent,
+        data.isSelected && styles.nodeSelected,
+      )}
+    >
       <Handle
         type="target"
         position={Position.Left}
@@ -76,7 +62,7 @@ function StageNode({ data }: NodeProps<StageFlowNode>) {
         type="button"
         className={styles.nodeButton}
         aria-current={data.isCurrent ? 'step' : undefined}
-        onClick={() => data.onFocusStage(data.stageId)}
+        aria-pressed={data.isSelected}
       >
         <span className={styles.nodeTitle}>
           <span className={styles.nodeNumber}>{data.number}</span>
@@ -99,7 +85,7 @@ const nodeTypes = { stage: StageNode }
 function layoutWorkflow(
   workflow: WorkflowState,
   states: Record<string, StageState>,
-  onFocusStage: (stageId: string) => void,
+  selectedId: string | null,
 ): { nodes: StageFlowNode[]; edges: Edge[] } {
   const graph = new Graph()
   graph.setGraph({ rankdir: 'LR', nodesep: 28, ranksep: 44 })
@@ -126,7 +112,7 @@ function layoutWorkflow(
           name: stage.name,
           state: states[id] ?? 'future',
           isCurrent: workflow.currentStageId === id,
-          onFocusStage,
+          isSelected: selectedId === id,
         },
       },
     ]
@@ -159,23 +145,33 @@ function FollowCurrentStage({ stageId }: { stageId: string | null }) {
   return null
 }
 
-/** Full project-setup roadmap (decision 0005): same workflow state as the Workflow panel. */
+/**
+ * Full project-setup roadmap (decision 0005): same workflow state as the
+ * Workflow panel. Choosing a stage focuses it and shows it in Properties
+ * (decision 0028), like every other object; the page has no details pane.
+ */
 export function RoadmapPage() {
   const headingId = useId()
-  const { workbench, appearance } = useServices()
+  const { workbench, appearance, showInspection } = useServices()
   const workflow = useWorkbenchSnapshot((snapshot) => snapshot.state.workflow)
+  const selection = useWorkbenchSnapshot((snapshot) => snapshot.state.selection)
   const states = useStageStates()
+  const selectedId =
+    selection.entityType === 'stage' ? (selection.ids[0] ?? null) : null
 
   const { nodes, edges } = useMemo(
-    () =>
-      layoutWorkflow(workflow, states, (stageId) =>
-        workbench.execute({
-          type: 'workflow.setCurrentStage',
-          input: { stageId },
-        }),
-      ),
-    [workflow, states, workbench],
+    () => layoutWorkflow(workflow, states, selectedId),
+    [workflow, states, selectedId],
   )
+
+  const choose = (stageId: string) => {
+    workbench.execute({ type: 'workflow.setCurrentStage', input: { stageId } })
+    workbench.execute({
+      type: 'selection.set',
+      input: { entityType: 'stage', ids: [stageId] },
+    })
+    showInspection()
+  }
 
   return (
     <section className={styles.roadmap} aria-labelledby={headingId}>
@@ -195,6 +191,9 @@ export function RoadmapPage() {
             nodes={nodes}
             edges={edges}
             nodeTypes={nodeTypes}
+            // A click handler also keeps nodes reachable by the pointer:
+            // without one, React Flow passes clicks to the pane underneath.
+            onNodeClick={(_, node) => choose(node.id)}
             nodesDraggable={false}
             nodesConnectable={false}
             nodesFocusable={false}
@@ -209,196 +208,7 @@ export function RoadmapPage() {
             <FollowCurrentStage stageId={workflow.currentStageId} />
           </ReactFlow>
         </div>
-        <StageDetails />
       </div>
     </section>
-  )
-}
-
-function StageDetails() {
-  const { workbench, client } = useServices()
-  const pending = useClientSnapshot((snapshot) => snapshot.pending)
-  const workflow = useWorkbenchSnapshot((snapshot) => snapshot.state.workflow)
-  const tasks = useWorkbenchSnapshot((snapshot) => snapshot.state.tasks)
-  const project = useWorkbenchSnapshot((snapshot) => snapshot.state)
-  const states = useStageStates()
-  const stageId = workflow.currentStageId
-  const stage = stageId ? workflow.stages[stageId] : undefined
-
-  if (!stageId || !stage) {
-    return (
-      <aside className={styles.details} aria-label="Stage details">
-        <p className={componentStyles.empty}>
-          Select a stage to see its details.
-        </p>
-      </aside>
-    )
-  }
-
-  const index = workflow.stageIds.indexOf(stageId)
-  const previousId = workflow.stageIds[index - 1]
-  const nextId = workflow.stageIds[index + 1]
-  const names = (ids: string[]) =>
-    ids.map((id) => workflow.stages[id]?.name ?? id).join(', ') || 'None'
-  const hasRun = stage.lastRun !== null
-  const focus = (id: string) =>
-    workbench.execute({
-      type: 'workflow.setCurrentStage',
-      input: { stageId: id },
-    })
-
-  return (
-    <aside className={styles.details} aria-label="Stage details">
-      <div>
-        <p className={styles.eyebrow}>Stage {index + 1}</p>
-        <h3 className={styles.stageName}>{stage.name}</h3>
-        <StateBadge state={states[stageId] ?? 'future'} />
-      </div>
-      <p className={componentStyles.muted}>{stage.description}</p>
-      <PropertyList
-        items={[
-          { label: 'Depends on', value: names(upstreamIds(workflow, stageId)) },
-          { label: 'Feeds', value: names(downstreamIds(workflow, stageId)) },
-          {
-            label: 'Last run',
-            value: stage.lastRun?.message ?? 'Not run yet.',
-          },
-        ]}
-      />
-      <div className={styles.actions}>
-        <ActionButton
-          label={`${hasRun ? 'Rerun' : 'Run'} ${stage.name}`}
-          variant="primary"
-          disabledReason={
-            waitingReason(
-              pending,
-              'workflow.runStage',
-              'the run was requested',
-              forStage(stageId),
-            ) ?? stageSubmitBlocker(project, stageId)
-          }
-          onPress={() =>
-            void client.execute({
-              type: 'workflow.runStage',
-              input: { stageId },
-            })
-          }
-        >
-          {hasRun ? 'Rerun' : 'Run'}
-        </ActionButton>
-        {stage.skippable ? (
-          <ActionButton
-            label={`${stage.skipped ? 'Restore' : 'Skip'} ${stage.name}`}
-            disabledReason={
-              hasActiveTask(tasks, stageId)
-                ? `"${stage.name}" is running.`
-                : waitingReason(
-                    pending,
-                    'workflow.setStageSkipped',
-                    stage.skipped
-                      ? 'the stage is being restored'
-                      : 'the stage is being skipped',
-                    forStage(stageId),
-                  )
-            }
-            onPress={() =>
-              void client.execute({
-                type: 'workflow.setStageSkipped',
-                input: { stageId, skipped: !stage.skipped },
-              })
-            }
-          >
-            {stage.skipped ? 'Restore' : 'Skip'}
-          </ActionButton>
-        ) : null}
-      </div>
-      <div className={styles.actions}>
-        <ActionButton
-          label="Previous stage"
-          disabledReason={previousId ? null : 'This is the first stage.'}
-          onPress={() => {
-            if (previousId) focus(previousId)
-          }}
-        >
-          Previous
-        </ActionButton>
-        <ActionButton
-          label="Next stage"
-          disabledReason={nextId ? null : 'This is the last stage.'}
-          onPress={() => {
-            if (nextId) focus(nextId)
-          }}
-        >
-          Next
-        </ActionButton>
-      </div>
-      <InsertStageForm afterStageId={stageId} key={stageId} />
-    </aside>
-  )
-}
-
-function InsertStageForm({ afterStageId }: { afterStageId: string }) {
-  const { client } = useServices()
-  const [sending, setSending] = useState(false)
-  const [name, setName] = useState('')
-  const [nameError, setNameError] = useState<string | null>(null)
-  const [general, setGeneral] = useState<string | null>(null)
-
-  return (
-    <Form
-      className={styles.insertForm}
-      validationBehavior="aria"
-      onSubmit={(event) => {
-        event.preventDefault()
-        if (sending) return
-        setSending(true)
-        void client
-          .execute({
-            type: 'workflow.insertStage',
-            input: { afterStageId, name },
-          })
-          .then((result) => {
-            setSending(false)
-            if (result.outcome.status === 'applied') {
-              setName('')
-              setNameError(null)
-              setGeneral(null)
-              return
-            }
-            const split = splitIssues(result.outcome.issues)
-            setNameError(split.fieldErrors.name ?? null)
-            setGeneral(
-              [split.general, split.fieldErrors.afterStageId]
-                .filter(Boolean)
-                .join(' ') || null,
-            )
-          })
-      }}
-    >
-      <TextField
-        name="name"
-        className={formStyles.field}
-        value={name}
-        isInvalid={nameError !== null}
-        onChange={(value) => {
-          setName(value)
-          setNameError(null)
-        }}
-      >
-        <Label className={formStyles.label}>
-          Insert a custom stage after this one
-        </Label>
-        <Input className={formStyles.input} />
-        <FieldError className={formStyles.fieldError}>{nameError}</FieldError>
-      </TextField>
-      {general ? <InlineAlert tone="danger">{general}</InlineAlert> : null}
-      <Button
-        type="submit"
-        className={componentStyles.button}
-        isPending={sending}
-      >
-        {sending ? 'Sending…' : 'Insert stage'}
-      </Button>
-    </Form>
   )
 }

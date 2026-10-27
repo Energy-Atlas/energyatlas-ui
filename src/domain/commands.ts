@@ -178,6 +178,7 @@ const SELECTION_NOUNS: Record<SelectableEntity, string> = {
   measure: 'measure(s)',
   scenario: 'scenario(s)',
   asset: 'asset(s)',
+  stage: 'stage(s)',
   libraryArchetype: 'library archetype(s)',
   librarySchedule: 'library schedule(s)',
   libraryMeasure: 'library measure(s)',

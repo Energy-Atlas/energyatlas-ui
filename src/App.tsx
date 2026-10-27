@@ -2,6 +2,7 @@ import { WorkbenchProvider } from './app/WorkbenchContext.tsx'
 import { useEffect } from 'react'
 import {
   useClientSnapshot,
+  useUnsavedChanges,
   useWorkbenchSnapshot,
 } from './app/WorkbenchContext.tsx'
 import { WorkbenchShell } from './app/shell/WorkbenchShell.tsx'
@@ -12,9 +13,10 @@ import { DemoSwitch } from './app/shell/DemoSwitch.tsx'
 function ProjectSession() {
   const snapshot = useClientSnapshot((current) => current)
   const state = useWorkbenchSnapshot((current) => current.state)
+  const unsaved = useUnsavedChanges()
   const mustConfirmUnload =
     snapshot.meta.currentProject !== null &&
-    (snapshot.meta.dirty ||
+    (unsaved ||
       Object.keys(state.pendingEdits).length > 0 ||
       snapshot.pending.length > 0 ||
       Object.values(state.tasks).some(

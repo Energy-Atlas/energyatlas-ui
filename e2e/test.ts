@@ -161,6 +161,27 @@ export async function openRecentProject(
   await expect(page.getByRole('main', { name: 'Workspace' })).toBeVisible()
 }
 
+/**
+ * Saves the open project, which keeps its table arrangements with it, then
+ * goes back to the start screen and reopens it as the most recent project.
+ */
+export async function saveAndReopen(page: Page) {
+  const status = page.getByRole('contentinfo', { name: 'Status bar' })
+  await expect(status).toContainText('unsaved changes')
+  await page.keyboard.press('Control+s')
+  await expect(page.getByTestId('save-status')).toContainText('Saved')
+  await expect(status).not.toContainText('unsaved changes')
+  await page.getByRole('button', { name: 'File', exact: true }).click()
+  await page.getByRole('menuitem', { name: /^Projects/ }).click()
+  await page
+    .getByRole('main', { name: 'Projects' })
+    .getByRole('region', { name: 'Recent projects' })
+    .getByRole('option')
+    .first()
+    .click()
+  await expect(page.getByRole('main', { name: 'Workspace' })).toBeVisible()
+}
+
 export const test = base.extend<{ basemapStub: undefined }>({
   basemapStub: [
     async ({ page }, use) => {

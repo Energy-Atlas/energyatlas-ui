@@ -61,6 +61,7 @@ import {
   type PropertiesService,
 } from './properties/propertiesService.ts'
 import { forgetUnsavedEdits } from './properties/useEdits.ts'
+import { parseStoredTables, tablesDiffer } from './tables/tableSettings.ts'
 import type { ViewState } from './view/viewOperations.ts'
 import { createViewStore, type ViewStore } from './view/viewStore.ts'
 import {
@@ -176,8 +177,15 @@ function createCoreServices(): CoreServices {
     })
   }
   const layout = createLayoutController(workbench, storage)
-  const view = createViewStore(workbench, storage)
-  const lifecycle = createProjectLifecycle({ workbench, client })
+  const view = createViewStore(workbench)
+  // Table arrangements are saved with the project (decision 0028).
+  client.attachView(() => ({ tables: view.getState().tables }))
+  const lifecycle = createProjectLifecycle({
+    workbench,
+    client,
+    viewUnsaved: () =>
+      viewUnsaved(view.getState().tables, client.store.getState().meta),
+  })
   const agent = createScriptedAgent({
     workbench,
     client,
@@ -190,7 +198,13 @@ function createCoreServices(): CoreServices {
   client.store.subscribe((snapshot, previous) => {
     if (snapshot.projectGeneration !== previous.projectGeneration) {
       agent.resetForProject()
-      view.execute({ type: 'view.resetForProject', input: {} }, 'system')
+      view.execute(
+        {
+          type: 'view.resetForProject',
+          input: { tables: snapshot.meta.view?.tables },
+        },
+        'system',
+      )
       properties.cancelCreate()
       forgetUnsavedEdits()
     }
@@ -346,6 +360,25 @@ export function useStageStates() {
   const workflow = useWorkbenchSnapshot((snapshot) => snapshot.state.workflow)
   const tasks = useWorkbenchSnapshot((snapshot) => snapshot.state.tasks)
   return useMemo(() => deriveStageStates(workflow, tasks), [workflow, tasks])
+}
+
+/** Whether the tables are arranged differently from how the project saved them. */
+function viewUnsaved(
+  tables: ViewState['tables'],
+  meta: ClientSnapshot['meta'],
+): boolean {
+  return tablesDiffer(tables, parseStoredTables(meta.view?.tables ?? {}))
+}
+
+/**
+ * Whether the open project has changes not saved in this browser: model
+ * changes the server tracks, or table arrangements, which are saved with the
+ * project (decision 0028).
+ */
+export function useUnsavedChanges(): boolean {
+  const meta = useClientSnapshot((snapshot) => snapshot.meta)
+  const tables = useViewState((view) => view.tables)
+  return meta.dirty || viewUnsaved(tables, meta)
 }
 
 /** Re-renders the caller whenever the FlexLayout model changes. */

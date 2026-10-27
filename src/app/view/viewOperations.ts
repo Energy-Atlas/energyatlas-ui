@@ -1,4 +1,3 @@
-import { current } from 'immer'
 import { z } from 'zod'
 import type { ValidationIssue } from '../../domain/commands.ts'
 import { findDataset } from '../../domain/intake/datasets.ts'
@@ -21,6 +20,7 @@ import { registeredTable, registeredTableIds } from '../tables/tableRegistry.ts'
 import {
   applyTableChange,
   defaultTableSettings,
+  parseStoredTables,
   tableChangeSchema,
   type TableSettings,
 } from '../tables/tableSettings.ts'
@@ -34,7 +34,7 @@ import {
 // commands they validate their input and return a result, and every one is
 // recorded in the shared operation log with its source, so manual controls and
 // the agent use one path (first-slice stage 4, prerequisite 1). View state is
-// neither saved with the project nor undoable.
+// not undoable; only table arrangements are saved with the project.
 
 export type TableView = 'buildings' | 'grid'
 
@@ -77,8 +77,8 @@ export type ViewState = {
   }
   nextChartNumber: number
   /**
-   * How the reader arranged each table, by table id (decision 0027). Kept per
-   * user in this browser and across project switches.
+   * How each table is arranged, by table id (decision 0027). Saved with the
+   * project and restored when it opens (decision 0028).
    */
   tables: Record<string, TableSettings>
 }
@@ -142,12 +142,13 @@ export const viewOperationDefinitions = {
   'view.resetForProject': defineViewOperation({
     title: 'Reset project views',
     description:
-      'Clear project-specific view state when the project session changes.',
-    input: z.object({}),
-    run(view) {
-      // Table arrangements belong to the reader, not the project. The draft
-      // is copied out first: Immer drops a draft assigned back onto itself.
-      Object.assign(view, createInitialViewState(current(view.tables)))
+      'Clear project-specific view state when the project session changes, restoring the table arrangements saved with the project.',
+    input: z.object({
+      /** The table arrangements saved with the project; invalid ones are dropped. */
+      tables: z.record(z.string(), z.unknown()).optional(),
+    }),
+    run(view, { tables }) {
+      Object.assign(view, createInitialViewState(parseStoredTables(tables)))
       return applied('Reset project-specific views for the new session.')
     },
   }),

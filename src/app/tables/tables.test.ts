@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, test } from 'vitest'
 import { createWorkbench } from '../../domain/workbench.ts'
 import { csvCommentLine, csvField } from '../csv.ts'
-import { createViewStore, TABLES_KEY } from '../view/viewStore.ts'
+import { createViewStore } from '../view/viewStore.ts'
 import { describeTableChange, tableChangeIssue } from './tableChange.ts'
 import {
   columnHeader,
@@ -21,6 +21,7 @@ import {
   isCustomised,
   nextHeaderSort,
   parseStoredTables,
+  tablesDiffer,
 } from './tableSettings.ts'
 
 type Building = { id: string; use: string; kwh: number | null; name: string }
@@ -448,20 +449,6 @@ describe('the table.change view operation', () => {
     unregister = null
   })
 
-  function memoryStorage(): Storage {
-    const values = new Map<string, string>()
-    return {
-      get length() {
-        return values.size
-      },
-      clear: () => values.clear(),
-      getItem: (key) => values.get(key) ?? null,
-      key: (index) => [...values.keys()][index] ?? null,
-      removeItem: (key) => void values.delete(key),
-      setItem: (key, value) => void values.set(key, value),
-    }
-  }
-
   test('rejects a table that is not on screen and names the open ones', () => {
     const view = createViewStore(createWorkbench())
     unregister = registerTable('test.buildings', REGISTERED)
@@ -479,10 +466,8 @@ describe('the table.change view operation', () => {
     expect(view.getState().tables).toEqual({})
   })
 
-  test('applies, stores in this browser, and survives a project reset', () => {
-    const storage = memoryStorage()
-    const workbench = createWorkbench()
-    const view = createViewStore(workbench, storage)
+  test('applies, and a project reset restores what that project saved', () => {
+    const view = createViewStore(createWorkbench())
     unregister = registerTable('test.buildings', REGISTERED)
     const result = view.execute({
       type: 'table.change',
@@ -495,17 +480,26 @@ describe('the table.change view operation', () => {
       status: 'applied',
       summary: 'Hid Use in "Buildings".',
     })
-    const stored = parseStoredTables(
-      JSON.parse(storage.getItem(TABLES_KEY) ?? '{}'),
-    )
-    expect(stored['test.buildings']?.hidden).toEqual(['use'])
-    view.execute({ type: 'view.resetForProject', input: {} })
-    expect(view.getState().tables['test.buildings']?.hidden).toEqual(['use'])
+    const saved = view.getState().tables
+    expect(tablesDiffer(saved, {})).toBe(true)
 
-    // A new session reads the stored arrangement back.
-    const reopened = createViewStore(workbench, storage)
-    expect(reopened.getState().tables['test.buildings']?.hidden).toEqual([
-      'use',
-    ])
+    // Opening another project restores its own arrangements, none here.
+    view.execute({ type: 'view.resetForProject', input: {} })
+    expect(view.getState().tables).toEqual({})
+
+    // Reopening the first restores what was saved with it; invalid entries
+    // are dropped rather than failing the whole reset.
+    view.execute({
+      type: 'view.resetForProject',
+      input: { tables: { ...saved, broken: { hidden: 'no' } } },
+    })
+    expect(view.getState().tables['test.buildings']?.hidden).toEqual(['use'])
+    expect(view.getState().tables.broken).toBeUndefined()
+    expect(tablesDiffer(view.getState().tables, saved)).toBe(false)
+  })
+
+  test('a table back at its defaults counts as unchanged', () => {
+    const settings = defaultTableSettings()
+    expect(tablesDiffer({ 'test.buildings': settings }, {})).toBe(false)
   })
 })

@@ -101,20 +101,33 @@ test('measures and scenarios are created in Properties through commands', async 
   expect(await seriousViolations(page)).toEqual([])
 })
 
-test('roadmap focuses stages and inserts a custom stage shared with the workflow panel', async ({
+test('roadmap shows a chosen stage in Properties and inserts a custom stage', async ({
   page,
 }) => {
   await page.getByRole('tab', { name: 'Roadmap', exact: true }).click()
   const graph = page.getByRole('region', { name: 'Workflow graph' })
+  // The canvas is bounded by a rule on every side.
+  await expect(graph).toHaveCSS('border-top-style', 'solid')
+  await expect(graph).toHaveCSS('border-left-style', 'solid')
+
+  // A pointer click on a stage shows it in Properties (decision 0028).
+  const locationStage = graph.getByRole('button', { name: /Location setup/ })
+  await locationStage.click()
+  await expect(
+    properties(page).getByRole('heading', { name: /Location setup/ }),
+  ).toBeVisible()
+  await expect(locationStage).toHaveAttribute('aria-pressed', 'true')
+
+  // So does Enter on a focused stage.
   const schemaStage = graph.getByRole('button', { name: /Schema matching/ })
   await schemaStage.focus()
   await page.keyboard.press('Enter')
-
-  const details = page.getByRole('complementary', { name: 'Stage details' })
+  const details = properties(page)
   await expect(
     details.getByRole('heading', { name: 'Schema matching' }),
   ).toBeVisible()
   await expect(schemaStage).toHaveAttribute('aria-current', 'step')
+  await expect(page.getByLabel('Stage details')).toHaveCount(0)
 
   await details
     .getByRole('textbox', { name: 'Insert a custom stage after this one' })

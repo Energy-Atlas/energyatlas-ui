@@ -1,12 +1,12 @@
 import { readFile } from 'node:fs/promises'
 import { AxeBuilder } from '@axe-core/playwright'
-import { expect, test, type Page } from './test.ts'
+import { expect, saveAndReopen, test, type Page } from './test.ts'
 
 // Shared data tables (decision 0027, step 2): table and column widgets on a
-// real page, settings kept per user in this browser, and the CSV of the view.
+// real page, settings saved with the project, and the CSV of the view.
 
-async function openResults(page: Page) {
-  await page.goto('/?fixture=complete')
+async function openResults(page: Page, load = true) {
+  if (load) await page.goto('/?fixture=complete')
   const tab = page.getByRole('tab', { name: 'Workflow', exact: true })
   if ((await tab.getAttribute('aria-selected')) !== 'true') await tab.click()
   await page
@@ -20,7 +20,7 @@ async function openResults(page: Page) {
   return results.locator('[data-table-id="results.buildings"]')
 }
 
-test('filters, sorts, hides, and formats a table, and keeps it in this browser', async ({
+test('filters, sorts, hides, and formats a table, and saves it with the project', async ({
   page,
 }) => {
   test.setTimeout(90_000)
@@ -113,8 +113,9 @@ test('filters, sorts, hides, and formats a table, and keeps it in this browser',
   expect(csv).not.toContain('Archetype')
   expect(csv).toContain('Annual demand[kWh]')
 
-  // A new session in this browser shows the table as it was left.
-  const table2 = await openResults(page)
+  // Saving keeps the arrangement with the project; reopening restores it.
+  await saveAndReopen(page)
+  const table2 = await openResults(page, false)
   const grid2 = table2.getByRole('grid', { name: 'Building results' })
   await expect(
     grid2.getByRole('columnheader', { name: /^Archetype/ }),
@@ -367,8 +368,8 @@ test('the Table page grid has the shared table tools, by pointer and keyboard', 
     useHeader.getByRole('button', { name: 'Format Use' }),
   ).toBeFocused()
 
-  // The arrangement is kept in this browser.
-  await page.reload()
+  // The arrangement is saved with the project and restored on reopening.
+  await saveAndReopen(page)
   await page.getByRole('tab', { name: 'Table', exact: true }).click()
   await expect(useHeader).toHaveAttribute('aria-sort', 'ascending')
   await expect(table.locator('.ag-header-cell[col-id="name"]')).toHaveCount(0)

@@ -29,5 +29,6 @@ Keep short dated records of accepted decisions: status, context, decision, ratio
 - [0026: Autonomous roadmap through Results, with reviewed local integration](0026-autonomous-roadmap-through-results.md)
 - [0027: Unified panel components, one message system, and shared table widgets](0027-unified-panel-components.md)
 - [0028: Properties panel, definition tables, schedule day types, and the floating demo switch](0028-properties-panel-and-definition-tables.md)
+- [0029: Table settings are saved with the project, and stages show in Properties](0029-table-settings-with-project-and-stage-properties.md)
 
 Number 0020 is used on the unmerged `feature/agentic` branch.

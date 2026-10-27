@@ -3,7 +3,6 @@ import type { z } from 'zod'
 import { createStore, type StoreApi } from 'zustand/vanilla'
 import type { CommandSource, WorkbenchState } from '../../domain/types.ts'
 import type { Workbench } from '../../domain/workbench.ts'
-import { parseStoredTables } from '../tables/tableSettings.ts'
 import {
   createInitialViewState,
   viewOperationDefinitions,
@@ -29,33 +28,13 @@ type RegistryEntry = {
   run: (view: ViewState, input: unknown, project: WorkbenchState) => ViewOutcome
 }
 
-/** Table arrangements, per user in this browser (decision 0027). */
-export const TABLES_KEY = 'eaui.tables.v1'
-
-function readTables(storage: Storage | null) {
-  try {
-    const stored = storage?.getItem(TABLES_KEY)
-    return stored ? parseStoredTables(JSON.parse(stored)) : {}
-  } catch {
-    return {}
-  }
-}
-
-export function createViewStore(
-  workbench: Workbench,
-  storage: Storage | null = null,
-): ViewStore {
-  const store = createStore<ViewState>()(() =>
-    createInitialViewState(readTables(storage)),
-  )
-  store.subscribe((next, previous) => {
-    if (next.tables === previous.tables) return
-    try {
-      storage?.setItem(TABLES_KEY, JSON.stringify(next.tables))
-    } catch {
-      // Storage is blocked or full; arrangements last for this session.
-    }
-  })
+/**
+ * View state for the open project. Table arrangements are saved with the
+ * project (decision 0028): `view.resetForProject` restores them when a
+ * project opens, and saving sends them with the project.
+ */
+export function createViewStore(workbench: Workbench): ViewStore {
+  const store = createStore<ViewState>()(() => createInitialViewState())
 
   function execute(
     operation: ViewOperation,

@@ -31,7 +31,11 @@ import {
   type DemoConditions,
 } from '../../server/conditions.ts'
 import { FIXTURES, FIXTURE_IDS, type FixtureId } from '../../server/fixtures.ts'
-import { useClientSnapshot, useServices } from '../WorkbenchContext.tsx'
+import {
+  useClientSnapshot,
+  useServices,
+  useUnsavedChanges,
+} from '../WorkbenchContext.tsx'
 import componentStyles from '../components/components.module.css'
 import formStyles from '../components/forms.module.css'
 import { InlineAlert } from '../components/InlineAlert.tsx'
@@ -135,7 +139,7 @@ export function DemoSwitch() {
   const currentProject = useClientSnapshot(
     (snapshot) => snapshot.meta.currentProject,
   )
-  const dirty = useClientSnapshot((snapshot) => snapshot.meta.dirty)
+  const dirty = useUnsavedChanges()
   const expanded = useStore(demoSwitchStore, (state) => state.expanded)
   const stored = useStore(demoSwitchStore, (state) => state.position)
   const [fixture, setFixture] = useState<FixtureId>('partway')

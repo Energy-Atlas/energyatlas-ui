@@ -32,8 +32,8 @@ message, and the same built-in widgets on every table, shown on hover. The audit
 - **Shaded alternate rows** become an opt-in table style, off by default. This amends
   [decision 0021](0021-energyatlas-family-ui-alignment.md) ("no zebra striping") for that option only.
 
-Not yet chosen by the owner: whether table preferences are per user in this browser or saved with the project.
-Until they choose, implementation uses the proposal's default, per user in this browser and keyed by table id.
+Table preferences were first kept per user in this browser, keyed by table id, until the owner chose; on 2026-10-27
+they chose to save them with the project ([decision 0029](0029-table-settings-with-project-and-stage-properties.md)).
 
 ## Consequences
 

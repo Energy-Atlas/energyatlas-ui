@@ -5,6 +5,7 @@ import {
   type ValidationIssue,
 } from '../../domain/commands.ts'
 import { selectableCollection } from '../../domain/selection.ts'
+import type { SavedView } from '../../server/projectCatalog.ts'
 import type { CommandSource, WorkbenchState } from '../../domain/types.ts'
 import { createInitialState } from '../../domain/initialState.ts'
 import type { ExecuteResult, Workbench } from '../../domain/workbench.ts'
@@ -108,6 +109,8 @@ export type ProjectClient = {
     operation: (execute: ProjectClient['execute']) => Promise<ExecuteResult>,
   ) => Promise<ExecuteResult>
   save: (source?: CommandSource) => Promise<ExecuteResult>
+  /** Supplies the views saved with the project on every save (decision 0028). */
+  attachView: (view: () => SavedView) => void
   replaceProject: (
     fixture: FixtureId,
     source?: CommandSource,
@@ -169,6 +172,7 @@ export function createProjectClient(options: {
   let applied = options.initial.sequence
   let projectGeneration = options.initial.projectGeneration
   let nextRequestId = 1
+  let viewOf: (() => SavedView) | null = null
   const waiters: { sequence: number; resolve: () => void }[] = []
   const store = createStore<ClientSnapshot>()(() => ({
     projectGeneration,
@@ -447,10 +451,13 @@ export function createProjectClient(options: {
         {},
       )
     },
+    attachView(view) {
+      viewOf = view
+    },
     async save(source = 'manual') {
       const savingGeneration = projectGeneration
       const sent = await send(
-        { type: 'project.save', source },
+        { type: 'project.save', source, view: viewOf?.() },
         'project.save',
         'Save project',
         {},

@@ -12,42 +12,19 @@
   padding: var(--space-2) var(--space-4);
 }
 
+/* The canvas fills the page inside a margin, bounded by a rule on every side. */
 .body {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) 17rem;
   min-height: 0;
+  padding: 0 var(--space-4) var(--space-4);
 }
 
 .canvas {
   position: relative;
-  min-height: 0;
-  border-right: var(--rule);
-}
-
-.details {
-  display: grid;
-  align-content: start;
-  gap: var(--space-3);
-  overflow: auto;
-  padding: var(--space-3);
-}
-
-/* Stack graph and details when the docked page itself is narrow. */
-@container (max-width: 760px) {
-  .body {
-    grid-template-columns: minmax(0, 1fr);
-    grid-template-rows: minmax(16rem, 1fr) auto;
-    overflow: auto;
-  }
-
-  .canvas {
-    border-right: 0;
-    border-bottom: var(--rule);
-  }
-
-  .details {
-    overflow: visible;
-  }
+  min-height: 16rem;
+  overflow: hidden;
+  border: var(--rule);
+  border-radius: var(--radius-sm);
 }
 
 /* Graph nodes keep an outline: they are objects on the canvas, not cards. */
@@ -64,6 +41,11 @@
 .nodeCurrent {
   border-color: var(--color-accent);
   box-shadow: inset 0 0 0 1px var(--color-accent);
+}
+
+/* The stage shown in Properties takes the selection fill. */
+.nodeSelected {
+  background: var(--color-selected-bg);
 }
 
 .nodeButton {
@@ -100,33 +82,4 @@
 .handle {
   opacity: 0;
   pointer-events: none;
-}
-
-.eyebrow {
-  margin: 0;
-  color: var(--color-text-muted);
-  font-family: var(--label-font);
-  font-size: var(--label-size);
-  font-weight: var(--label-weight);
-  letter-spacing: var(--label-tracking);
-  text-transform: var(--label-case);
-}
-
-.stageName {
-  margin: 0 0 var(--space-1);
-  font-size: var(--font-size-title);
-}
-
-.actions {
-  display: flex;
-  flex-wrap: wrap;
-  gap: var(--space-1);
-}
-
-.insertForm {
-  display: grid;
-  gap: var(--space-2);
-  margin: 0 calc(-1 * var(--space-3));
-  padding: var(--space-3) var(--space-3) 0;
-  border-top: var(--rule);
 }

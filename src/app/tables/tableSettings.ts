@@ -208,6 +208,24 @@ export function isCustomised(settings: TableSettings): boolean {
   )
 }
 
+/**
+ * Whether two sets of table arrangements differ, counting a table left at
+ * its defaults the same as one never arranged.
+ */
+export function tablesDiffer(
+  a: Record<string, TableSettings>,
+  b: Record<string, TableSettings>,
+): boolean {
+  const customised = (tables: Record<string, TableSettings>) =>
+    JSON.stringify(
+      Object.keys(tables)
+        .sort()
+        .filter((id) => tables[id] && isCustomised(tables[id]))
+        .map((id) => [id, tables[id]]),
+    )
+  return customised(a) !== customised(b)
+}
+
 /** Reads stored settings, dropping any table whose entry no longer parses. */
 export function parseStoredTables(
   value: unknown,

@@ -25,9 +25,12 @@ export type ProjectLifecycle = ReturnType<typeof createProjectLifecycle>
 export function createProjectLifecycle({
   workbench,
   client,
+  viewUnsaved = () => false,
 }: {
   workbench: Workbench
   client: ProjectClient
+  /** Whether views saved with the project, such as tables, changed since saving. */
+  viewUnsaved?: () => boolean
 }) {
   const store = createStore<LifecycleSnapshot>()(() => ({
     dialog: null,
@@ -167,6 +170,7 @@ export function createProjectLifecycle({
         (intent.type === 'save'
           ? hasDrafts()
           : client.store.getState().meta.dirty ||
+            viewUnsaved() ||
             hasDrafts() ||
             activeJobs().length > 0)
       if (needsGuard) {

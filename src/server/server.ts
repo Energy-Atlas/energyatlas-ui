@@ -25,6 +25,7 @@ import {
   restoreProject,
   writeProjectCatalog,
   type ProjectSummary,
+  type SavedView,
 } from './projectCatalog.ts'
 
 // The mock server (decision 0023). It owns the project and runs the domain
@@ -80,7 +81,12 @@ export type ServerRequest =
       /** The drafts to apply, for `edits.apply`; drafts live in the UI. */
       drafts?: Record<string, PendingEdit>
     }
-  | { type: 'project.save'; source: CommandSource }
+  | {
+      type: 'project.save'
+      source: CommandSource
+      /** How the UI arranged the project's views, saved with it. */
+      view?: SavedView
+    }
   | { type: 'project.replace'; fixture: FixtureId; source: CommandSource }
   | { type: 'project.list'; source: CommandSource }
   | { type: 'project.create'; name: string; source: CommandSource }
@@ -95,6 +101,12 @@ export type ServerMeta = {
   projects: ProjectSummary[]
   catalogReady: boolean
   catalogError: string | null
+  /**
+   * The views saved with the open project (decision 0028), which the UI
+   * restores on opening and compares to see unsaved view changes; null when
+   * none were saved.
+   */
+  view: SavedView | null
 }
 
 /** Everything the UI needs to follow the server: state, what changed it, and meta. */
@@ -160,6 +172,7 @@ export function createMockServer(options: {
     projects: projectSummaries(catalog),
     catalogReady: !options.startClosed,
     catalogError: read.error,
+    view: saved?.view ?? null,
   }
   let sequence = 0
   let projectGeneration = 0
@@ -274,6 +287,7 @@ export function createMockServer(options: {
     state: WorkbenchState | null,
     operation: ExternalOperation,
     savedAt: string | null,
+    view: SavedView | null = null,
   ) {
     stopJobs()
     projectGeneration += 1
@@ -285,6 +299,7 @@ export function createMockServer(options: {
       savedAt,
       dirty: false,
       projects: projectSummaries(catalog),
+      view,
     }
     engine.load(state ?? createInitialState(), operation)
     stopJobs = startTaskSimulator(engine, {
@@ -327,6 +342,7 @@ export function createMockServer(options: {
           const previous = catalog.projects.find(
             (entry) => entry.id === state.project.id,
           )
+          const view = request.view ?? previous?.view ?? null
           const next = {
             projects: [
               ...catalog.projects.filter(
@@ -338,6 +354,7 @@ export function createMockServer(options: {
                 state,
                 savedAt,
                 lastOpenedAt: previous?.lastOpenedAt ?? savedAt,
+                ...(view ? { view } : {}),
               },
             ],
           }
@@ -351,6 +368,7 @@ export function createMockServer(options: {
             dirty: false,
             savedAt,
             projects: projectSummaries(catalog),
+            view,
           }
           const summary = `Saved the project in this browser at ${new Date(savedAt).toLocaleTimeString()}.`
           engine.record({
@@ -479,6 +497,7 @@ export function createMockServer(options: {
               summary,
             },
             entry.savedAt,
+            entry.view ?? null,
           )
           return ok(summary)
         }

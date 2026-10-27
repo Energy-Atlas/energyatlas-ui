@@ -24,6 +24,7 @@ export function selectableCollection(
     | 'measures'
     | 'scenarios'
     | 'assets'
+    | 'workflow'
   >,
   entityType: SelectableEntity,
 ): Record<string, unknown> {
@@ -42,6 +43,8 @@ export function selectableCollection(
       return state.scenarios
     case 'asset':
       return state.assets
+    case 'stage':
+      return state.workflow.stages
     case 'libraryArchetype':
       return LIBRARY_ARCHETYPES
     case 'librarySchedule':

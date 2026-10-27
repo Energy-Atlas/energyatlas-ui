@@ -9,7 +9,26 @@ export type ProjectSummary = {
   savedAt: string
   lastOpenedAt: string | null
 }
-export type CatalogEntry = ProjectSummary & { state: WorkbenchState }
+/**
+ * How the project's views were arranged when it was saved, kept with the
+ * project (decision 0028): table settings by table id. The UI validates them
+ * when it applies them, so the server keeps them as given.
+ */
+export type SavedView = { tables: Record<string, unknown> }
+export type CatalogEntry = ProjectSummary & {
+  state: WorkbenchState
+  /** Absent for projects saved before views were saved with them. */
+  view?: SavedView
+}
+
+/** A saved view, or null when the value is not one. */
+export function parseSavedView(value: unknown): SavedView | null {
+  if (!value || typeof value !== 'object') return null
+  const tables = (value as { tables?: unknown }).tables
+  return tables && typeof tables === 'object' && !Array.isArray(tables)
+    ? { tables: tables as Record<string, unknown> }
+    : null
+}
 export type ProjectCatalog = { projects: CatalogEntry[] }
 type WriteResult = { ok: true } | { ok: false; message: string }
 const UNREADABLE =
@@ -33,12 +52,14 @@ function parseEntry(value: unknown): CatalogEntry | null {
     parsed.data.project.name !== entry.name
   )
     return null
+  const view = parseSavedView(entry.view)
   return {
     id: entry.id,
     name: entry.name,
     savedAt: entry.savedAt,
     lastOpenedAt: entry.lastOpenedAt ?? null,
     state: parsed.data,
+    ...(view ? { view } : {}),
   }
 }
 

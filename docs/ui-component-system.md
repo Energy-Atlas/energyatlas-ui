@@ -168,7 +168,8 @@ Each step is reviewable on its own and ends with the full check list from `AGENT
 2. Shaded alternate rows: **an opt-in table style, off by default**, amending decision 0021 for that option only.
 3. Toasts: **only asynchronous events and failures**; applied commands go to the status bar and the history.
 4. Messages panel: **the right border**, beside Reasoning and Inspection (not the proposed bottom border).
-5. Table preferences: not asked yet; the default is per user in this browser, keyed by table id.
+5. Table preferences: first per user in this browser, keyed by table id; on 2026-10-27 the owner chose to save them
+   with the project ([decision 0029](decisions/0029-table-settings-with-project-and-stage-properties.md)).
 
 ## Step 1 status
 
@@ -477,3 +478,20 @@ no merge commit was needed. Not pushed. The per-step "not merged" notes above de
 
 **Verification on the integrated tree:** typecheck, lint, and format clean; 364 unit tests, 102 development browser
 tests, and 3 production-preview tests passed; `git diff --check` clean.
+
+## Table settings with the project, and stages in Properties (2026-10-27)
+
+Built on `claude/ui-component-system`, not merged. Recorded in
+[decision 0029](decisions/0029-table-settings-with-project-and-stage-properties.md).
+
+- Table arrangements are saved with the project (`view.tables` in its catalog entry) and restored when it opens;
+  browser storage no longer keeps them. A changed table counts as an unsaved change.
+- Clicking a Roadmap stage selects it and shows it in Properties (the Roadmap's details pane is retired); pointer
+  clicks had been swallowed by React Flow, which ignores nodes without `onNodeClick` when selection and dragging
+  are off. The canvas is bounded by a rule on all sides, inset from the panel edge.
+
+**Verification (2026-10-27):** typecheck, lint, and format clean; 366 unit tests (adds saving and restoring table
+settings with the project and the defaults check); browser tests updated to save and reopen a project instead of
+reloading, and to click a stage into Properties; 102 development browser tests and 3 production-preview tests
+passed. In the first full browser run the 18-pass appearance loop in `project-lifecycle.spec.ts` hit its 120 s
+timeout under 4 workers; it passed alone (1.6 min) and in a full rerun.

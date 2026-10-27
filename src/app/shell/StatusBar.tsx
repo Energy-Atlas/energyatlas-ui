@@ -15,6 +15,7 @@ import {
   useClientSnapshot,
   useServices,
   useStageStates,
+  useUnsavedChanges,
   useWorkbenchSnapshot,
 } from '../WorkbenchContext.tsx'
 import { StatusTag } from '../components/CapabilityBadge.tsx'
@@ -48,7 +49,7 @@ export function StatusBar({
   const { messages } = useServices()
   const state = useWorkbenchSnapshot((snapshot) => snapshot.state)
   const pending = useClientSnapshot((snapshot) => snapshot.pending)
-  const dirty = useClientSnapshot((snapshot) => snapshot.meta.dirty)
+  const dirty = useUnsavedChanges()
   const savedAt = useClientSnapshot((snapshot) => snapshot.meta.savedAt)
   const saveError = useClientSnapshot((snapshot) => snapshot.saveError)
   const generation = useClientSnapshot((snapshot) => snapshot.projectGeneration)
