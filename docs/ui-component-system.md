@@ -481,7 +481,8 @@ tests, and 3 production-preview tests passed; `git diff --check` clean.
 
 ## Table settings with the project, and stages in Properties (2026-10-27)
 
-Built on `claude/ui-component-system`, not merged. Recorded in
+Built on `claude/ui-component-system` and fast-forwarded into local `master` at the owner's request on 2026-10-27;
+not pushed. Recorded in
 [decision 0029](decisions/0029-table-settings-with-project-and-stage-properties.md).
 
 - Table arrangements are saved with the project (`view.tables` in its catalog entry) and restored when it opens;
