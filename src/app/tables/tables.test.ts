@@ -8,6 +8,7 @@ import {
   describeFilter,
   formatCell,
   processRows,
+  searchRows,
   tableCsv,
   visibleColumns,
   type DataColumn,
@@ -17,6 +18,7 @@ import {
   applyTableChange,
   defaultTableSettings,
   isCustomised,
+  nextHeaderSort,
   parseStoredTables,
 } from './tableSettings.ts'
 
@@ -245,6 +247,61 @@ describe('table model', () => {
       exportedAt: 'now',
     })
     expect(formula).toContain("B10,Retail,,'=cmd")
+  })
+})
+
+describe('the Table page grid (step 3)', () => {
+  test('a header click steps ascending, descending, unsorted', () => {
+    const ascending = nextHeaderSort(null, 'use')
+    expect(ascending).toEqual({ column: 'use', direction: 'ascending' })
+    const descending = nextHeaderSort(ascending, 'use')
+    expect(descending).toEqual({ column: 'use', direction: 'descending' })
+    expect(nextHeaderSort(descending, 'use')).toBeNull()
+    // Another column starts over at ascending.
+    expect(nextHeaderSort(descending, 'kwh')).toEqual({
+      column: 'kwh',
+      direction: 'ascending',
+    })
+  })
+
+  test('the search matches shown text in shown columns, ignoring case', () => {
+    const settings = defaultTableSettings()
+    expect(searchRows(ROWS, COLUMNS, settings, ' beacon ')).toEqual([ROWS[0]])
+    // Numbers match as they read, with separators.
+    expect(searchRows(ROWS, COLUMNS, settings, '12,000')).toEqual([ROWS[2]])
+    // A hidden column is not searched.
+    const hidden = applyTableChange(settings, {
+      kind: 'setHidden',
+      column: 'name',
+      hidden: true,
+    })
+    expect(searchRows(ROWS, COLUMNS, hidden, 'beacon')).toEqual([])
+    expect(searchRows(ROWS, COLUMNS, settings, '')).toBe(ROWS)
+  })
+
+  test('the CSV names the search the rows passed', () => {
+    const csv = tableCsv({
+      label: 'Buildings',
+      columns: COLUMNS,
+      rows: [ROWS[0]!],
+      total: 3,
+      settings: defaultTableSettings(),
+      exportedAt: 'now',
+      search: 'beacon',
+    })
+    expect(csv).toContain('# rows: 1 of 3\n# search: beacon\n')
+  })
+
+  test('a column can turn thousands separators off by default', () => {
+    const year: DataColumn<{ year: number }> = {
+      id: 'year',
+      header: 'Year built',
+      value: (row) => row.year,
+      type: 'number',
+      grouping: false,
+    }
+    expect(formatCell(1967, year)).toBe('1967')
+    expect(formatCell(1967, year, { grouping: true })).toBe('1,967')
   })
 })
 

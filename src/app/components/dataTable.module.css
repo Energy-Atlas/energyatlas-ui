@@ -81,6 +81,9 @@
 .th:focus-within .columnTool,
 .th[data-focused] .columnTool,
 .th[data-column-hover] .columnTool,
+.gridFrame :global(.ag-header-cell):hover .columnTool,
+.gridFrame :global(.ag-header-cell):focus-within .columnTool,
+.gridFrame :global(.ag-header-cell)[data-column-hover] .columnTool,
 .columnTool[aria-expanded='true'],
 .columnTool.active {
   opacity: 1;
@@ -442,4 +445,48 @@
   display: flex;
   flex-wrap: wrap;
   gap: var(--space-1);
+}
+
+/* The AG Grid renderer (decision 0027): the grid fills the space below its
+   bar, and its headers carry the same label, alignment, and widgets. */
+.gridFrame {
+  flex: 1;
+  min-height: 0;
+}
+
+.gridZone {
+  flex: 1;
+  min-height: 12rem;
+}
+
+.gridHead {
+  flex: 1;
+  height: 100%;
+  font-family: var(--label-font);
+  letter-spacing: var(--label-tracking);
+  text-transform: var(--label-case);
+}
+
+.gridHead .headLabel {
+  white-space: normal;
+}
+
+.gridHead.sortable {
+  cursor: pointer;
+}
+
+.gridHead.sortable:hover {
+  color: var(--color-text);
+}
+
+.gridFrame :global(.ag-header-cell-comp-wrapper) {
+  width: 100%;
+}
+
+.gridFrame .end:global(.ag-cell) {
+  text-align: right;
+}
+
+.gridFrame .center:global(.ag-cell) {
+  text-align: center;
 }

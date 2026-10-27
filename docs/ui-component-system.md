@@ -293,3 +293,49 @@ The owner tried the tables and alerts and asked for these changes, now built on 
 
 Verification: typecheck, lint, and format clean; 344 unit, 99 development browser, and 3 production-preview tests
 passed. The table, the value-search popover, and the alerts were checked by eye in Light and Dark.
+
+## Step 3 status
+
+Built on `claude/ui-component-system` (2026-10-26), not merged into `master`.
+
+**Real:**
+
+- `src/app/components/GridTable.tsx` draws the shared table contract (`DataColumn`, table settings, `table.change`)
+  with AG Grid, for the Table page's Buildings and Grid elements. It has the same table bar (row count, filter chips,
+  Columns, Filters, Download, Style) and the same Filter and sort and Format widgets in each column header, shown
+  while the pointer or focus is in any cell of the column. This closes the audit's "no column visibility menu" gap.
+- The shared model filters, searches, and sorts the rows (`processRows`, `searchRows`), and the grid shows them in
+  that order, so both renderers agree and the CSV is the view. AG Grid holds the sort state, driven from the
+  settings, with a comparator that keeps the model's order, so the header announces its sort (`aria-sort`) and Enter
+  on a header steps it. Clicking a header steps ascending, descending, unsorted. AG Grid's own column filters, menus,
+  and column moving are off.
+- Keyboard: arrow keys move between headers and cells as before; Enter on a header sorts; Tab from a header steps
+  into its two widgets and then on to the next header; keys on a widget belong to the widget.
+- Style: row density sets the row height, shading uses a theme variant at the data table's strength, wrapping wraps
+  cells and grows rows, the width modes apply, and freezing the first column pins it. The grid always keeps its
+  header row in place, so "Freeze the header row" shows as on and unavailable, with that reason.
+- The Buildings search moved into the table bar ("Search buildings"). It matches the shown text of shown columns,
+  counts toward "12 of 464 rows", is named in the CSV (`# search:`), and still goes through `table.setQuickFilter`.
+  When nothing matches, the grid says whether the filters, the search, or both are the cause and offers Clear
+  filters and Clear search.
+- The tables are `table.buildings` and `table.gridElements`, registered like the others, so the agent can arrange
+  them through `table.change`. Their arrangement is kept per user in this browser.
+- Editing (floors and archetype, held as pending drafts through `edits.propose`) and row selection stay AG Grid's,
+  passed in as `columnOptions` and `gridOptions`. The edit row keeps the pending count, Apply, Discard, and the
+  selection.
+- Columns carry units (m, m², kWh/yr, MWh/yr, kVA, %), so PV yield and rating can show in MWh/yr and MVA; a column
+  can turn thousands separators off by default (`grouping: false`, for years).
+- Shared code: `src/app/components/tableTools.tsx` holds the table bar and the column widgets for both renderers,
+  `useWorkbenchTable` binds either renderer to view state, registration, and the export log, and
+  `nextHeaderSort` is the one header sort cycle.
+- Enter in a column filter's value search now applies the filter, in both renderers; the search field had kept
+  Enter to itself.
+
+**Deferred:** column order and widths dragged by hand are not kept; the 10,000-building benchmark that decides
+whether AG Grid stays is still to run.
+
+**Verification (2026-10-26):** typecheck, lint, and format clean; 348 unit tests, 100 development browser tests
+(including the new Table page grid test and the existing Table editing, selection, and lifecycle specs), and 3
+production-preview tests passed; `git diff --check` clean. The grid was checked by eye in Dark and Light, narrow and
+wide: hover-revealed widgets, the value-search popover, shading, comfortable rows, a pinned first column, a hidden
+column, MWh/yr formatting with its popover kept open, and the Grid elements tab.

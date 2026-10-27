@@ -105,20 +105,19 @@
   padding: 0 var(--space-4) var(--space-2);
 }
 
-.grid {
+/* The grid table fills the panel below the edit row; its bar and messages
+   take the page's gutter, the grid runs edge to edge. */
+.gridTable {
   flex: 1;
-  min-height: 12rem;
+  min-height: 0;
 }
 
-.grid :global(.eaui-pending-cell) {
+.gridBar {
+  padding: 0 var(--space-4);
+}
+
+.gridTable :global(.eaui-pending-cell) {
   background: var(--tone-warning-bg);
   color: var(--tone-warning-text);
   font-weight: 600;
-}
-
-/* AG Grid header labels in the family's data-sheet style (decision 0021);
-   the grid's theme parameters cannot set case or tracking. */
-.grid :global(.ag-header-cell-text) {
-  letter-spacing: var(--label-tracking);
-  text-transform: var(--label-case);
 }

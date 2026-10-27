@@ -172,6 +172,20 @@ export function applyTableChange(
   }
 }
 
+/**
+ * The sort after a click on a column's header: ascending, then descending,
+ * then unsorted.
+ */
+export function nextHeaderSort(
+  sort: TableSort | null,
+  column: string,
+): TableSort | null {
+  if (sort?.column !== column) return { column, direction: 'ascending' }
+  return sort.direction === 'ascending'
+    ? { column, direction: 'descending' }
+    : null
+}
+
 export function isEmptyFilter(filter: ColumnFilter): boolean {
   switch (filter.kind) {
     case 'text':

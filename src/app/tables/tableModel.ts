@@ -24,6 +24,8 @@ export type DataColumn<Row> = {
   unit?: string
   /** Default digits after the decimal point for numbers. */
   decimals?: number
+  /** False turns thousands separators off by default, as for years. */
+  grouping?: boolean
   /** Custom cell content, given the formatted text (buttons, badges). */
   render?: (row: Row, text: string) => ReactNode
   /** Names the row for assistive technology; it cannot be hidden. */
@@ -109,7 +111,7 @@ export function formatCell<Row>(
   return shown.toLocaleString('en-US', {
     minimumFractionDigits: fixed ?? 0,
     maximumFractionDigits: digits,
-    useGrouping: format?.grouping ?? true,
+    useGrouping: format?.grouping ?? column.grouping ?? true,
   })
 }
 
@@ -185,6 +187,30 @@ export function processRows<Row>(
       return compareValues(a.value, b.value) * direction || a.index - b.index
     })
     .map((entry) => entry.row)
+}
+
+/**
+ * Rows whose shown text, in any shown column, contains the search, ignoring
+ * case: the Table page's search field.
+ */
+export function searchRows<Row>(
+  rows: Row[],
+  columns: DataColumn<Row>[],
+  settings: TableSettings,
+  search: string,
+): Row[] {
+  const term = search.trim().toLowerCase()
+  if (!term) return rows
+  const shown = visibleColumns(columns, settings).filter(
+    (column) => !column.action,
+  )
+  return rows.filter((row) =>
+    shown.some((column) =>
+      formatCell(column.value(row), column, settings.formats[column.id])
+        .toLowerCase()
+        .includes(term),
+    ),
+  )
 }
 
 /** Most values a checklist filter lists; more and the column filters by text. */
@@ -274,6 +300,7 @@ export function tableCsv<Row>({
   settings,
   exportedAt,
   context = [],
+  search = '',
 }: {
   label: string
   columns: DataColumn<Row>[]
@@ -282,6 +309,8 @@ export function tableCsv<Row>({
   settings: TableSettings
   exportedAt: string
   context?: string[]
+  /** The search the rows passed, if any. */
+  search?: string
 }): string {
   const shown = visibleColumns(columns, settings).filter(
     (column) => !column.action,
@@ -299,6 +328,7 @@ export function tableCsv<Row>({
     csvCommentLine(`# table: ${label}`),
     ...context.map((line) => csvCommentLine(`# ${line}`)),
     `# rows: ${rows.length} of ${total}`,
+    ...(search.trim() ? [csvCommentLine(`# search: ${search.trim()}`)] : []),
     ...(filters.length
       ? [csvCommentLine(`# filters: ${filters.join('; ')}`)]
       : []),

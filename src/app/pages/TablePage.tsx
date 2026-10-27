@@ -4,7 +4,6 @@ import type {
   GridApi,
   SelectionChangedEvent,
 } from 'ag-grid-community'
-import { AgGridReact } from 'ag-grid-react'
 import { useEffect, useId, useMemo, useRef, useState } from 'react'
 import {
   Input,
@@ -31,10 +30,12 @@ import { ActionButton } from '../components/ActionButton.tsx'
 import { CapabilityBadge } from '../components/CapabilityBadge.tsx'
 import { EmptyState } from '../components/EmptyState.tsx'
 import formStyles from '../components/forms.module.css'
+import { GridTable } from '../components/GridTable.tsx'
 import { InlineAlert } from '../components/InlineAlert.tsx'
 import { PanelHeader } from '../components/PanelHeader.tsx'
+import { useWorkbenchTable } from '../components/useWorkbenchTable.ts'
 import { usePendingReason } from '../service/usePendingReason.ts'
-import { workbenchColumnDefaults, workbenchGridTheme } from '../grid/agGrid.ts'
+import type { DataColumn } from '../tables/tableModel.ts'
 import styles from './table.module.css'
 
 type BuildingRow = Building & { baselineMwh: number | null }
@@ -45,6 +46,18 @@ type GridRow = GridElement & {
 }
 
 const PENDING_CELL_CLASS = 'eaui-pending-cell'
+
+// A stable row key, so the grid's column definitions do not change on
+// every render.
+const rowId = (row: { id: string }) => row.id
+
+// Rows are selected by clicking them; the selection is the workbench's.
+const ROW_SELECTION = {
+  mode: 'multiRow',
+  checkboxes: false,
+  headerCheckbox: false,
+  enableClickSelection: true,
+} as const
 
 // Grid selection events caused by our own syncing must not echo back as commands.
 const PROGRAMMATIC_SOURCES = new Set([
@@ -231,47 +244,116 @@ function BuildingsTable() {
     applying === null && rows.some((row) => row.floors !== null)
   const archetypesEditable = applying === null && archetypeIds.length > 0
 
-  const columns = useMemo<ColDef<BuildingRow>[]>(
+  const columns = useMemo<DataColumn<BuildingRow>[]>(
     () => [
-      { field: 'id', headerName: 'ID', width: 100, filter: true },
-      { field: 'name', headerName: 'Name', width: 140, filter: true },
-      { field: 'use', headerName: 'Use', width: 110, filter: true },
       {
-        field: 'yearBuilt',
-        headerName: 'Year built',
+        id: 'id',
+        header: 'ID',
+        value: (row) => row.id,
+        type: 'identifier',
+        rowHeader: true,
+        width: 100,
+      },
+      { id: 'name', header: 'Name', value: (row) => row.name, width: 140 },
+      {
+        id: 'use',
+        header: 'Use',
+        value: (row) => row.use,
+        type: 'enum',
         width: 110,
-        filter: 'agNumberColumnFilter',
       },
       {
-        field: 'floors',
-        headerName: 'Floors',
+        id: 'yearBuilt',
+        header: 'Year built',
+        value: (row) => row.yearBuilt,
+        type: 'number',
+        grouping: false,
+        width: 120,
+      },
+      {
+        id: 'floors',
+        header: 'Floors',
+        value: (row) => row.floors,
+        type: 'number',
         width: 100,
-        filter: 'agNumberColumnFilter',
+      },
+      {
+        id: 'heightM',
+        header: 'Height',
+        unit: 'm',
+        value: (row) => row.heightM,
+        type: 'number',
+        decimals: 1,
+        width: 110,
+      },
+      {
+        id: 'floorAreaM2',
+        header: 'Floor area',
+        unit: 'm²',
+        value: (row) => row.floorAreaM2,
+        type: 'number',
+        width: 140,
+      },
+      {
+        id: 'zoneCount',
+        header: 'Zones',
+        value: (row) => row.zoneCount,
+        type: 'number',
+        width: 100,
+      },
+      {
+        id: 'archetypeId',
+        header: 'Archetype',
+        value: (row) =>
+          row.archetypeId
+            ? (archetypes[row.archetypeId]?.name ?? row.archetypeId)
+            : null,
+        type: 'enum',
+        empty: 'None',
+        width: 220,
+      },
+      {
+        id: 'pvYieldKwh',
+        header: 'PV yield',
+        unit: 'kWh/yr',
+        value: (row) => row.pvYieldKwh,
+        type: 'number',
+        width: 160,
+      },
+      {
+        id: 'baselineMwh',
+        header: 'Baseline',
+        unit: 'MWh/yr',
+        value: (row) => row.baselineMwh,
+        type: 'number',
+        decimals: 1,
+        width: 160,
+      },
+    ],
+    [archetypes],
+  )
+
+  // Editing is AG Grid's own; edits go to drafts through `edits.propose`.
+  const columnOptions = useMemo<Partial<Record<string, ColDef<BuildingRow>>>>(
+    () => ({
+      floors: {
         editable: floorsEditable,
+        cellEditor: 'agNumberCellEditor',
         cellClassRules: {
           [PENDING_CELL_CLASS]: (params) =>
             Boolean(params.data && pendingEdits[`${params.data.id}:floors`]),
         },
       },
-      { field: 'heightM', headerName: 'Height (m)', width: 110 },
-      {
-        field: 'floorAreaM2',
-        headerName: 'Floor area (m²)',
-        width: 130,
-        filter: 'agNumberColumnFilter',
-      },
-      { field: 'zoneCount', headerName: 'Zones', width: 90 },
-      {
-        field: 'archetypeId',
-        headerName: 'Archetype',
-        width: 220,
+      archetypeId: {
         editable: archetypesEditable,
-        cellEditor: 'agSelectCellEditor',
-        cellEditorParams: { values: ['', ...archetypeIds] },
+        // The editor works on the archetype id; the cell shows its name.
+        valueGetter: (params) => params.data?.archetypeId ?? null,
         valueFormatter: (params) => {
           const value = params.value as string | null | undefined
           return value ? (archetypes[value]?.name ?? value) : 'None'
         },
+        cellEditor: 'agSelectCellEditor',
+        cellEditorParams: { values: ['', ...archetypeIds] },
         cellClassRules: {
           [PENDING_CELL_CLASS]: (params) =>
             Boolean(
@@ -279,19 +361,7 @@ function BuildingsTable() {
             ),
         },
       },
-      {
-        field: 'pvYieldKwh',
-        headerName: 'PV yield (kWh/yr)',
-        width: 150,
-        filter: 'agNumberColumnFilter',
-      },
-      {
-        field: 'baselineMwh',
-        headerName: 'Baseline (MWh/yr)',
-        width: 150,
-        filter: 'agNumberColumnFilter',
-      },
-    ],
+    }),
     [
       floorsEditable,
       archetypesEditable,
@@ -300,6 +370,11 @@ function BuildingsTable() {
       pendingEdits,
     ],
   )
+  const table = useWorkbenchTable({
+    id: 'table.buildings',
+    label: 'Buildings',
+    columns,
+  })
 
   useSelectionSync(apiRef, selection, 'building', rows)
 
@@ -314,18 +389,6 @@ function BuildingsTable() {
         role="group"
         aria-label="Building table actions"
       >
-        <SearchField
-          aria-label="Filter buildings"
-          className={styles.search}
-          value={quickFilter}
-          onChange={(text) => setDraft({ text, synced: storedFilter })}
-        >
-          <Input
-            className={formStyles.input}
-            placeholder="Filter rows"
-            maxLength={100}
-          />
-        </SearchField>
         <span data-testid="pending-count">
           {pendingCount} pending {pendingCount === 1 ? 'edit' : 'edits'}
         </span>
@@ -387,17 +450,36 @@ function BuildingsTable() {
             : 'Floors and archetype become editable once their stages have run. Edits stay pending, highlighted, until applied.'}
         </p>
       )}
-      <div className={styles.grid}>
-        <AgGridReact<BuildingRow>
-          theme={workbenchGridTheme}
-          defaultColDef={workbenchColumnDefaults}
-          rowData={rows}
-          columnDefs={columns}
-          getRowId={(params) => params.data.id}
-          quickFilterText={quickFilter}
-          readOnlyEdit
-          onCellEditRequest={(event: CellEditRequestEvent<BuildingRow>) => {
-            const field = event.colDef.field
+      <GridTable<BuildingRow>
+        id="table.buildings"
+        aria-label="Buildings"
+        className={styles.gridTable}
+        barClassName={styles.gridBar}
+        columns={columns}
+        rows={rows}
+        rowKey={rowId}
+        {...table}
+        search={quickFilter}
+        onClearSearch={() => setDraft({ text: '', synced: storedFilter })}
+        barStart={
+          <SearchField
+            aria-label="Search buildings"
+            className={styles.search}
+            value={quickFilter}
+            onChange={(text) => setDraft({ text, synced: storedFilter })}
+          >
+            <Input
+              className={formStyles.input}
+              placeholder="Search rows"
+              maxLength={100}
+            />
+          </SearchField>
+        }
+        columnOptions={columnOptions}
+        gridOptions={{
+          readOnlyEdit: true,
+          onCellEditRequest: (event: CellEditRequestEvent<BuildingRow>) => {
+            const field = event.column.getColId()
             if (field !== 'floors' && field !== 'archetypeId') return
             const raw: unknown = event.newValue
             const value =
@@ -419,19 +501,14 @@ function BuildingsTable() {
                 ? result.outcome.issues.map((issue) => issue.message).join(' ')
                 : null,
             )
-          }}
-          rowSelection={{
-            mode: 'multiRow',
-            checkboxes: false,
-            headerCheckbox: false,
-            enableClickSelection: true,
-          }}
-          onSelectionChanged={handleSelection}
-          onGridReady={(event) => {
+          },
+          rowSelection: ROW_SELECTION,
+          onSelectionChanged: handleSelection,
+          onGridReady: (event) => {
             apiRef.current = event.api
-          }}
-        />
-      </div>
+          },
+        }}
+      />
     </div>
   )
 }
@@ -458,17 +535,56 @@ function GridElementsTable() {
     [elements, gridResult],
   )
 
-  const columns = useMemo<ColDef<GridRow>[]>(
+  const columns = useMemo<DataColumn<GridRow>[]>(
     () => [
-      { field: 'id', headerName: 'ID', width: 110, filter: true },
-      { field: 'kind', headerName: 'Kind', width: 120, filter: true },
-      { field: 'name', headerName: 'Name', width: 190, filter: true },
-      { field: 'ratingKva', headerName: 'Rating (kVA)', width: 130 },
-      { field: 'servedCount', headerName: 'Buildings served', width: 150 },
-      { field: 'loadingPercent', headerName: 'Peak loading (%)', width: 150 },
+      {
+        id: 'id',
+        header: 'ID',
+        value: (row) => row.id,
+        type: 'identifier',
+        rowHeader: true,
+        width: 110,
+      },
+      {
+        id: 'kind',
+        header: 'Kind',
+        value: (row) => row.kind,
+        type: 'enum',
+        width: 130,
+      },
+      { id: 'name', header: 'Name', value: (row) => row.name, width: 190 },
+      {
+        id: 'ratingKva',
+        header: 'Rating',
+        unit: 'kVA',
+        value: (row) => row.ratingKva,
+        type: 'number',
+        width: 130,
+      },
+      {
+        id: 'servedCount',
+        header: 'Buildings served',
+        value: (row) => row.servedCount,
+        type: 'number',
+        width: 160,
+      },
+      {
+        id: 'loadingPercent',
+        header: 'Peak loading',
+        unit: '%',
+        value: (row) => row.loadingPercent,
+        type: 'number',
+        decimals: 1,
+        width: 160,
+      },
     ],
     [],
   )
+  const table = useWorkbenchTable({
+    id: 'table.gridElements',
+    label: 'Grid elements',
+    columns,
+  })
 
   useSelectionSync(apiRef, selection, 'gridElement', rows)
 
@@ -488,25 +604,23 @@ function GridElementsTable() {
         Loading comes from the simulated grid modeling stage and is empty until
         it runs.
       </p>
-      <div className={styles.grid}>
-        <AgGridReact<GridRow>
-          theme={workbenchGridTheme}
-          defaultColDef={workbenchColumnDefaults}
-          rowData={rows}
-          columnDefs={columns}
-          getRowId={(params) => params.data.id}
-          rowSelection={{
-            mode: 'multiRow',
-            checkboxes: false,
-            headerCheckbox: false,
-            enableClickSelection: true,
-          }}
-          onSelectionChanged={handleSelection}
-          onGridReady={(event) => {
+      <GridTable<GridRow>
+        id="table.gridElements"
+        aria-label="Grid elements"
+        className={styles.gridTable}
+        barClassName={styles.gridBar}
+        columns={columns}
+        rows={rows}
+        rowKey={rowId}
+        {...table}
+        gridOptions={{
+          rowSelection: ROW_SELECTION,
+          onSelectionChanged: handleSelection,
+          onGridReady: (event) => {
             apiRef.current = event.api
-          }}
-        />
-      </div>
+          },
+        }}
+      />
     </div>
   )
 }
