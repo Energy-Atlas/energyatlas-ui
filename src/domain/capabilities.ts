@@ -102,9 +102,9 @@ export const capabilities = {
   },
   'map.layers': {
     label: 'Map layers',
-    status: 'planned',
+    status: 'working',
     explanation:
-      "A list of the map's layers (buildings, the grid, results) to show, hide, order, and style is being designed; buildings are colored and the grid shown from the Map's own bar until then.",
+      "A stack of layers over the project's buildings and grid, shown, hidden, reordered, and styled one by one, and saved with the project.",
   },
   'map.terrain': {
     label: 'Terrain',

@@ -3,7 +3,19 @@ import type { ValidationIssue } from '../../domain/commands.ts'
 import { findDataset } from '../../domain/intake/datasets.ts'
 import { TARGET_FIELDS, suggestMapping } from '../../domain/intake/fusion.ts'
 import type { FieldMapping, WorkbenchState } from '../../domain/types.ts'
-import { computeMetric, METRICS, type MetricId } from '../pages/mapMetrics.ts'
+import { computeMetric, METRICS } from '../pages/mapMetrics.ts'
+import {
+  BUILDING_COLORS,
+  colorLabel,
+  defaultLayers,
+  LAYER_KINDS,
+  MAP_LAYER_KINDS,
+  newLayer,
+  nextLayerId,
+  parseStoredLayers,
+  type MapLayer,
+  type MapLayerKind,
+} from '../pages/mapLayers.ts'
 import {
   createInitialLighting,
   LIGHTING_LIMITS,
@@ -34,7 +46,8 @@ import {
 // commands they validate their input and return a result, and every one is
 // recorded in the shared operation log with its source, so manual controls and
 // the agent use one path (first-slice stage 4, prerequisite 1). View state is
-// not undoable; only table arrangements are saved with the project.
+// not undoable; only table arrangements and the map's layers are saved with
+// the project.
 
 export type TableView = 'buildings' | 'grid'
 
@@ -50,11 +63,17 @@ export const JOB_FILTERS: Record<JobFilter, string> = {
 
 export type ViewState = {
   map: {
-    metric: MetricId
-    gridOverlay: boolean
+    /**
+     * The layer stack, top first (decision 0031). Saved with the project and
+     * restored when it opens.
+     */
+    layers: MapLayer[]
     /** Increments when a map.focusSelection operation asks the map to zoom. */
     focusRequest: number
-    /** Whether buildings are extruded to their heights (decision 0013). */
+    /**
+     * The 3D view, a basemap setting (decision 0031): the map tilts, and
+     * building layers that extrude show their heights (decision 0013).
+     */
     view3d: boolean
     /** Whether live terrain is shown, for display only (decision 0015). */
     terrain: boolean
@@ -85,11 +104,11 @@ export type ViewState = {
 
 export function createInitialViewState(
   tables: Record<string, TableSettings> = {},
+  layers: MapLayer[] = defaultLayers(),
 ): ViewState {
   return {
     map: {
-      metric: 'floors',
-      gridOverlay: true,
+      layers,
       focusRequest: 0,
       view3d: false,
       terrain: false,
@@ -128,6 +147,20 @@ function defineViewOperation<Schema extends z.ZodType>(
   return definition
 }
 
+function unknownLayer(layerId: string): string {
+  return `The map has no layer "${layerId}".`
+}
+
+/** Why buildings cannot be colored by a metric yet, if they cannot. */
+function colorIssue(
+  metric: (typeof METRICS)[number]['id'],
+  project: WorkbenchState,
+): string | null {
+  if (computeMetric(project, metric).available) return null
+  const definition = METRICS.find((candidate) => candidate.id === metric)
+  return `${definition?.label ?? metric} has no data yet. ${definition?.requirement ?? ''}`.trim()
+}
+
 function applied(summary: string): ViewOutcome {
   return { status: 'applied', summary }
 }
@@ -142,13 +175,21 @@ export const viewOperationDefinitions = {
   'view.resetForProject': defineViewOperation({
     title: 'Reset project views',
     description:
-      'Clear project-specific view state when the project session changes, restoring the table arrangements saved with the project.',
+      'Clear project-specific view state when the project session changes, restoring the table arrangements and map layers saved with the project.',
     input: z.object({
       /** The table arrangements saved with the project; invalid ones are dropped. */
       tables: z.record(z.string(), z.unknown()).optional(),
+      /** The map's layers saved with the project; unreadable ones give the defaults. */
+      layers: z.unknown().optional(),
     }),
-    run(view, { tables }) {
-      Object.assign(view, createInitialViewState(parseStoredTables(tables)))
+    run(view, { tables, layers }) {
+      Object.assign(
+        view,
+        createInitialViewState(
+          parseStoredTables(tables),
+          parseStoredLayers(layers),
+        ),
+      )
       return applied('Reset project-specific views for the new session.')
     },
   }),
@@ -165,37 +206,138 @@ export const viewOperationDefinitions = {
       ]),
     }),
     run(view, { metric }, project) {
-      const definition = METRICS.find((candidate) => candidate.id === metric)
-      const label = definition?.label ?? metric
-      if (!computeMetric(project, metric).available) {
-        return rejected(
-          `${label} has no data yet. ${definition?.requirement ?? ''}`.trim(),
-          'metric',
-        )
+      // The agent's shortcut: it colors the top building layer.
+      const layer = view.map.layers.find((each) => each.kind === 'buildings')
+      if (!layer) {
+        return rejected('The map has no building layer. Add one first.')
       }
-      view.map.metric = metric
-      return applied(`Map buildings are colored by ${label}.`)
+      const issue = colorIssue(metric, project)
+      if (issue) return rejected(issue, 'metric')
+      layer.colorBy = metric
+      return applied(`Map buildings are colored by ${colorLabel(metric)}.`)
     },
   }),
 
-  'map.setGridOverlay': defineViewOperation({
-    title: 'Show or hide grid overlay',
+  'map.addLayer': defineViewOperation({
+    title: 'Add a map layer',
+    description: `Add a layer above the others on the Map. Kinds: ${MAP_LAYER_KINDS.map((kind) => `${kind} (${LAYER_KINDS[kind].description})`).join('; ')}. Several layers may show the same objects.`,
+    input: z.object({
+      kind: z.enum(MAP_LAYER_KINDS as [MapLayerKind, ...MapLayerKind[]]),
+      name: z.string().trim().min(1, 'Enter a name.').optional(),
+    }),
+    run(view, { kind, name }) {
+      const layer = newLayer(nextLayerId(view.map.layers, kind), kind, name)
+      view.map.layers.unshift(layer)
+      return applied(`Added the map layer "${layer.name}" on top.`)
+    },
+  }),
+
+  'map.removeLayer': defineViewOperation({
+    title: 'Remove a map layer',
+    description: 'Remove one layer from the Map; the project is not changed.',
+    input: z.object({ layerId: z.string() }),
+    run(view, { layerId }) {
+      const index = view.map.layers.findIndex((layer) => layer.id === layerId)
+      const layer = view.map.layers[index]
+      if (!layer) return rejected(unknownLayer(layerId), 'layerId')
+      view.map.layers.splice(index, 1)
+      return applied(`Removed the map layer "${layer.name}".`)
+    },
+  }),
+
+  'map.moveLayer': defineViewOperation({
+    title: 'Move a map layer',
     description:
-      'Show or hide feeders, transformers, and utility PV on the Map.',
-    input: z.object({ visible: z.boolean() }),
-    run(view, { visible }, project) {
-      if (visible && Object.keys(project.gridElements).length === 0) {
+      'Move one Map layer to a position in the stack, counted from the top: 0 is drawn above all others.',
+    input: z.object({
+      layerId: z.string(),
+      position: z.number().int().min(0, 'Use a position from 0.'),
+    }),
+    run(view, { layerId, position }) {
+      const layers = view.map.layers
+      const index = layers.findIndex((layer) => layer.id === layerId)
+      const layer = layers[index]
+      if (!layer) return rejected(unknownLayer(layerId), 'layerId')
+      if (position > layers.length - 1) {
         return rejected(
-          'The grid overlay needs grid elements. Run "Grid definitions".',
-          'visible',
+          `Use a position from 0 to ${layers.length - 1}.`,
+          'position',
         )
       }
-      view.map.gridOverlay = visible
+      if (position === index) {
+        return rejected(`"${layer.name}" is already there.`, 'position')
+      }
+      layers.splice(index, 1)
+      layers.splice(position, 0, layer)
       return applied(
-        visible
-          ? 'The map shows the grid overlay.'
-          : 'The map hides the grid overlay.',
+        `Moved the map layer "${layer.name}" to position ${position + 1} of ${layers.length}.`,
       )
+    },
+  }),
+
+  'map.setLayerVisible': defineViewOperation({
+    title: 'Show or hide a map layer',
+    description: 'Show or hide one layer on the Map.',
+    input: z.object({ layerId: z.string(), visible: z.boolean() }),
+    run(view, { layerId, visible }) {
+      const layer = view.map.layers.find((each) => each.id === layerId)
+      if (!layer) return rejected(unknownLayer(layerId), 'layerId')
+      layer.visible = visible
+      return applied(
+        `The map ${visible ? 'shows' : 'hides'} the layer "${layer.name}".`,
+      )
+    },
+  }),
+
+  'map.setLayerStyle': defineViewOperation({
+    title: 'Style a map layer',
+    description: `Rename a Map layer or set its opacity (0 to 100). Building layers also take colorBy (${BUILDING_COLORS.join(', ')}; a metric without data is rejected) and extrude (shown at their heights in the 3D view).`,
+    input: z.object({
+      layerId: z.string(),
+      name: z.string().trim().min(1, 'Enter a name.').optional(),
+      opacityPercent: z
+        .number()
+        .int('Use a whole percentage.')
+        .min(0, 'Use 0 to 100.')
+        .max(100, 'Use 0 to 100.')
+        .optional(),
+      colorBy: z.enum(BUILDING_COLORS).optional(),
+      extrude: z.boolean().optional(),
+    }),
+    run(view, input, project) {
+      const layer = view.map.layers.find((each) => each.id === input.layerId)
+      if (!layer) return rejected(unknownLayer(input.layerId), 'layerId')
+      const buildingOnly =
+        input.colorBy !== undefined || input.extrude !== undefined
+      if (buildingOnly && layer.kind !== 'buildings') {
+        return rejected(
+          `"${layer.name}" shows ${LAYER_KINDS[layer.kind].label.toLowerCase()}; only building layers are colored by a metric or extruded.`,
+          input.colorBy !== undefined ? 'colorBy' : 'extrude',
+        )
+      }
+      if (input.colorBy !== undefined && input.colorBy !== 'single') {
+        const issue = colorIssue(input.colorBy, project)
+        if (issue) return rejected(issue, 'colorBy')
+      }
+      const changes: string[] = []
+      if (input.name !== undefined && input.name !== layer.name) {
+        changes.push(`renamed from "${layer.name}"`)
+        layer.name = input.name
+      }
+      if (input.opacityPercent !== undefined) {
+        layer.opacityPercent = input.opacityPercent
+        changes.push(`opacity ${input.opacityPercent}%`)
+      }
+      if (input.colorBy !== undefined) {
+        layer.colorBy = input.colorBy
+        changes.push(`colored by ${colorLabel(input.colorBy)}`)
+      }
+      if (input.extrude !== undefined) {
+        layer.extrude = input.extrude
+        changes.push(input.extrude ? 'extruded in 3D' : 'flat in 3D')
+      }
+      if (changes.length === 0) return rejected('Nothing to change.')
+      return applied(`Map layer "${layer.name}": ${changes.join(', ')}.`)
     },
   }),
 
@@ -217,19 +359,19 @@ export const viewOperationDefinitions = {
   }),
 
   'map.set3d': defineViewOperation({
-    title: 'Show buildings in 3D',
+    title: 'Show the map in 3D',
     description:
-      'Show buildings on the Map as 3D blocks extruded to their synthetic heights, or return to the flat 2D map. Buildings stay flat until "Geospatial preprocessing" has computed heights.',
+      'Turn the 3D view on or off, a basemap setting: the Map tilts, shows terrain and lighting when they are on, and building layers that extrude show their synthetic heights. Buildings stay flat until "Geospatial preprocessing" has computed heights.',
     input: z.object({ enabled: z.boolean() }),
     run(view, { enabled }, project) {
       view.map.view3d = enabled
-      if (!enabled) return applied('The map shows buildings in 2D.')
+      if (!enabled) return applied('The map is shown flat, in 2D.')
       const hasHeights = project.buildingIds.some(
         (id) => (project.buildings[id]?.heightM ?? null) !== null,
       )
       return applied(
         hasHeights
-          ? 'The map shows buildings in 3D.'
+          ? 'The map is shown in 3D.'
           : 'The map is in 3D, but buildings stay flat until "Geospatial preprocessing" computes heights.',
       )
     },
@@ -244,7 +386,7 @@ export const viewOperationDefinitions = {
       // Terrain belongs to the 3D scene; a flat map never shows relief.
       if (enabled && !view.map.view3d) {
         return rejected(
-          'Terrain needs the 3D view. Turn on 3D buildings first.',
+          'Terrain needs the 3D view. Turn on the 3D view first.',
           'enabled',
         )
       }

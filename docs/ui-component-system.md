@@ -511,3 +511,18 @@ Built on `claude/ui-component-system`, not merged. Recorded in
 **Verification (2026-10-27):** typecheck, lint, and format clean; 366 unit tests; the map browser tests now work the
 map's switches in Properties and check the control order and the basemap switch; 102 development browser tests
 and 3 production-preview tests passed.
+
+## Map layer stack (2026-10-27)
+
+Built on `claude/ui-component-system`, not merged. Recorded in [decision 0031](decisions/0031-map-layer-stack.md).
+
+- New shared component `ReorderableList` (gallery: "Reorderable list"), rows with a drag handle, a checkbox, a
+  title, and a meta line, reordered by pointer or keyboard drag and drop.
+- The map's Properties lists its layers top first with Add layer, Move up, Move down, and Remove; the chosen layer's
+  name, color, extrusion, and opacity follow. The Map's bar keeps only its title.
+- The stack is saved with the project and counts as an unsaved change; the Basemap section's switch is the 3D view,
+  and Light and haze holds horizon haze, sun intensity, and sun diffusion.
+
+**Verification (2026-10-27):** typecheck, lint, and format clean; 372 unit tests (adds the layer operations, saved
+stacks, and summaries); a new browser test for the layer stack, with the map tests updated for the 3D view and the
+Light and haze disclosure; 103 development browser tests and 3 production-preview tests passed.

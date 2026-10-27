@@ -1,0 +1,86 @@
+/* Reorderable lists (decision 0031): one ruled box of rows like a selectable
+   list; the chosen row is a fill, never an edge bar. */
+.list {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  border: var(--rule);
+  border-radius: var(--radius-sm);
+  outline: none;
+}
+
+.list[data-focus-visible] {
+  outline: 2px solid var(--color-focus);
+  outline-offset: 2px;
+}
+
+.row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-1) var(--space-2) var(--space-1) var(--space-1);
+  border-bottom: 1px solid var(--color-border-subtle);
+  cursor: pointer;
+  outline: none;
+}
+
+.row:last-child {
+  border-bottom: none;
+}
+
+.row[data-hovered] {
+  background: color-mix(in srgb, var(--color-accent) 8%, transparent);
+}
+
+.row[data-selected] {
+  background: var(--color-selected-bg);
+}
+
+.row[data-focus-visible] {
+  outline: 2px solid var(--color-focus);
+  outline-offset: -2px;
+}
+
+.row[data-dragging] {
+  opacity: 0.5;
+}
+
+/* Where a dragged row will land: a line between rows. */
+.dropIndicator[data-drop-target] {
+  height: 0;
+  outline: 1px solid var(--color-accent);
+}
+
+.handle {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  padding: 0.125rem;
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: none;
+  color: var(--color-text-muted);
+  cursor: grab;
+}
+
+.handle[data-focus-visible] {
+  outline: 2px solid var(--color-focus);
+  outline-offset: 0;
+}
+
+.text {
+  display: grid;
+  gap: 0.125rem;
+  min-width: 0;
+}
+
+.title {
+  font-weight: 500;
+  overflow-wrap: anywhere;
+}
+
+.meta {
+  color: var(--color-text-muted);
+  font-size: var(--font-size-small);
+}

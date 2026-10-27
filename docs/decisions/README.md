@@ -31,5 +31,6 @@ Keep short dated records of accepted decisions: status, context, decision, ratio
 - [0028: Properties panel, definition tables, schedule day types, and the floating demo switch](0028-properties-panel-and-definition-tables.md)
 - [0029: Table settings are saved with the project, and stages show in Properties](0029-table-settings-with-project-and-stage-properties.md)
 - [0030: The map's controls live in its Properties, and the Map has no selection bar](0030-map-properties-control-list.md)
+- [0031: A map layer stack with the project's own layers, saved with the project](0031-map-layer-stack.md)
 
 Number 0020 is used on the unmerged `feature/agentic` branch.

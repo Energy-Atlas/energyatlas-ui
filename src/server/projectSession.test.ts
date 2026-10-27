@@ -57,15 +57,19 @@ describe('project sessions', () => {
     expect(server.current().state?.project.name).toBe('District A')
     expect(client.store.getState().meta.currentProject?.name).toBe('District A')
   })
-  it('saves table arrangements with the project and returns them on opening', async () => {
+  it('saves table arrangements and map layers with the project and returns them on opening', async () => {
     const storage = memoryStorage()
     const project = createTestProject({ storage })
     const tables = { 'table.buildings': { hidden: ['use'] } }
-    project.client.attachView(() => ({ tables }))
+    const layers = [{ id: 'buildings', kind: 'buildings' }]
+    project.client.attachView(() => ({ tables, layers }))
     const saved = project.client.save()
     await project.manual.settle()
     expect((await saved).outcome.status).toBe('applied')
-    expect(project.client.store.getState().meta.view).toEqual({ tables })
+    expect(project.client.store.getState().meta.view).toEqual({
+      tables,
+      layers,
+    })
     const id = project.server.current().state?.project.id ?? ''
 
     // Another project has none; reopening the first brings them back.
@@ -76,7 +80,10 @@ describe('project sessions', () => {
     const opened = project.client.openProject(id)
     await project.manual.settle()
     expect((await opened).outcome.status).toBe('applied')
-    expect(project.client.store.getState().meta.view).toEqual({ tables })
+    expect(project.client.store.getState().meta.view).toEqual({
+      tables,
+      layers,
+    })
   })
   it('keeps an open project after another project fails to open', async () => {
     const { client, server, manual } = createTestProject()

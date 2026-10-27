@@ -8,7 +8,6 @@ import {
 import type { ExpressionSpecification, StyleSpecification } from 'maplibre-gl'
 import 'maplibre-gl/dist/maplibre-gl.css'
 import { useEffect, useId, useMemo, useRef, useState } from 'react'
-import { Checkbox, Label, Radio, RadioGroup } from 'react-aria-components'
 import { DISTRICT_CENTER } from '../../domain/simulation.ts'
 import type { LngLat } from '../../domain/types.ts'
 import { STAGE_IDS } from '../../domain/workflow.ts'
@@ -22,7 +21,6 @@ import type { DataPalette } from '../appearance/appearances.ts'
 import { ActionButton } from '../components/ActionButton.tsx'
 import { CapabilityBadge, StatusTag } from '../components/CapabilityBadge.tsx'
 import { EmptyState } from '../components/EmptyState.tsx'
-import formStyles from '../components/forms.module.css'
 import { formatNumber } from '../format.ts'
 import {
   BASEMAP_SOURCE_ID,
@@ -30,6 +28,12 @@ import {
   FOOTPRINT_ATTRIBUTION,
 } from './basemapStyle.ts'
 import { computeMetric, METRICS, type MetricId } from './mapMetrics.ts'
+import {
+  metricProperty,
+  resolveLayers,
+  StackLayer,
+  type ResolvedLayer,
+} from './StackLayer.tsx'
 import styles from './map.module.css'
 import {
   SelectionSilhouette,
@@ -75,25 +79,6 @@ function baseStyle(background: string): StyleSpecification {
   }
 }
 
-function fillExpression(
-  min: number,
-  max: number,
-  palette: DataPalette,
-): ExpressionSpecification {
-  const ramp = palette.sequential
-  const span = max - min || 1
-  const stops = ramp.flatMap((color, index) => [
-    min + (span * index) / (ramp.length - 1),
-    color,
-  ])
-  return [
-    'case',
-    ['<', ['get', 'value'], 0],
-    palette.noData,
-    ['interpolate', ['linear'], ['get', 'value'], ...stops],
-  ] as unknown as ExpressionSpecification
-}
-
 function boundsOf(points: LngLat[]): [number, number, number, number] | null {
   if (points.length === 0) return null
   let [west, south] = points[0] ?? [0, 0]
@@ -130,13 +115,8 @@ export function MapPage() {
   )
   const mapRef = useRef<MapRef>(null)
   const [loaded, setLoaded] = useState(false)
-  const { view } = useServices()
   const mapView = useViewState((state) => state.map)
-  const preferredMetric = mapView.metric
-  const showGrid = mapView.gridOverlay
   const view3d = mapView.view3d
-  // In 3D the extrusions take picking; the flat fill is hidden.
-  const buildingLayer = view3d ? 'buildings-extrusion' : 'buildings-fill'
   // Live terrain, for display only (decision 0015).
   const terrainEnabled = mapView.terrain
   const exaggeration = mapView.terrainExaggeration
@@ -211,14 +191,17 @@ export function MapPage() {
       ) as Record<MetricId, ReturnType<typeof computeMetric>>,
     [state],
   )
-  // Fall back to the first available metric instead of showing an empty ramp.
-  const metricId: MetricId = metrics[preferredMetric].available
-    ? preferredMetric
-    : (METRICS.find((metric) => metrics[metric.id].available)?.id ??
-      preferredMetric)
-  const metric =
-    METRICS.find((candidate) => candidate.id === metricId) ?? METRICS[0]
-  const values = metrics[metricId]
+  // The layer stack (decision 0031), top first, resolved against the data.
+  const stack = useMemo(
+    () => resolveLayers(mapView.layers, metrics, view3d),
+    [mapView.layers, metrics, view3d],
+  )
+  const byPickId = useMemo(
+    () => new Map(stack.map((resolved) => [resolved.pickId, resolved])),
+    [stack],
+  )
+  const shown = stack.filter((resolved) => resolved.layer.visible)
+  const extrudedShown = shown.some((resolved) => resolved.extruded)
 
   const buildingsGeoJson = useMemo(
     () => ({
@@ -233,7 +216,12 @@ export function MapPage() {
             properties: {
               id,
               name: building.name,
-              value: values.values[id] ?? -1,
+              ...Object.fromEntries(
+                METRICS.map((metric) => [
+                  metricProperty(metric.id),
+                  metrics[metric.id].values[id] ?? -1,
+                ]),
+              ),
               height: building.heightM ?? 0,
             },
             geometry: {
@@ -244,11 +232,10 @@ export function MapPage() {
         ]
       }),
     }),
-    [state.buildingIds, state.buildings, values],
+    [state.buildingIds, state.buildings, metrics],
   )
 
   const gridElements = Object.values(state.gridElements)
-  const hasGrid = gridElements.length > 0
   const gridLines = useMemo(
     () => ({
       type: 'FeatureCollection' as const,
@@ -410,9 +397,31 @@ export function MapPage() {
     buildingsGeoJson,
     gridLines,
     gridPoints,
-    showGrid,
+    stack,
     mapStyle,
   ])
+
+  // Draw the stack in its order: lift each layer to the top, bottom first.
+  // Layers added later (a new layer, a style swap) land on top, so the order
+  // is applied again once the map settles.
+  const order = stack
+    .flatMap((resolved) => [...resolved.mapIds].reverse())
+    .reverse()
+    .join('|')
+  useEffect(() => {
+    const map = mapRef.current?.getMap()
+    if (!map || !loaded) return
+    const apply = () => {
+      for (const id of order.split('|')) {
+        if (id && map.getLayer(id)) map.moveLayer(id)
+      }
+    }
+    apply()
+    map.on('idle', apply)
+    return () => {
+      map.off('idle', apply)
+    }
+  }, [loaded, order, mapStyle])
 
   if (state.buildingIds.length === 0) {
     return (
@@ -435,9 +444,6 @@ export function MapPage() {
   }
 
   const ink = palette.ink
-  const unavailable = METRICS.filter(
-    (candidate) => !metrics[candidate.id].available,
-  )
   const ramp = palette.sequential
 
   return (
@@ -450,55 +456,7 @@ export function MapPage() {
       <header className={styles.header}>
         <h2 id={headingId}>Map</h2>
         <CapabilityBadge id="map.view" />
-        <RadioGroup
-          className={styles.metricGroup}
-          value={metricId}
-          orientation="horizontal"
-          onChange={(value) => {
-            const next = METRICS.find((candidate) => candidate.id === value)
-            if (next && next.id !== preferredMetric) {
-              view.execute({
-                type: 'map.setMetric',
-                input: { metric: next.id },
-              })
-            }
-          }}
-        >
-          <Label className={formStyles.label}>Color buildings by</Label>
-          <div className={formStyles.options}>
-            {METRICS.map((candidate) => (
-              <Radio
-                key={candidate.id}
-                value={candidate.id}
-                className={formStyles.radio}
-                isDisabled={!metrics[candidate.id].available}
-              >
-                {candidate.label}
-              </Radio>
-            ))}
-          </div>
-        </RadioGroup>
-        <Checkbox
-          className={formStyles.checkbox}
-          isSelected={showGrid && hasGrid}
-          isDisabled={!hasGrid}
-          onChange={(visible) =>
-            view.execute({ type: 'map.setGridOverlay', input: { visible } })
-          }
-        >
-          Grid overlay
-        </Checkbox>
       </header>
-
-      {unavailable.length > 0 ? (
-        <p className={styles.note}>
-          Not available yet:{' '}
-          {unavailable
-            .map((candidate) => `${candidate.label} (${candidate.requirement})`)
-            .join(' ')}
-          {hasGrid ? '' : ' Grid overlay (run "Grid definitions").'}
-        </p>
-      ) : null}
 
       <div className={styles.mapArea}>
         <MapView
@@ -512,11 +470,7 @@ export function MapPage() {
           style={{ width: '100%', height: '100%' }}
           // 2D stays flat and north-up; 3D allows tilting.
           maxPitch={view3d ? 70 : 0}
-          interactiveLayerIds={
-            showGrid && hasGrid
-              ? [buildingLayer, 'grid-lines-layer', 'grid-points-layer']
-              : [buildingLayer]
-          }
+          interactiveLayerIds={shown.map((resolved) => resolved.pickId)}
           onLoad={() => setLoaded(true)}
           onError={(event) => {
             // Tile and TileJSON failures name their source. Fall back to the
@@ -537,9 +491,10 @@ export function MapPage() {
               setHover(null)
               return
             }
+            const layer = byPickId.get(feature?.layer.id ?? '')
             const label =
-              feature?.layer.id === buildingLayer
-                ? `${id}: ${formatValue(values.values[id] ?? null, metric?.unit ?? '')}`
+              layer?.metric && layer.values
+                ? `${id}: ${formatValue(layer.values.values[id] ?? null, layer.metric.unit)}`
                 : `${String(feature?.properties?.name ?? id)}`
             setHover({ id, label, x: event.point.x, y: event.point.y })
           }}
@@ -557,7 +512,9 @@ export function MapPage() {
               return
             }
             const entityType =
-              feature?.layer.id === buildingLayer ? 'building' : 'gridElement'
+              byPickId.get(feature?.layer.id ?? '')?.layer.kind === 'buildings'
+                ? 'building'
+                : 'gridElement'
             const additive =
               event.originalEvent.shiftKey &&
               selection.entityType === entityType
@@ -637,124 +594,33 @@ export function MapPage() {
             data={buildingsGeoJson}
             attribution={FOOTPRINT_ATTRIBUTION}
             promoteId="id"
-          >
-            <Layer
-              id="buildings-fill"
-              type="fill"
-              layout={{ visibility: view3d ? 'none' : 'visible' }}
-              paint={{
-                'fill-color': fillExpression(values.min, values.max, palette),
-                'fill-outline-color': ink.surface,
-              }}
+          />
+          <Source
+            id="grid-lines"
+            type="geojson"
+            data={gridLines}
+            promoteId="id"
+          />
+          <Source
+            id="grid-points"
+            type="geojson"
+            data={gridPoints}
+            promoteId="id"
+          />
+          {/* Bottom first, so layers added together stack in order. */}
+          {[...stack].reverse().map((resolved) => (
+            <StackLayer
+              key={resolved.layer.id}
+              resolved={resolved}
+              palette={palette}
             />
-            {/* A surface-colored halo keeps the selection outline visible on
-                any fill. Feature state drives opacity, not width. In 3D the
-                silhouette overlay replaces this footprint outline. */}
-            <Layer
-              id="buildings-selected-halo"
-              type="line"
-              layout={{ visibility: view3d ? 'none' : 'visible' }}
-              paint={{
-                'line-color': ink.surface,
-                'line-width': 6,
-                'line-opacity': [
-                  'case',
-                  ['boolean', ['feature-state', 'selected'], false],
-                  1,
-                  0,
-                ],
-              }}
-            />
-            <Layer
-              id="buildings-selected"
-              type="line"
-              layout={{ visibility: view3d ? 'none' : 'visible' }}
-              paint={{
-                'line-color': palette.selection,
-                'line-width': 2.5,
-                'line-opacity': [
-                  'case',
-                  ['boolean', ['feature-state', 'selected'], false],
-                  1,
-                  0,
-                ],
-              }}
-            />
-            <Layer
-              id="buildings-extrusion"
-              type="fill-extrusion"
-              layout={{ visibility: view3d ? 'visible' : 'none' }}
-              paint={{
-                // Selection never changes a building's color; in 3D it is
-                // outlined by SelectionSilhouette.
-                'fill-extrusion-color': fillExpression(
-                  values.min,
-                  values.max,
-                  palette,
-                ),
-                'fill-extrusion-height': ['get', 'height'],
-                'fill-extrusion-opacity': 0.9,
-              }}
-            />
-          </Source>
-          {showGrid && hasGrid ? (
-            <>
-              <Source
-                id="grid-lines"
-                type="geojson"
-                data={gridLines}
-                promoteId="id"
-              >
-                <Layer
-                  id="grid-lines-layer"
-                  type="line"
-                  paint={{
-                    'line-color': [
-                      'case',
-                      ['boolean', ['feature-state', 'selected'], false],
-                      palette.selection,
-                      palette.networkLine,
-                    ],
-                    'line-width': 2.5,
-                  }}
-                  layout={{ 'line-cap': 'round', 'line-join': 'round' }}
-                />
-              </Source>
-              <Source
-                id="grid-points"
-                type="geojson"
-                data={gridPoints}
-                promoteId="id"
-              >
-                <Layer
-                  id="grid-points-layer"
-                  type="circle"
-                  paint={{
-                    'circle-color': palette.networkPoint,
-                    'circle-radius': [
-                      'case',
-                      ['boolean', ['feature-state', 'selected'], false],
-                      8,
-                      5,
-                    ],
-                    'circle-stroke-width': 2,
-                    'circle-stroke-color': [
-                      'case',
-                      ['boolean', ['feature-state', 'selected'], false],
-                      palette.selection,
-                      ink.surface,
-                    ],
-                  }}
-                />
-              </Source>
-            </>
-          ) : null}
+          ))}
         </MapView>
 
         <SelectionSilhouette
           mapRef={mapRef}
           loaded={loaded}
-          enabled={view3d}
+          enabled={view3d && extrudedShown}
           prisms={selectedPrisms}
           selectionColor={palette.selection}
           haloColor={ink.surface}
@@ -771,60 +637,22 @@ export function MapPage() {
         ) : null}
 
         <div className={styles.legend} aria-label="Map legend" role="group">
-          <p className={styles.legendTitle}>
-            <span>
-              {metric?.label}
-              {metric?.unit ? ` (${metric.unit})` : ''}
-              {values.scenarioName ? `, ${values.scenarioName}` : ''}
-            </span>
-            <StatusTag status="simulated" />
-          </p>
-          <div
-            className={styles.ramp}
-            style={{
-              background: `linear-gradient(to right, ${ramp.join(', ')})`,
-            }}
-          />
-          <div className={styles.rampLabels}>
-            <span>{formatValue(values.min, '')}</span>
-            <span>{formatValue(values.max, '')}</span>
-          </div>
-          <p className={styles.legendRow}>
-            <span
-              className={styles.swatch}
-              style={{ background: palette.noData }}
-            />{' '}
-            No data
-          </p>
-          {view3d ? (
-            <>
-              <p className={styles.legendRow}>
-                Height: floors × 3.2 m (synthetic)
-              </p>
-            </>
+          {shown.length === 0 ? (
+            <p className={styles.legendRow}>No layers shown.</p>
           ) : null}
+          {shown.map((resolved) => (
+            <LegendBlock
+              key={resolved.layer.id}
+              resolved={resolved}
+              palette={palette}
+              ramp={ramp}
+              view3d={view3d}
+            />
+          ))}
           {terrainEnabled ? (
             <p className={styles.legendRow}>
               Terrain: {exaggerationLabel(exaggeration)} (Mapterhorn, USGS 3DEP)
             </p>
-          ) : null}
-          {showGrid && hasGrid ? (
-            <>
-              <p className={styles.legendRow}>
-                <span
-                  className={styles.lineKey}
-                  style={{ background: palette.networkLine }}
-                />{' '}
-                Feeder line
-              </p>
-              <p className={styles.legendRow}>
-                <span
-                  className={styles.dotKey}
-                  style={{ background: palette.networkPoint }}
-                />{' '}
-                Transformer, substation, or utility PV
-              </p>
-            </>
           ) : null}
         </div>
       </div>
@@ -879,5 +707,87 @@ export function MapPage() {
         </span>
       </footer>
     </section>
+  )
+}
+
+/** One visible layer in the map's legend (decision 0031). */
+function LegendBlock({
+  resolved,
+  palette,
+  ramp,
+  view3d,
+}: {
+  resolved: ResolvedLayer
+  palette: DataPalette
+  ramp: readonly string[]
+  view3d: boolean
+}) {
+  const { layer, metric, values } = resolved
+  if (layer.kind === 'gridLines') {
+    return (
+      <p className={styles.legendRow}>
+        <span
+          className={styles.lineKey}
+          style={{ background: palette.networkLine }}
+        />{' '}
+        {layer.name}: feeder lines
+      </p>
+    )
+  }
+  if (layer.kind === 'gridPoints') {
+    return (
+      <p className={styles.legendRow}>
+        <span
+          className={styles.dotKey}
+          style={{ background: palette.networkPoint }}
+        />{' '}
+        {layer.name}: transformers, substation, utility PV
+      </p>
+    )
+  }
+  return (
+    <div className={styles.legendBlock}>
+      <p className={styles.legendTitle}>
+        <span>
+          {layer.name}
+          {metric
+            ? `: ${metric.label}${metric.unit ? ` (${metric.unit})` : ''}${values?.scenarioName ? `, ${values.scenarioName}` : ''}`
+            : ''}
+        </span>
+        {metric ? <StatusTag status="simulated" /> : null}
+      </p>
+      {metric && values ? (
+        <>
+          <div
+            className={styles.ramp}
+            style={{
+              background: `linear-gradient(to right, ${ramp.join(', ')})`,
+            }}
+          />
+          <div className={styles.rampLabels}>
+            <span>{formatValue(values.min, '')}</span>
+            <span>{formatValue(values.max, '')}</span>
+          </div>
+          <p className={styles.legendRow}>
+            <span
+              className={styles.swatch}
+              style={{ background: palette.noData }}
+            />{' '}
+            No data
+          </p>
+        </>
+      ) : (
+        <p className={styles.legendRow}>
+          <span
+            className={styles.swatch}
+            style={{ background: palette.categorical[0] }}
+          />{' '}
+          One color
+        </p>
+      )}
+      {view3d && resolved.extruded ? (
+        <p className={styles.legendRow}>Height: floors × 3.2 m (synthetic)</p>
+      ) : null}
+    </div>
   )
 }

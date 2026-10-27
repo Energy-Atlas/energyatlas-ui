@@ -1,7 +1,8 @@
 # Map layers: discussion
 
-Date: 2026-10-27. Status: open; the owner has not chosen a direction. The Layers section of the map's Properties is
-marked Planned until they do ([decision 0030](decisions/0030-map-properties-control-list.md)).
+Date: 2026-10-27. Status: decided the same day. The owner chose direction B with the project's own layers from A,
+kept 3D and the like as basemap settings, put "Color by" only in Properties, saved layer settings with the project,
+and made extrusion a building layer setting ([decision 0031](decisions/0031-map-layer-stack.md)).
 
 The owner asked how the map should manage layers, and how "Color buildings by", the grid overlay, and the 3D building
 settings fit into that.

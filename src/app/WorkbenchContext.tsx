@@ -61,6 +61,7 @@ import {
   type PropertiesService,
 } from './properties/propertiesService.ts'
 import { forgetUnsavedEdits } from './properties/useEdits.ts'
+import { layersDiffer } from './pages/mapLayers.ts'
 import { parseStoredTables, tablesDiffer } from './tables/tableSettings.ts'
 import type { ViewState } from './view/viewOperations.ts'
 import { createViewStore, type ViewStore } from './view/viewStore.ts'
@@ -179,12 +180,15 @@ function createCoreServices(): CoreServices {
   const layout = createLayoutController(workbench, storage)
   const view = createViewStore(workbench)
   // Table arrangements are saved with the project (decision 0028).
-  client.attachView(() => ({ tables: view.getState().tables }))
+  client.attachView(() => ({
+    tables: view.getState().tables,
+    layers: view.getState().map.layers,
+  }))
   const lifecycle = createProjectLifecycle({
     workbench,
     client,
     viewUnsaved: () =>
-      viewUnsaved(view.getState().tables, client.store.getState().meta),
+      viewUnsaved(view.getState(), client.store.getState().meta),
   })
   const agent = createScriptedAgent({
     workbench,
@@ -201,7 +205,10 @@ function createCoreServices(): CoreServices {
       view.execute(
         {
           type: 'view.resetForProject',
-          input: { tables: snapshot.meta.view?.tables },
+          input: {
+            tables: snapshot.meta.view?.tables,
+            layers: snapshot.meta.view?.layers,
+          },
         },
         'system',
       )
@@ -364,21 +371,25 @@ export function useStageStates() {
 
 /** Whether the tables are arranged differently from how the project saved them. */
 function viewUnsaved(
-  tables: ViewState['tables'],
+  view: Pick<ViewState, 'tables' | 'map'>,
   meta: ClientSnapshot['meta'],
 ): boolean {
-  return tablesDiffer(tables, parseStoredTables(meta.view?.tables ?? {}))
+  return (
+    tablesDiffer(view.tables, parseStoredTables(meta.view?.tables ?? {})) ||
+    layersDiffer(view.map.layers, meta.view?.layers)
+  )
 }
 
 /**
  * Whether the open project has changes not saved in this browser: model
- * changes the server tracks, or table arrangements, which are saved with the
- * project (decision 0028).
+ * changes the server tracks, or table arrangements and map layers, which are
+ * saved with the project (decisions 0029 and 0031).
  */
 export function useUnsavedChanges(): boolean {
   const meta = useClientSnapshot((snapshot) => snapshot.meta)
   const tables = useViewState((view) => view.tables)
-  return meta.dirty || viewUnsaved(tables, meta)
+  const map = useViewState((view) => view.map)
+  return meta.dirty || viewUnsaved({ tables, map }, meta)
 }
 
 /** Re-renders the caller whenever the FlexLayout model changes. */

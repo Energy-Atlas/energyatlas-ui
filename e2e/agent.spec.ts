@@ -134,7 +134,10 @@ test('data representation session colors the map and adds a chart from a specifi
   await expect(
     panel.getByText(/built from a validated view specification/),
   ).toBeVisible({ timeout: 60_000 })
-  await expect(page.getByRole('radio', { name: 'PV yield' })).toBeChecked()
+  // The agent colored the top building layer (decision 0031).
+  await expect(page.getByRole('group', { name: 'Map legend' })).toContainText(
+    'Buildings: PV yield',
+  )
 
   const chart = page.getByRole('article', { name: 'Baseline monthly demand' })
   await expect(chart).toBeVisible()

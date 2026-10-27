@@ -1,4 +1,4 @@
-import { createProjectFromStart, properties } from './test.ts'
+import { createProjectFromStart, properties, saveAndReopen } from './test.ts'
 import { AxeBuilder } from '@axe-core/playwright'
 import {
   blockBasemap,
@@ -208,7 +208,7 @@ test('map switches buildings between 2D and 3D and explains missing heights', as
   await runStages(page, ['Location setup / footprint capturing'])
   const panel = await openMapProperties(page)
 
-  const toggle = panel.getByRole('checkbox', { name: '3D buildings' })
+  const toggle = panel.getByRole('checkbox', { name: '3D view' })
   await expect(toggle).not.toBeChecked()
   // React Aria keeps the native checkbox visually hidden; use the keyboard.
   await toggle.focus()
@@ -249,7 +249,7 @@ test('map switches buildings between 2D and 3D and explains missing heights', as
   await page.keyboard.press('Space')
   await expect(toggle).not.toBeChecked()
   await expect(page.getByTestId('status-notice')).toContainText(
-    'The map shows buildings in 2D.',
+    'The map is shown flat, in 2D.',
   )
   await expect(legend).not.toContainText('Height: floors')
   await expect.poll(() => paintedPixels(silhouette)).toBe(0)
@@ -265,7 +265,7 @@ test('map shows terrain at true scale and sets exaggeration from the keyboard', 
   // Terrain belongs to the 3D scene (decision 0018), so it is offered there.
   const flat = panel.getByRole('checkbox', { name: 'Terrain (3D only)' })
   await expect(flat).toBeDisabled()
-  const view3d = panel.getByRole('checkbox', { name: '3D buildings' })
+  const view3d = panel.getByRole('checkbox', { name: '3D view' })
   await view3d.focus()
   await page.keyboard.press('Space')
 
@@ -316,7 +316,7 @@ test('map falls back to a flat map when terrain cannot load, then retries', asyn
   await blockTerrain(page)
   await runStages(page, ['Location setup / footprint capturing'])
   const panel = await openMapProperties(page)
-  const view3d = panel.getByRole('checkbox', { name: '3D buildings' })
+  const view3d = panel.getByRole('checkbox', { name: '3D view' })
   await view3d.focus()
   await page.keyboard.press('Space')
   const toggle = panel.getByRole('checkbox', { name: 'Terrain', exact: true })
@@ -391,10 +391,11 @@ test('the map offers its layers, basemap, and scene in Properties when nothing i
     'LAYERS',
     'BASEMAP',
     'SUN POSITION',
+    'LIGHT AND HAZE',
   ])
-  await expect(panel.getByRole('region', { name: 'Layers' })).toContainText(
-    'Planned',
-  )
+  await expect(
+    panel.getByRole('grid', { name: 'Map layers, top first' }),
+  ).toBeVisible()
   const labels = await panel
     .getByRole('region', { name: 'Basemap' })
     .locator('label, [role="slider"]')
@@ -403,16 +404,23 @@ test('the map offers its layers, basemap, and scene in Properties when nothing i
         (node) => node.getAttribute('aria-label') ?? node.textContent ?? '',
       ),
     )
-  expect(labels.join(' | ')).toMatch(
-    /OpenFreeMap basemap.*3D buildings.*Terrain.*Horizon haze.*Sun intensity.*Sun diffusion/,
-  )
+  expect(labels.join(' | ')).toMatch(/OpenFreeMap basemap.*3D view.*Terrain/)
   // The lighting is disclosed as display only, and the sun's own numbers are
   // not shown (decision 0019).
   await expect(panel).toContainText('Simulated')
   await expect(panel).not.toContainText('Elevation')
   await expect(panel).not.toContainText('Azimuth')
 
+  // Haze, intensity, and diffusion open together on demand.
   const haze = panel.getByRole('slider', { name: 'Horizon haze' })
+  await expect(haze).toHaveCount(0)
+  await panel.getByRole('button', { name: 'Light and haze' }).click()
+  await expect(
+    panel.getByRole('slider', { name: 'Sun intensity' }),
+  ).toBeVisible()
+  await expect(
+    panel.getByRole('slider', { name: 'Sun diffusion' }),
+  ).toBeVisible()
   await haze.focus()
   await page.keyboard.press('ArrowRight')
   await expect(page.getByTestId('status-notice')).toContainText(
@@ -446,4 +454,88 @@ test('the map offers its layers, basemap, and scene in Properties when nothing i
   await page.getByRole('tab', { name: 'Table', exact: true }).click()
   await page.locator('[row-index="0"] [col-id="name"]').click()
   await expect(panel.locator('header').first()).toContainText('B0001')
+})
+
+// Decision 0031: the map's layer stack, in its Properties and saved with the
+// project.
+test('map layers are added, reordered, hidden, styled, and saved with the project', async ({
+  page,
+}) => {
+  test.setTimeout(90_000)
+  await page.goto('/?fixture=complete')
+  const panel = await openMapProperties(page)
+  const list = panel.getByRole('grid', { name: 'Map layers, top first' })
+  const legend = page.getByRole('group', { name: 'Map legend' })
+  const rows = list.getByRole('row')
+  const titles = async () =>
+    (await rows.allInnerTexts()).map((text) => text.split('\n')[0]?.trim())
+  await expect(rows).toHaveCount(3)
+  expect(await titles()).toEqual(['Grid points', 'Grid lines', 'Buildings'])
+  // "Color buildings by" and the grid overlay left the Map's bar.
+  await expect(page.getByText('Color buildings by')).toHaveCount(0)
+  await expect(
+    page.getByRole('checkbox', { name: 'Grid overlay' }),
+  ).toHaveCount(0)
+
+  // Add a second building layer and color it by baseline demand.
+  await panel.getByRole('button', { name: 'Add layer' }).click()
+  await page.getByRole('menuitem', { name: /^Buildings/ }).click()
+  await expect(page.getByTestId('status-notice')).toContainText(
+    'Added the map layer "Buildings" on top.',
+  )
+  await expect(rows).toHaveCount(4)
+  const settings = panel.getByRole('group', { name: /^Settings of/ })
+  const name = settings.getByRole('textbox', { name: 'Layer name' })
+  await name.fill('Demand')
+  await name.press('Enter')
+  await expect(rows.first()).toContainText('Demand')
+  // React Aria keeps native inputs visually hidden; use the keyboard.
+  await settings.getByRole('radio', { name: 'Baseline demand' }).focus()
+  await page.keyboard.press('Space')
+  await expect(legend).toContainText('Demand: Baseline demand')
+  await expect(legend).toContainText('Buildings: Floors')
+
+  // Move it below the grid with the buttons, then hide the grid lines from
+  // their row.
+  await panel.getByRole('button', { name: 'Move Demand down' }).click()
+  await panel.getByRole('button', { name: 'Move Demand down' }).click()
+  expect(await titles()).toEqual([
+    'Grid points',
+    'Grid lines',
+    'Demand',
+    'Buildings',
+  ])
+  await list.getByRole('checkbox', { name: 'Show Grid lines' }).focus()
+  await page.keyboard.press('Space')
+  await expect(legend).not.toContainText('Grid lines')
+  await expect(rows.nth(1)).toContainText('hidden')
+
+  // Rows also move by keyboard drag and drop: Enter on the handle starts at
+  // the gap above the row's neighbour, arrows move between gaps, Enter drops.
+  await list.getByRole('button', { name: 'Move Buildings' }).focus()
+  await page.keyboard.press('Enter')
+  await page.keyboard.press('ArrowUp')
+  await page.keyboard.press('Enter')
+  await expect
+    .poll(titles)
+    .toEqual(['Grid points', 'Buildings', 'Grid lines', 'Demand'])
+
+  // Extrusion belongs to a building layer and shows in the 3D view.
+  await list.getByRole('row', { name: /Demand/ }).click()
+  await expect(
+    settings.getByRole('checkbox', { name: 'Extrude to height' }),
+  ).toBeChecked()
+  await expect(settings).toContainText('Extrusion shows in the 3D view')
+  expect(await seriousViolations(page)).toEqual([])
+
+  // Saved with the project and restored on reopening.
+  await saveAndReopen(page)
+  const reopened = await openMapProperties(page)
+  const reopenedRows = reopened
+    .getByRole('grid', { name: 'Map layers, top first' })
+    .getByRole('row')
+  await expect(reopenedRows).toHaveCount(4)
+  await expect(reopenedRows.nth(3)).toContainText('Demand')
+  await expect(reopenedRows.nth(2)).toContainText('hidden')
+  await expect(legend).toContainText('Demand: Baseline demand')
 })

@@ -14,7 +14,11 @@ export type ProjectSummary = {
  * project (decision 0028): table settings by table id. The UI validates them
  * when it applies them, so the server keeps them as given.
  */
-export type SavedView = { tables: Record<string, unknown> }
+/**
+ * What the project keeps of its views: table arrangements (decision 0029)
+ * and the map's layer stack (decision 0031), read by the client.
+ */
+export type SavedView = { tables: Record<string, unknown>; layers?: unknown[] }
 export type CatalogEntry = ProjectSummary & {
   state: WorkbenchState
   /** Absent for projects saved before views were saved with them. */
@@ -24,10 +28,14 @@ export type CatalogEntry = ProjectSummary & {
 /** A saved view, or null when the value is not one. */
 export function parseSavedView(value: unknown): SavedView | null {
   if (!value || typeof value !== 'object') return null
-  const tables = (value as { tables?: unknown }).tables
-  return tables && typeof tables === 'object' && !Array.isArray(tables)
-    ? { tables: tables as Record<string, unknown> }
-    : null
+  const { tables, layers } = value as { tables?: unknown; layers?: unknown }
+  if (!tables || typeof tables !== 'object' || Array.isArray(tables)) {
+    return null
+  }
+  return {
+    tables: tables as Record<string, unknown>,
+    ...(Array.isArray(layers) ? { layers: layers as unknown[] } : {}),
+  }
 }
 export type ProjectCatalog = { projects: CatalogEntry[] }
 type WriteResult = { ok: true } | { ok: false; message: string }

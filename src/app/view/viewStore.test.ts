@@ -60,6 +60,11 @@ const modeled: Partial<WorkbenchState> = {
   },
 }
 
+function topBuildingColor(view: ReturnType<typeof createViewStore>) {
+  return view.getState().map.layers.find((layer) => layer.kind === 'buildings')
+    ?.colorBy
+}
+
 function setup(patch: Partial<WorkbenchState> = {}) {
   const workbench = createWorkbench({
     initialState: { ...createInitialState(), ...patch },
@@ -75,7 +80,7 @@ describe('view store', () => {
       'agent',
     )
     expect(outcome.outcome.status).toBe('applied')
-    expect(view.getState().map.metric).toBe('baselineDemand')
+    expect(topBuildingColor(view)).toBe('baselineDemand')
     expect(workbench.store.getState().log.at(-1)).toMatchObject({
       id: outcome.operationId,
       type: 'map.setMetric',
@@ -101,7 +106,7 @@ describe('view store', () => {
         },
       ],
     })
-    expect(view.getState().map.metric).toBe('floors')
+    expect(topBuildingColor(view)).toBe('floors')
     expect(workbench.store.getState().log.at(-1)?.status).toBe('rejected')
   })
 
@@ -159,7 +164,7 @@ describe('view store', () => {
     const off = view.execute({ type: 'map.set3d', input: { enabled: false } })
     expect(off.outcome).toEqual({
       status: 'applied',
-      summary: 'The map shows buildings in 2D.',
+      summary: 'The map is shown flat, in 2D.',
     })
     expect(view.getState().map.view3d).toBe(false)
     expect(
@@ -168,6 +173,114 @@ describe('view store', () => {
         input: { enabled: 'yes' as unknown as boolean },
       }).outcome.status,
     ).toBe('rejected')
+  })
+
+  it('starts with the default layer stack, top first', () => {
+    const { view } = setup()
+    expect(view.getState().map.layers.map((layer) => layer.id)).toEqual([
+      'grid-points',
+      'grid-lines',
+      'buildings',
+    ])
+  })
+
+  it('adds, moves, hides, styles, and removes map layers', () => {
+    const { view } = setup(modeled)
+    const ids = () => view.getState().map.layers.map((layer) => layer.id)
+    expect(
+      view.execute({
+        type: 'map.addLayer',
+        input: { kind: 'buildings', name: 'Demand' },
+      }).outcome,
+    ).toEqual({
+      status: 'applied',
+      summary: 'Added the map layer "Demand" on top.',
+    })
+    expect(ids()).toEqual([
+      'buildings-2',
+      'grid-points',
+      'grid-lines',
+      'buildings',
+    ])
+
+    view.execute({
+      type: 'map.moveLayer',
+      input: { layerId: 'buildings-2', position: 3 },
+    })
+    expect(ids()).toEqual([
+      'grid-points',
+      'grid-lines',
+      'buildings',
+      'buildings-2',
+    ])
+    expect(
+      view.execute({
+        type: 'map.moveLayer',
+        input: { layerId: 'buildings-2', position: 4 },
+      }).outcome,
+    ).toEqual({
+      status: 'rejected',
+      issues: [{ path: 'position', message: 'Use a position from 0 to 3.' }],
+    })
+
+    view.execute({
+      type: 'map.setLayerVisible',
+      input: { layerId: 'grid-lines', visible: false },
+    })
+    expect(view.getState().map.layers[1]?.visible).toBe(false)
+
+    expect(
+      view.execute({
+        type: 'map.setLayerStyle',
+        input: {
+          layerId: 'buildings-2',
+          colorBy: 'baselineDemand',
+          extrude: false,
+          opacityPercent: 60,
+        },
+      }).outcome,
+    ).toEqual({
+      status: 'applied',
+      summary:
+        'Map layer "Demand": opacity 60%, colored by Baseline demand, flat in 3D.',
+    })
+    // Only building layers color by a metric, and only with data.
+    expect(
+      view.execute({
+        type: 'map.setLayerStyle',
+        input: { layerId: 'grid-lines', colorBy: 'floors' },
+      }).outcome.status,
+    ).toBe('rejected')
+    expect(
+      view.execute({
+        type: 'map.setLayerStyle',
+        input: { layerId: 'buildings', colorBy: 'pvYield' },
+      }).outcome,
+    ).toMatchObject({ status: 'rejected', issues: [{ path: 'colorBy' }] })
+
+    view.execute({ type: 'map.removeLayer', input: { layerId: 'buildings' } })
+    expect(ids()).toEqual(['grid-points', 'grid-lines', 'buildings-2'])
+    // map.setMetric colors the top building layer.
+    view.execute({ type: 'map.setMetric', input: { metric: 'floors' } })
+    expect(topBuildingColor(view)).toBe('floors')
+  })
+
+  it('restores the layers a project saved, or the defaults when unreadable', () => {
+    const { view } = setup()
+    view.execute({ type: 'map.addLayer', input: { kind: 'gridLines' } })
+    const saved = view.getState().map.layers
+    view.execute({
+      type: 'view.resetForProject',
+      input: { layers: [{ id: 'broken' }] },
+    })
+    expect(view.getState().map.layers).toHaveLength(3)
+    view.execute({ type: 'view.resetForProject', input: { layers: saved } })
+    expect(view.getState().map.layers.map((layer) => layer.id)).toEqual([
+      'gridLines-2',
+      'grid-points',
+      'grid-lines',
+      'buildings',
+    ])
   })
 
   it('sets the scene lighting and validates its ranges', () => {

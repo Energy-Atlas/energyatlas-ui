@@ -21,6 +21,10 @@ import { DataTable } from '../components/DataTable.tsx'
 import { InlineAlert } from '../components/InlineAlert.tsx'
 import { LogView, type LogEntry } from '../components/LogView.tsx'
 import { MenuButton } from '../components/MenuButton.tsx'
+import {
+  ReorderableList,
+  type ReorderableItem,
+} from '../components/ReorderableList.tsx'
 import { SelectableList } from '../components/SelectableList.tsx'
 import type { Message } from '../messages/messageCenter.ts'
 import { MessageHistory } from '../panels/MessagesPanel.tsx'
@@ -225,6 +229,22 @@ const BUILDING_COLUMNS: DataColumn<GalleryBuilding>[] = [
  */
 export default function ComponentGallery() {
   const [listChoice, setListChoice] = useState('a')
+  const [stack, setStack] = useState<ReorderableItem[]>([
+    { id: 'points', title: 'Grid points', meta: 'Grid points', checked: true },
+    {
+      id: 'lines',
+      title: 'Grid lines',
+      meta: 'Grid lines · hidden',
+      checked: false,
+    },
+    {
+      id: 'buildings',
+      title: 'Buildings',
+      meta: 'Buildings · Floors · extruded',
+      checked: true,
+    },
+  ])
+  const [stackChoice, setStackChoice] = useState('buildings')
   const [appearance, setAppearance] = useState<AppearanceId>(initialAppearance)
   const [last, setLast] = useState('Nothing pressed yet.')
   const [filter, setFilter] = useState<JobFilter>('all')
@@ -575,6 +595,48 @@ export default function ComponentGallery() {
             ]}
             onAction={() => note('Opened.')}
             disabledReason="Wait for the current project change to finish."
+          />
+        </section>
+
+        <section className={styles.cell}>
+          <h2>Reorderable list</h2>
+          <ReorderableList
+            aria-label="Sample layers, top first"
+            items={stack}
+            selectedId={stackChoice}
+            onSelect={(id) => {
+              setStackChoice(id)
+              note(`Selected ${id}.`)
+            }}
+            checkLabel={(item) => `Show ${item.title}`}
+            onCheck={(id, checked) => {
+              setStack((items) =>
+                items.map((item) =>
+                  item.id === id ? { ...item, checked } : item,
+                ),
+              )
+              note(`${checked ? 'Showed' : 'Hid'} ${id}.`)
+            }}
+            onMove={(id, position) => {
+              setStack((items) => {
+                const moved = items.find((item) => item.id === id)
+                if (!moved) return items
+                const rest = items.filter((item) => item.id !== id)
+                rest.splice(position, 0, moved)
+                return rest
+              })
+              note(`Moved ${id} to position ${position + 1}.`)
+            }}
+          />
+          <ReorderableList
+            aria-label="Sample empty layers"
+            items={[]}
+            selectedId={null}
+            onSelect={() => undefined}
+            checkLabel={(item) => `Show ${item.title}`}
+            onCheck={() => undefined}
+            onMove={() => undefined}
+            empty={<p>No layers yet.</p>}
           />
         </section>
 

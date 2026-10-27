@@ -20,8 +20,10 @@ On 2026-10-27 the owner asked to:
   terrain switch, the sun position switch, the horizon haze slider, and the sun intensity and diffusion sliders under
   it.
 
-How the map manages layers, including "Color buildings by", the grid overlay, and 3D building settings, is still being
-discussed in [map layers](../map-layers-discussion.md).
+How the map manages layers, including "Color buildings by", the grid overlay, and 3D building settings, was discussed
+in [map layers](../map-layers-discussion.md) and settled by [decision 0031](0031-map-layer-stack.md), which replaces
+the Planned Layers section, renames "3D buildings" to "3D view", and folds haze, intensity, and diffusion into one
+disclosure.
 
 ## Decision
 

@@ -1,12 +1,5 @@
-import { useId, useState, type ReactNode } from 'react'
-import {
-  Checkbox,
-  Label,
-  Slider,
-  SliderOutput,
-  SliderThumb,
-  SliderTrack,
-} from 'react-aria-components'
+import { useId } from 'react'
+import { Checkbox } from 'react-aria-components'
 import { DISTRICT_CENTER } from '../../domain/simulation.ts'
 import {
   useAppearance,
@@ -28,76 +21,13 @@ import {
   MAX_EXAGGERATION,
   MIN_EXAGGERATION,
 } from '../pages/terrain.ts'
-import type { ViewOperation } from '../view/viewOperations.ts'
+import { MapLayersSection } from './MapLayers.tsx'
 import styles from './inspection.module.css'
+import { ViewSlider } from './ViewSlider.tsx'
 
 // The map's own properties, shown in Properties while the map is the surface
 // being worked in and nothing is selected (decision 0018): its layers, then
-// the basemap and the scene drawn over it (decision 0030).
-
-type ControlProps = {
-  label: string
-  value: number
-  min: number
-  max: number
-  step: number
-  /** Formats the live value while dragging. */
-  format: (value: number) => string
-  /** Built when the drag ends, so one operation is logged per change. */
-  operation: (value: number) => ViewOperation
-  description?: ReactNode
-}
-
-function ViewSlider({
-  label,
-  value,
-  min,
-  max,
-  step,
-  format,
-  operation,
-  description,
-}: ControlProps) {
-  const { view } = useServices()
-  // The draft stays local; the view operation is logged on release.
-  const [draft, setDraft] = useState<number | null>(null)
-  return (
-    <Slider
-      className={formStyles.slider}
-      value={draft ?? value}
-      minValue={min}
-      maxValue={max}
-      step={step}
-      onChange={(next: number | number[]) => {
-        setDraft(Array.isArray(next) ? (next[0] ?? value) : next)
-      }}
-      onChangeEnd={(next: number | number[]) => {
-        setDraft(null)
-        const chosen = Array.isArray(next) ? (next[0] ?? value) : next
-        if (chosen !== value) view.execute(operation(chosen))
-      }}
-    >
-      <Label className={formStyles.label}>{label}</Label>
-      <SliderOutput className={formStyles.description}>
-        {({ state }) => format(state.getThumbValue(0))}
-      </SliderOutput>
-      <SliderTrack className={formStyles.sliderTrack}>
-        {({ state }) => (
-          <>
-            <div
-              className={formStyles.sliderFill}
-              style={{ width: `${state.getThumbPercent(0) * 100}%` }}
-            />
-            <SliderThumb className={formStyles.sliderThumb} />
-          </>
-        )}
-      </SliderTrack>
-      {description ? (
-        <p className={formStyles.description}>{description}</p>
-      ) : null}
-    </Slider>
-  )
-}
+// the basemap and the scene drawn over it (decisions 0030 and 0031).
 
 const percent = (value: number) => `${value}%`
 
@@ -129,17 +59,7 @@ export function MapProperties() {
         </h3>
       </header>
 
-      <section className={styles.section} aria-label="Layers">
-        <h4>Layers</h4>
-        <p className={styles.provenanceNote}>
-          <CapabilityBadge id="map.layers" />
-        </p>
-        <p className={styles.muted}>
-          Not available yet: a list of the map&rsquo;s layers is being designed.
-          Until then, color buildings and show the grid from the Map&rsquo;s own
-          bar.
-        </p>
-      </section>
+      <MapLayersSection />
 
       <section className={styles.section} aria-label="Basemap">
         <h4>Basemap</h4>
@@ -158,12 +78,12 @@ export function MapProperties() {
               view.execute({ type: 'map.set3d', input: { enabled } })
             }
           >
-            3D buildings
+            3D view
           </Checkbox>
           {view3d && !hasHeights ? (
             <p className={styles.muted} data-testid="map-3d-note">
               Heights appear after &ldquo;Geospatial preprocessing&rdquo; runs;
-              until then buildings stay flat in 3D.
+              until then extruded building layers stay flat.
             </p>
           ) : null}
           <Checkbox
@@ -192,8 +112,8 @@ export function MapProperties() {
           ) : null}
           {terrain && !view3d ? (
             <p className={styles.muted} data-testid="map-terrain-note">
-              Terrain is on but paused: a flat map shows no relief. Turn on
-              &ldquo;3D buildings&rdquo; to see it again.
+              Terrain is on but paused: a flat map shows no relief. Turn on the
+              &ldquo;3D view&rdquo; to see it again.
             </p>
           ) : null}
 
@@ -227,50 +147,54 @@ export function MapProperties() {
             </div>
           </Section>
 
-          <ViewSlider
-            label="Horizon haze"
-            value={lighting.hazePercent}
-            min={limits.hazePercent.min}
-            max={limits.hazePercent.max}
-            step={5}
-            format={percent}
-            operation={(value) => ({
-              type: 'map.setHaze',
-              input: { percent: value },
-            })}
-            description="Dust and occlusion at the horizon, which thickens the fog and dims the light."
-          />
-          <ViewSlider
-            label="Sun intensity"
-            value={lighting.intensityPercent}
-            min={limits.intensityPercent.min}
-            max={limits.intensityPercent.max}
-            step={5}
-            format={percent}
-            operation={(value) => ({
-              type: 'map.setLightIntensity',
-              input: { percent: value },
-            })}
-          />
-          <ViewSlider
-            label="Sun diffusion"
-            value={lighting.diffusionPercent}
-            min={limits.diffusionPercent.min}
-            max={limits.diffusionPercent.max}
-            step={5}
-            format={percent}
-            operation={(value) => ({
-              type: 'map.setSunDiffusion',
-              input: { percent: value },
-            })}
-            description="A softer sun widens the change from day to night and spreads the glow around the horizon. It is not an area light: MapLibre casts no shadows."
-          />
+          <Section title="Light and haze" id="map.light" level={4}>
+            <div className={styles.controls}>
+              <ViewSlider
+                label="Horizon haze"
+                value={lighting.hazePercent}
+                min={limits.hazePercent.min}
+                max={limits.hazePercent.max}
+                step={5}
+                format={percent}
+                operation={(value) => ({
+                  type: 'map.setHaze',
+                  input: { percent: value },
+                })}
+                description="Dust and occlusion at the horizon, which thickens the fog and dims the light."
+              />
+              <ViewSlider
+                label="Sun intensity"
+                value={lighting.intensityPercent}
+                min={limits.intensityPercent.min}
+                max={limits.intensityPercent.max}
+                step={5}
+                format={percent}
+                operation={(value) => ({
+                  type: 'map.setLightIntensity',
+                  input: { percent: value },
+                })}
+              />
+              <ViewSlider
+                label="Sun diffusion"
+                value={lighting.diffusionPercent}
+                min={limits.diffusionPercent.min}
+                max={limits.diffusionPercent.max}
+                step={5}
+                format={percent}
+                operation={(value) => ({
+                  type: 'map.setSunDiffusion',
+                  input: { percent: value },
+                })}
+                description="A softer sun widens the change from day to night and spreads the glow around the horizon. It is not an area light: MapLibre casts no shadows."
+              />
+            </div>
+          </Section>
           <p className={styles.muted}>
             <CapabilityBadge id="map.lighting" /> The scene is{' '}
             {lightingSummary(scene)}.
             {view3d
               ? ''
-              : ' Turn on 3D buildings to see it lit; a flat map shows no sky or shading.'}
+              : ' Turn on the 3D view to see it lit; a flat map shows no sky or shading.'}
           </p>
         </div>
       </section>
