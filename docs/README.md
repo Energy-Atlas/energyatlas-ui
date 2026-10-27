@@ -11,6 +11,7 @@
 - [RC observations for slices 4–8](roadmap-rc-observations.md): read-only reference facts at `7464c140` for data intake, archetypes, scenarios, calibration, and results.
 - [Jobs execution plan and status](jobs-execution-plan.md): roadmap step 3 as built: run groups, held item results, retry rules, FIFO runner, UI, verification.
 - [Jobs rollout plan](jobs-rollout-plan.md): bundled cross-stage decisions, bounded slices through Results, and proposed autonomous execution scope.
+- [Map layers discussion](map-layers-discussion.md): read-only RC observations of how its maps handle layers, three directions for the map's layer list (recommended: a fixed list of the project's layers), where 3D settings go, and the owner's open questions.
 - [Jobs discussion](jobs-discussion.md): read-only RC observations, accepted list/detail pane and held-result retry rules (decision 0025), and remaining cross-stage choices.
 - [Project lifecycle design](project-lifecycle-design.md): accepted start screen and job confirmation (decision 0024), implemented behavior, boundaries, verification, and remaining limitations.
 - [Project lifecycle implementation plan](project-lifecycle-plan.md): service, shared guards, UI, and verification stages.

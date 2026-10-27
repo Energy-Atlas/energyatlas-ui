@@ -1,4 +1,4 @@
-import { createProjectFromStart } from './test.ts'
+import { createProjectFromStart, properties } from './test.ts'
 import { AxeBuilder } from '@axe-core/playwright'
 import {
   blockBasemap,
@@ -53,6 +53,23 @@ async function runStages(page: Page, names: string[]) {
     await item.getByRole('button', { name: `Run ${name}` }).click()
     await expect(item).toContainText('Complete', { timeout: 10_000 })
   }
+}
+
+/**
+ * Opens the Map and shows its own properties (decision 0030): working in the
+ * map with nothing selected hands Properties to it.
+ */
+async function openMapProperties(page: Page): Promise<Locator> {
+  await page.getByRole('tab', { name: 'Map', exact: true }).click()
+  await page.getByRole('heading', { name: 'Map', exact: true }).click()
+  // Clicking an already selected border tab closes its panel.
+  const tab = page.getByRole('tab', { name: 'Properties', exact: true })
+  if ((await tab.getAttribute('aria-selected')) !== 'true') await tab.click()
+  const panel = properties(page)
+  await expect(
+    panel.getByRole('heading', { name: 'Map properties' }),
+  ).toBeVisible()
+  return panel
 }
 
 test.beforeEach(async ({ page }) => {
@@ -116,13 +133,21 @@ test('selection is shared between the table and the map', async ({ page }) => {
   await expect(page.getByText('1 selected', { exact: true })).toBeVisible()
 
   await page.getByRole('tab', { name: 'Map', exact: true }).click()
-  await expect(page.getByTestId('map-selection')).toHaveText(
-    '1 building selected: B0001',
-  )
   await expect(page.locator('.maplibregl-canvas')).toBeVisible()
-
-  await page.getByRole('button', { name: 'Clear selection' }).click()
-  await expect(page.getByTestId('map-selection')).toHaveText('Nothing selected')
+  // The Map has no selection bar of its own (decision 0030): the selection is
+  // shown and cleared in Properties.
+  await expect(
+    page.getByRole('button', { name: /Clear selection$/ }),
+  ).toHaveCount(0)
+  await expect(page.getByRole('button', { name: 'Inspect' })).toHaveCount(0)
+  const tab = page.getByRole('tab', { name: 'Properties', exact: true })
+  if ((await tab.getAttribute('aria-selected')) !== 'true') await tab.click()
+  await expect(properties(page).locator('header').first()).toContainText(
+    'B0001',
+  )
+  await properties(page)
+    .getByRole('button', { name: 'Clear selection from Properties' })
+    .click()
 
   await page.getByRole('tab', { name: 'Table', exact: true }).click()
   await expect(page.locator('[row-index="0"]').first()).not.toHaveAttribute(
@@ -181,9 +206,9 @@ test('map switches buildings between 2D and 3D and explains missing heights', as
   page,
 }) => {
   await runStages(page, ['Location setup / footprint capturing'])
-  await page.getByRole('tab', { name: 'Map', exact: true }).click()
+  const panel = await openMapProperties(page)
 
-  const toggle = page.getByRole('checkbox', { name: '3D buildings' })
+  const toggle = panel.getByRole('checkbox', { name: '3D buildings' })
   await expect(toggle).not.toBeChecked()
   // React Aria keeps the native checkbox visually hidden; use the keyboard.
   await toggle.focus()
@@ -215,6 +240,11 @@ test('map switches buildings between 2D and 3D and explains missing heights', as
     .toBeGreaterThan(0)
   expect(await seriousViolations(page)).toEqual([])
 
+  // Clearing the selection in Properties brings the map's properties back.
+  await panel
+    .getByRole('button', { name: 'Clear selection from Properties' })
+    .click()
+  await openMapProperties(page)
   await toggle.focus()
   await page.keyboard.press('Space')
   await expect(toggle).not.toBeChecked()
@@ -230,16 +260,16 @@ test('map shows terrain at true scale and sets exaggeration from the keyboard', 
   page,
 }) => {
   await runStages(page, ['Location setup / footprint capturing'])
-  await page.getByRole('tab', { name: 'Map', exact: true }).click()
+  const panel = await openMapProperties(page)
 
   // Terrain belongs to the 3D scene (decision 0018), so it is offered there.
-  const flat = page.getByRole('checkbox', { name: 'Terrain (3D only)' })
+  const flat = panel.getByRole('checkbox', { name: 'Terrain (3D only)' })
   await expect(flat).toBeDisabled()
-  const view3d = page.getByRole('checkbox', { name: '3D buildings' })
+  const view3d = panel.getByRole('checkbox', { name: '3D buildings' })
   await view3d.focus()
   await page.keyboard.press('Space')
 
-  const toggle = page.getByRole('checkbox', { name: 'Terrain', exact: true })
+  const toggle = panel.getByRole('checkbox', { name: 'Terrain', exact: true })
   await expect(toggle).not.toBeChecked()
   await toggle.focus()
   await page.keyboard.press('Space')
@@ -256,7 +286,7 @@ test('map shows terrain at true scale and sets exaggeration from the keyboard', 
     'Mapterhorn',
   )
 
-  const slider = page.getByRole('slider', { name: 'Terrain exaggeration' })
+  const slider = panel.getByRole('slider', { name: 'Terrain exaggeration' })
   await slider.focus()
   await page.keyboard.press('ArrowRight')
   await page.keyboard.press('ArrowRight')
@@ -270,7 +300,7 @@ test('map shows terrain at true scale and sets exaggeration from the keyboard', 
   await view3d.focus()
   await page.keyboard.press('Space')
   await expect(page.getByTestId('map-terrain-note')).toBeVisible()
-  await expect(page.getByRole('checkbox', { name: 'Terrain' })).toBeChecked()
+  await expect(panel.getByRole('checkbox', { name: /^Terrain/ })).toBeChecked()
 
   await view3d.focus()
   await page.keyboard.press('Space')
@@ -285,11 +315,11 @@ test('map falls back to a flat map when terrain cannot load, then retries', asyn
 }) => {
   await blockTerrain(page)
   await runStages(page, ['Location setup / footprint capturing'])
-  await page.getByRole('tab', { name: 'Map', exact: true }).click()
-  const view3d = page.getByRole('checkbox', { name: '3D buildings' })
+  const panel = await openMapProperties(page)
+  const view3d = panel.getByRole('checkbox', { name: '3D buildings' })
   await view3d.focus()
   await page.keyboard.press('Space')
-  const toggle = page.getByRole('checkbox', { name: 'Terrain', exact: true })
+  const toggle = panel.getByRole('checkbox', { name: 'Terrain', exact: true })
   await toggle.focus()
   await page.keyboard.press('Space')
 
@@ -337,41 +367,83 @@ test('settings turns the basemap off and keeps the choice across reloads', async
   await expect(page.getByTestId('basemap-status')).toHaveText('')
 })
 
-// Decision 0018: the map's own properties, shown in Inspection while the map is
-// the surface being worked in and nothing is selected.
-test('the map offers its lighting in Inspection when nothing is selected', async ({
+// Decision 0018: the map's own properties, shown in Properties while the map
+// is the surface being worked in and nothing is selected; decision 0030 lists
+// its layers, then the basemap and the scene.
+test('the map offers its layers, basemap, and scene in Properties when nothing is selected', async ({
   page,
 }) => {
   await runStages(page, ['Location setup / footprint capturing'])
   await page.getByRole('tab', { name: 'Properties', exact: true }).click()
-  const inspection = page.getByRole('region', { name: 'Properties' })
-  await expect(inspection.getByText('Nothing selected')).toBeVisible()
+  const panel = properties(page)
+  await expect(panel.getByText('Nothing selected')).toBeVisible()
 
-  // Working in the map hands Inspection to it.
+  // Working in the map hands Properties to it.
   await page.getByRole('heading', { name: 'Map', exact: true }).click()
-  await expect(inspection.getByText('Scene lighting')).toBeVisible()
+  await expect(
+    panel.getByRole('heading', { name: 'Map properties' }),
+  ).toBeVisible()
+  // The controls come in this order: layers, then the basemap and its scene.
+  const headings = await panel
+    .getByRole('heading', { level: 4 })
+    .allInnerTexts()
+  expect(headings.map((text) => text.trim().toUpperCase())).toEqual([
+    'LAYERS',
+    'BASEMAP',
+    'SUN POSITION',
+  ])
+  await expect(panel.getByRole('region', { name: 'Layers' })).toContainText(
+    'Planned',
+  )
+  const labels = await panel
+    .getByRole('region', { name: 'Basemap' })
+    .locator('label, [role="slider"]')
+    .evaluateAll((nodes) =>
+      nodes.map(
+        (node) => node.getAttribute('aria-label') ?? node.textContent ?? '',
+      ),
+    )
+  expect(labels.join(' | ')).toMatch(
+    /OpenFreeMap basemap.*3D buildings.*Terrain.*Horizon haze.*Sun intensity.*Sun diffusion/,
+  )
   // The lighting is disclosed as display only, and the sun's own numbers are
   // not shown (decision 0019).
-  await expect(inspection).toContainText('Simulated')
-  await expect(inspection).not.toContainText('Elevation')
-  await expect(inspection).not.toContainText('Azimuth')
+  await expect(panel).toContainText('Simulated')
+  await expect(panel).not.toContainText('Elevation')
+  await expect(panel).not.toContainText('Azimuth')
 
-  const haze = inspection.getByRole('slider', { name: 'Horizon haze' })
+  const haze = panel.getByRole('slider', { name: 'Horizon haze' })
   await haze.focus()
   await page.keyboard.press('ArrowRight')
   await expect(page.getByTestId('status-notice')).toContainText(
     'Horizon haze is 25%.',
   )
 
-  const season = inspection.getByRole('slider', { name: 'Season' })
+  // Sun position opens on demand.
+  const season = panel.getByRole('slider', { name: 'Season' })
+  await expect(season).toHaveCount(0)
+  await panel.getByRole('button', { name: 'Sun position' }).click()
   await season.focus()
   await page.keyboard.press('ArrowRight')
   await expect(page.getByTestId('status-notice')).toContainText(
     'Map lighting is set to 22 June.',
   )
 
-  // A selection takes Inspection back.
+  // The basemap switch is the same setting as in Settings.
+  const basemap = panel.getByRole('checkbox', { name: 'OpenFreeMap basemap' })
+  await expect(basemap).toBeChecked()
+  await basemap.focus()
+  await page.keyboard.press('Space')
+  await expect(page.getByTestId('status-notice')).toContainText(
+    'The Map shows footprints on a plain background.',
+  )
+  await expect(page.locator('.maplibregl-ctrl-attrib')).not.toContainText(
+    'OpenFreeMap',
+  )
+  expect(await seriousViolations(page)).toEqual([])
+
+  // A selection takes Properties back.
   await page.getByRole('tab', { name: 'Table', exact: true }).click()
   await page.locator('[row-index="0"] [col-id="name"]').click()
-  await expect(inspection.locator('header').first()).toContainText('B0001')
+  await expect(panel.locator('header').first()).toContainText('B0001')
 })

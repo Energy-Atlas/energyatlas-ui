@@ -496,3 +496,18 @@ settings with the project and the defaults check); browser tests updated to save
 reloading, and to click a stage into Properties; 102 development browser tests and 3 production-preview tests
 passed. In the first full browser run the 18-pass appearance loop in `project-lifecycle.spec.ts` hit its 120 s
 timeout under 4 workers; it passed alone (1.6 min) and in a full rerun.
+
+## Map properties as one control list (2026-10-27)
+
+Built on `claude/ui-component-system`, not merged. Recorded in
+[decision 0030](decisions/0030-map-properties-control-list.md); how layers are managed is open in the
+[map layers discussion](map-layers-discussion.md).
+
+- The Map's footer no longer shows the selection, Clear selection, Inspect, or Open Table; clicking a map object or an
+  empty spot opens Properties, and the × there clears the selection.
+- The map's Properties lists Layers (planned), then Basemap: the basemap switch, 3D buildings, terrain with its
+  exaggeration, Sun position (season and time, on demand), horizon haze, sun intensity, and sun diffusion.
+
+**Verification (2026-10-27):** typecheck, lint, and format clean; 366 unit tests; the map browser tests now work the
+map's switches in Properties and check the control order and the basemap switch; 102 development browser tests
+and 3 production-preview tests passed.

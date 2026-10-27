@@ -26,10 +26,6 @@
   gap: var(--space-2);
 }
 
-.terrainSlider {
-  min-width: 11rem;
-}
-
 .note {
   margin: 0;
   padding: var(--space-2) var(--space-4);

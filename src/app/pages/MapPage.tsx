@@ -8,16 +8,7 @@ import {
 import type { ExpressionSpecification, StyleSpecification } from 'maplibre-gl'
 import 'maplibre-gl/dist/maplibre-gl.css'
 import { useEffect, useId, useMemo, useRef, useState } from 'react'
-import {
-  Checkbox,
-  Label,
-  Radio,
-  RadioGroup,
-  Slider,
-  SliderOutput,
-  SliderThumb,
-  SliderTrack,
-} from 'react-aria-components'
+import { Checkbox, Label, Radio, RadioGroup } from 'react-aria-components'
 import { DISTRICT_CENTER } from '../../domain/simulation.ts'
 import type { LngLat } from '../../domain/types.ts'
 import { STAGE_IDS } from '../../domain/workflow.ts'
@@ -55,8 +46,6 @@ import {
   firstSymbolLayerId,
   HILLSHADE_SOURCE_ID,
   hillshadePaint,
-  MAX_EXAGGERATION,
-  MIN_EXAGGERATION,
   TERRAIN_ATTRIBUTION,
   TERRAIN_MAX_ZOOM,
   TERRAIN_SOURCE_ID,
@@ -124,7 +113,7 @@ function formatValue(value: number | null, unit: string): string {
 
 export function MapPage() {
   const headingId = useId()
-  const { workbench, layout, showInspection, basemapEnabled, claimWorked } =
+  const { workbench, showInspection, basemapEnabled, claimWorked } =
     useServices()
   const state = useWorkbenchSnapshot((snapshot) => snapshot.state)
   const appearance = useAppearance()
@@ -146,18 +135,11 @@ export function MapPage() {
   const preferredMetric = mapView.metric
   const showGrid = mapView.gridOverlay
   const view3d = mapView.view3d
-  const hasHeights = state.buildingIds.some(
-    (id) => (state.buildings[id]?.heightM ?? null) !== null,
-  )
   // In 3D the extrusions take picking; the flat fill is hidden.
   const buildingLayer = view3d ? 'buildings-extrusion' : 'buildings-fill'
   // Live terrain, for display only (decision 0015).
   const terrainEnabled = mapView.terrain
   const exaggeration = mapView.terrainExaggeration
-  // Slider drafts stay local; the view operation is logged on release.
-  const [exaggerationDraft, setExaggerationDraft] = useState<number | null>(
-    null,
-  )
   // Terrain belongs to the 3D scene, so a flat map never loads it.
   const terrain = useTerrain(
     mapRef,
@@ -453,13 +435,6 @@ export function MapPage() {
   }
 
   const ink = palette.ink
-  // Only map objects are selected on the map; a selected definition (an
-  // archetype, a measure) is shown in Properties instead.
-  const selectedIds =
-    selection.entityType === 'building' ||
-    selection.entityType === 'gridElement'
-      ? selection.ids
-      : []
   const unavailable = METRICS.filter(
     (candidate) => !metrics[candidate.id].available,
   )
@@ -513,62 +488,6 @@ export function MapPage() {
         >
           Grid overlay
         </Checkbox>
-        <Checkbox
-          className={formStyles.checkbox}
-          isSelected={view3d}
-          onChange={(enabled) =>
-            view.execute({ type: 'map.set3d', input: { enabled } })
-          }
-        >
-          3D buildings
-        </Checkbox>
-        <Checkbox
-          className={formStyles.checkbox}
-          isSelected={terrainEnabled}
-          isDisabled={!view3d && !terrainEnabled}
-          onChange={(enabled) =>
-            view.execute({ type: 'map.setTerrain', input: { enabled } })
-          }
-        >
-          {view3d ? 'Terrain' : 'Terrain (3D only)'}
-        </Checkbox>
-        {terrainEnabled && view3d ? (
-          <Slider
-            className={`${formStyles.slider} ${styles.terrainSlider}`}
-            value={exaggerationDraft ?? exaggeration}
-            minValue={MIN_EXAGGERATION}
-            maxValue={MAX_EXAGGERATION}
-            step={1}
-            onChange={(value) => setExaggerationDraft(value)}
-            onChangeEnd={(value) => {
-              setExaggerationDraft(null)
-              if (value !== exaggeration) {
-                view.execute({
-                  type: 'map.setTerrainExaggeration',
-                  input: { exaggeration: value },
-                })
-              }
-            }}
-          >
-            <Label className={formStyles.label}>Terrain exaggeration</Label>
-            <SliderOutput className={formStyles.description}>
-              {({ state: slider }) =>
-                exaggerationLabel(slider.getThumbValue(0))
-              }
-            </SliderOutput>
-            <SliderTrack className={formStyles.sliderTrack}>
-              {({ state: slider }) => (
-                <>
-                  <div
-                    className={formStyles.sliderFill}
-                    style={{ width: `${slider.getThumbPercent(0) * 100}%` }}
-                  />
-                  <SliderThumb className={formStyles.sliderThumb} />
-                </>
-              )}
-            </SliderTrack>
-          </Slider>
-        ) : null}
       </header>
 
       {unavailable.length > 0 ? (
@@ -578,20 +497,6 @@ export function MapPage() {
             .map((candidate) => `${candidate.label} (${candidate.requirement})`)
             .join(' ')}
           {hasGrid ? '' : ' Grid overlay (run "Grid definitions").'}
-        </p>
-      ) : null}
-
-      {view3d && !hasHeights ? (
-        <p className={styles.note} data-testid="map-3d-note">
-          Heights appear after &ldquo;Geospatial preprocessing&rdquo; runs;
-          until then buildings stay flat in 3D.
-        </p>
-      ) : null}
-
-      {terrainEnabled && !view3d ? (
-        <p className={styles.note} data-testid="map-terrain-note">
-          Terrain is on but paused: a flat map shows no relief. Turn on
-          &ldquo;3D buildings&rdquo; to see it again.
         </p>
       ) : null}
 
@@ -643,9 +548,12 @@ export function MapPage() {
             const feature = event.features?.[0]
             const id: unknown = feature?.properties?.id
             if (typeof id !== 'string') {
+              // An empty spot selects the map itself: Properties then shows
+              // the map's own properties (decision 0030).
               if (selection.ids.length > 0) {
                 workbench.execute({ type: 'selection.clear', input: {} })
               }
+              showInspection()
               return
             }
             const entityType =
@@ -662,6 +570,8 @@ export function MapPage() {
               type: 'selection.set',
               input: { entityType, ids },
             })
+            // Choosing a map object shows it in Properties (decision 0030).
+            showInspection()
           }}
         >
           {/* Control options apply at creation, so remount when 3D changes. */}
@@ -920,31 +830,6 @@ export function MapPage() {
       </div>
 
       <footer className={styles.footer}>
-        <span data-testid="map-selection">
-          {selectedIds.length === 0
-            ? 'Nothing selected'
-            : `${selectedIds.length} ${selection.entityType === 'building' ? 'building' : 'grid element'}${selectedIds.length === 1 ? '' : 's'} selected: ${selectedIds.slice(0, 5).join(', ')}${selectedIds.length > 5 ? ', …' : ''}`}
-        </span>
-        <ActionButton
-          label="Clear selection"
-          disabledReason={
-            selectedIds.length > 0 ? null : 'Nothing is selected.'
-          }
-          onPress={() =>
-            workbench.execute({ type: 'selection.clear', input: {} })
-          }
-        >
-          Clear selection
-        </ActionButton>
-        <ActionButton
-          label="Inspect the selection in the context panel"
-          disabledReason={
-            selectedIds.length > 0 ? null : 'Nothing is selected.'
-          }
-          onPress={() => showInspection()}
-        >
-          Inspect
-        </ActionButton>
         <span
           role="status"
           data-testid="basemap-status"
@@ -953,7 +838,7 @@ export function MapPage() {
           {basemap.status === 'loading'
             ? 'Loading the OpenFreeMap basemap…'
             : basemap.status === 'failed'
-              ? 'Basemap unavailable: footprints are shown on a plain background. It can be turned off in Settings.'
+              ? "Basemap unavailable: footprints are shown on a plain background. It can be turned off in the map's Properties."
               : ''}
         </span>
         {basemap.status === 'failed' ? (
@@ -992,13 +877,6 @@ export function MapPage() {
             ? ' With the map focused, Shift+arrow keys rotate and tilt it.'
             : ''}
         </span>
-        <ActionButton
-          label="Open the Table page"
-          disabledReason={null}
-          onPress={() => layout.openPage('table')}
-        >
-          Open Table
-        </ActionButton>
       </footer>
     </section>
   )

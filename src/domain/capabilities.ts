@@ -100,6 +100,12 @@ export const capabilities = {
     explanation:
       'The globe carries one solar state from the season and the UTC time, and each place takes its own sun from it, but the lighting is for display: it feeds no shading or PV result, and MapLibre casts no shadows.',
   },
+  'map.layers': {
+    label: 'Map layers',
+    status: 'planned',
+    explanation:
+      "A list of the map's layers (buildings, the grid, results) to show, hide, order, and style is being designed; buildings are colored and the grid shown from the Map's own bar until then.",
+  },
   'map.terrain': {
     label: 'Terrain',
     status: 'working',
