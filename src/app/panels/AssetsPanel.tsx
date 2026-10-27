@@ -27,18 +27,13 @@ import {
   type Key,
 } from 'react-aria-components'
 import { capabilities } from '../../domain/capabilities.ts'
-import type { Asset, AssetKind, WorkflowState } from '../../domain/types.ts'
+import type { AssetKind } from '../../domain/types.ts'
 import { useServices, useWorkbenchSnapshot } from '../WorkbenchContext.tsx'
-import { ActionButton } from '../components/ActionButton.tsx'
 import { CapabilityBadge, StatusTag } from '../components/CapabilityBadge.tsx'
 import { PanelHeader } from '../components/PanelHeader.tsx'
-import { PropertyList } from '../components/PropertyList.tsx'
 import { cx } from '../cx.ts'
-import { PAGES, type PageId } from '../layout/layoutController.ts'
 import {
-  ASSET_KIND_LABELS,
   buildAssetTree,
-  describeProvenance,
   relatedPages,
   type AssetTreeNode,
 } from './assetTree.ts'
@@ -66,16 +61,19 @@ const KIND_ICONS: Record<AssetKind, LucideIcon> = {
   report: FileText,
 }
 
+/**
+ * The project's assets as a tree. Choosing one selects it, and the
+ * Properties panel shows what it is and where it came from (decision 0028);
+ * Enter opens its first page.
+ */
 export function AssetsPanel() {
   const headingId = useId()
-  const { layout } = useServices()
+  const { layout, workbench, showInspection } = useServices()
   const assets = useWorkbenchSnapshot((snapshot) => snapshot.state.assets)
   const rootIds = useWorkbenchSnapshot(
     (snapshot) => snapshot.state.rootAssetIds,
   )
-  const stages = useWorkbenchSnapshot(
-    (snapshot) => snapshot.state.workflow.stages,
-  )
+  const selection = useWorkbenchSnapshot((snapshot) => snapshot.state.selection)
   const tree = useMemo(() => buildAssetTree(assets, rootIds), [assets, rootIds])
   // Groups start expanded so outputs appear where stages put them.
   const [expandedKeys, setExpandedKeys] = useState<Set<Key>>(
@@ -86,8 +84,8 @@ export function AssetsPanel() {
           .map((asset) => asset.id),
       ),
   )
-  const [selectedId, setSelectedId] = useState<string | null>(null)
-  const selected = selectedId ? assets[selectedId] : undefined
+  const selectedId =
+    selection.entityType === 'asset' ? (selection.ids[0] ?? null) : null
 
   const openFirstRelatedPage = (assetId: string) => {
     const asset = assets[assetId]
@@ -112,7 +110,17 @@ export function AssetsPanel() {
         onSelectionChange={(keys) => {
           if (keys === 'all') return
           const [first] = [...keys]
-          setSelectedId(first === undefined ? null : String(first))
+          if (first === undefined) {
+            if (selectedId) {
+              workbench.execute({ type: 'selection.clear', input: {} })
+            }
+            return
+          }
+          workbench.execute({
+            type: 'selection.set',
+            input: { entityType: 'asset', ids: [String(first)] },
+          })
+          showInspection()
         }}
         expandedKeys={expandedKeys}
         onExpandedChange={setExpandedKeys}
@@ -168,77 +176,10 @@ export function AssetsPanel() {
           )
         }}
       </Tree>
-      {selected ? (
-        <AssetDetails
-          asset={selected}
-          stages={stages}
-          onOpenPage={(page) => layout.openPage(page)}
-        />
-      ) : (
-        <p className={treeStyles.hint}>
-          Select an asset to see what it is and where it came from. Press Enter
-          to open its page.
-        </p>
-      )}
+      <p className={treeStyles.hint}>
+        Choose an asset to see what it is and where it came from in Properties.
+        Press Enter to open its page.
+      </p>
     </section>
-  )
-}
-
-function AssetDetails({
-  asset,
-  stages,
-  onOpenPage,
-}: {
-  asset: Asset
-  stages: WorkflowState['stages']
-  onOpenPage: (page: PageId) => void
-}) {
-  const capability = asset.capability ? capabilities[asset.capability] : null
-  const pages = relatedPages(asset.kind)
-  return (
-    <div
-      className={treeStyles.details}
-      role="region"
-      aria-label="Asset details"
-    >
-      <h3>{asset.name}</h3>
-      <PropertyList
-        items={[
-          { label: 'Kind', value: ASSET_KIND_LABELS[asset.kind] },
-          asset.summary ? { label: 'Summary', value: asset.summary } : null,
-          {
-            label: 'Provenance',
-            value: describeProvenance(asset, stages),
-          },
-          capability
-            ? {
-                label: 'Status',
-                value: (
-                  <>
-                    {capability.status === 'working' ? null : (
-                      <StatusTag status={capability.status} />
-                    )}{' '}
-                    {capability.explanation}
-                  </>
-                ),
-              }
-            : null,
-        ]}
-      />
-      {pages.length > 0 ? (
-        <div className={treeStyles.detailActions}>
-          {pages.map((page) => (
-            <ActionButton
-              key={page}
-              label={`Open ${PAGES[page].name} for ${asset.name}`}
-              disabledReason={null}
-              onPress={() => onOpenPage(page)}
-            >
-              Open {PAGES[page].name}
-            </ActionButton>
-          ))}
-        </div>
-      ) : null}
-    </div>
   )
 }

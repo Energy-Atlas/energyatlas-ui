@@ -7,6 +7,7 @@ import {
 import { WorkbenchShell } from './app/shell/WorkbenchShell.tsx'
 import { ProjectStart } from './app/project/ProjectStart.tsx'
 import { ProjectDialogs } from './app/project/ProjectDialogs.tsx'
+import { DemoSwitch } from './app/shell/DemoSwitch.tsx'
 
 function ProjectSession() {
   const snapshot = useClientSnapshot((current) => current)
@@ -40,6 +41,8 @@ function ProjectSession() {
         <ProjectStart />
       )}
       <ProjectDialogs />
+      {/* Floats over the workbench and the start screen alike (decision 0028). */}
+      <DemoSwitch />
     </>
   )
 }

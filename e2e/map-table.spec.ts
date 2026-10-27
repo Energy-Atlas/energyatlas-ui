@@ -58,9 +58,7 @@ async function runStages(page: Page, names: string[]) {
 test.beforeEach(async ({ page }) => {
   await page.goto('/')
   await createProjectFromStart(page)
-  await expect(
-    page.getByRole('toolbar', { name: 'Workbench commands' }),
-  ).toBeVisible()
+  await expect(page.getByRole('main', { name: 'Workspace' })).toBeVisible()
 })
 
 test('table and map explain what is missing before footprints exist', async ({
@@ -345,8 +343,8 @@ test('the map offers its lighting in Inspection when nothing is selected', async
   page,
 }) => {
   await runStages(page, ['Location setup / footprint capturing'])
-  await page.getByRole('tab', { name: 'Inspection', exact: true }).click()
-  const inspection = page.getByRole('region', { name: 'Inspection' })
+  await page.getByRole('tab', { name: 'Properties', exact: true }).click()
+  const inspection = page.getByRole('region', { name: 'Properties' })
   await expect(inspection.getByText('Nothing selected')).toBeVisible()
 
   // Working in the map hands Inspection to it.

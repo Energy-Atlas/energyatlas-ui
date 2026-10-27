@@ -1,0 +1,40 @@
+/* Jump to top and bottom: a round button floating over the scrolled area,
+   centred on it, a small gap inside its top or bottom edge. */
+.jump {
+  position: absolute;
+  z-index: 3;
+  display: grid;
+  place-items: center;
+  width: 1.75rem;
+  height: 1.75rem;
+  padding: 0;
+  border: 1px solid var(--color-border-interactive);
+  border-radius: var(--radius-pill);
+  background: var(--color-surface);
+  color: var(--color-text);
+  box-shadow: var(--shadow-popover);
+  transform: translateX(-50%);
+  cursor: pointer;
+  animation: jump-in var(--transition);
+}
+
+.toBottom {
+  transform: translate(-50%, -100%);
+}
+
+.jump:hover {
+  border-color: var(--color-accent);
+  color: var(--color-accent);
+}
+
+@keyframes jump-in {
+  from {
+    opacity: 0;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .jump {
+    animation: none;
+  }
+}

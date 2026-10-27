@@ -106,7 +106,7 @@ describe('layout controller operations', () => {
       undefined,
     )
     expect(workbench.store.getState().log.at(-1)?.summary).toBe(
-      'Closed the Inspection panel. Showing it again docks it on the right side.',
+      'Closed the Properties panel. Showing it again docks it on the right side.',
     )
 
     layout.togglePanel('inspection')

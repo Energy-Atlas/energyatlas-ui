@@ -1,0 +1,175 @@
+/* The demo switch (decision 0028): a compact raised bar floating over every
+   screen, above the notifications and above modal dialogs, since changing the
+   conditions is how a held request is recovered. */
+.switch {
+  position: fixed;
+  z-index: 1100;
+  max-width: calc(100vw - 1rem);
+}
+
+.bar {
+  display: flex;
+  align-items: center;
+  gap: 0.125rem;
+  padding: 0.125rem;
+  border: 1px solid var(--color-border-interactive);
+  border-radius: var(--radius-pill);
+  background: var(--color-surface-raised);
+  color: var(--color-text);
+  box-shadow: var(--shadow-popover);
+  font-size: var(--font-size-small);
+}
+
+.active .bar {
+  border-color: var(--tone-warning-text);
+  background: var(--tone-warning-bg);
+}
+
+.grip,
+.expand {
+  display: grid;
+  place-items: center;
+  width: 1.5rem;
+  height: 1.5rem;
+  padding: 0;
+  border: 0;
+  border-radius: var(--radius-pill);
+  background: transparent;
+  color: var(--color-text-muted);
+  cursor: pointer;
+}
+
+.grip {
+  cursor: grab;
+  touch-action: none;
+}
+
+.grip:active {
+  cursor: grabbing;
+}
+
+.grip:hover,
+.expand[data-hovered] {
+  color: var(--color-text);
+}
+
+.grip:focus-visible,
+.expand[data-focus-visible] {
+  outline: 2px solid var(--color-focus);
+  outline-offset: 1px;
+}
+
+.toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  min-width: 0;
+  padding: 0 var(--space-1);
+  cursor: pointer;
+}
+
+.toggle[data-focus-visible] {
+  outline: 2px solid var(--color-focus);
+  outline-offset: 1px;
+  border-radius: var(--radius-pill);
+}
+
+.track {
+  position: relative;
+  flex-shrink: 0;
+  width: 1.75rem;
+  height: 1rem;
+  border-radius: var(--radius-pill);
+  background: var(--color-border-interactive);
+  transition: background var(--transition);
+}
+
+.thumb {
+  position: absolute;
+  top: 0.125rem;
+  left: 0.125rem;
+  width: 0.75rem;
+  height: 0.75rem;
+  border-radius: 50%;
+  background: var(--color-surface);
+  transition: transform var(--transition);
+}
+
+.toggle[data-selected] .track {
+  background: var(--tone-warning-text);
+}
+
+.toggle[data-selected] .thumb {
+  transform: translateX(0.75rem);
+}
+
+.label {
+  max-width: 18rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* The panel opens toward the middle of the window, beside the bar. */
+.panel {
+  position: absolute;
+  left: 0;
+  box-sizing: border-box;
+  display: grid;
+  gap: var(--space-2);
+  width: min(26rem, calc(100vw - 1rem));
+  max-height: min(70vh, 40rem);
+  overflow: auto;
+  padding: var(--space-3);
+  border: var(--rule);
+  border-radius: var(--radius-md);
+  background: var(--color-surface);
+  color: var(--color-text);
+  box-shadow: var(--shadow-popover);
+}
+
+.panelUp {
+  bottom: calc(100% + var(--space-1));
+}
+
+.panelDown {
+  top: calc(100% + var(--space-1));
+}
+
+.panelRight {
+  right: 0;
+  left: auto;
+}
+
+.panel p {
+  margin: 0;
+}
+
+.title {
+  margin: 0;
+  font-size: var(--font-size-title);
+}
+
+.section {
+  margin: var(--space-2) 0 0;
+  color: var(--color-text-muted);
+  font-family: var(--label-font);
+  font-size: var(--label-size);
+  font-weight: var(--label-weight);
+  letter-spacing: var(--label-tracking);
+  text-transform: var(--label-case);
+}
+
+.actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: var(--space-1);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .track,
+  .thumb {
+    transition: none;
+  }
+}

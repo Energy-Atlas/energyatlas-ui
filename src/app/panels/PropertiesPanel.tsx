@@ -1,9 +1,16 @@
 import { Info, TriangleAlert } from 'lucide-react'
 import { useId, useMemo, type ReactNode } from 'react'
+import { useStore } from 'zustand'
+import type { SelectableEntity } from '../../domain/types.ts'
 import { useServices, useWorkbenchSnapshot } from '../WorkbenchContext.tsx'
 import { ActionButton } from '../components/ActionButton.tsx'
 import { CapabilityBadge } from '../components/CapabilityBadge.tsx'
 import { PropertyList } from '../components/PropertyList.tsx'
+import { ArchetypeProperties } from '../properties/ArchetypeProperties.tsx'
+import { AssetProperties } from '../properties/AssetProperties.tsx'
+import { MeasureProperties } from '../properties/MeasureProperties.tsx'
+import { ScenarioProperties } from '../properties/ScenarioProperties.tsx'
+import { ScheduleProperties } from '../properties/ScheduleProperties.tsx'
 import { MapProperties } from './MapProperties.tsx'
 import styles from './inspection.module.css'
 import {
@@ -77,7 +84,7 @@ function SingleView({
 }) {
   return (
     <>
-      <Section title="Properties">
+      <Section title="Attributes">
         <Facts facts={inspection.properties} />
       </Section>
       <Section title="Results">
@@ -154,13 +161,84 @@ function MultipleView({
 }
 
 /**
- * Inspection of the shared selection, read-only (guidelines section 10). Its
- * own dockable panel since decision 0016, so it can sit beside Reasoning
- * instead of taking turns with it.
+ * A definition chosen for editing, or one being created (decision 0028).
+ * Returns null when the selection is not a definition.
  */
-export function InspectionPanel() {
-  const { workbench, layout, workedSurface } = useServices()
+function DefinitionProperties() {
+  const { workbench, properties } = useServices()
   const state = useWorkbenchSnapshot((snapshot) => snapshot.state)
+  const creating = useStore(properties.store, (snapshot) => snapshot.creating)
+  const select = (entityType: SelectableEntity) => (id: string) =>
+    workbench.execute({
+      type: 'selection.set',
+      input: { entityType, ids: [id] },
+    })
+  const cancel = () => properties.cancelCreate()
+  const { entityType, ids } = state.selection
+  const id = ids.length === 1 ? ids[0] : undefined
+  // A key per definition gives each its own unsaved edits.
+  if (creating === 'archetype' || (entityType === 'archetype' && id)) {
+    const archetype = id && !creating ? (state.archetypes[id] ?? null) : null
+    return (
+      <ArchetypeProperties
+        key={archetype?.id ?? 'new'}
+        archetype={archetype}
+        onCreated={select('archetype')}
+        onCancelCreate={cancel}
+      />
+    )
+  }
+  if (creating === 'schedule' || (entityType === 'schedule' && id)) {
+    const schedule = id && !creating ? (state.schedules[id] ?? null) : null
+    return (
+      <ScheduleProperties
+        key={schedule?.id ?? 'new'}
+        schedule={schedule}
+        onCreated={select('schedule')}
+        onCancelCreate={cancel}
+      />
+    )
+  }
+  if (creating === 'measure' || (entityType === 'measure' && id)) {
+    const measure = id && !creating ? (state.measures[id] ?? null) : null
+    return (
+      <MeasureProperties
+        key={measure?.id ?? 'new'}
+        measure={measure}
+        onCreated={select('measure')}
+        onCancelCreate={cancel}
+      />
+    )
+  }
+  if (creating === 'scenario' || (entityType === 'scenario' && id)) {
+    const scenario = id && !creating ? (state.scenarios[id] ?? null) : null
+    return (
+      <ScenarioProperties
+        key={scenario?.id ?? 'new'}
+        scenario={scenario}
+        onCreated={select('scenario')}
+        onCancelCreate={cancel}
+      />
+    )
+  }
+  if (entityType === 'asset' && id) {
+    const asset = state.assets[id]
+    return asset ? <AssetProperties asset={asset} /> : null
+  }
+  return null
+}
+
+/**
+ * The Properties panel (decision 0028, formerly Inspection): the shared
+ * selection's properties. Buildings and grid elements read their values,
+ * results, and provenance; definitions (archetypes, schedules, measures,
+ * scenarios) are edited here, and a new one is created here too. Its own
+ * dockable panel since decision 0016.
+ */
+export function PropertiesPanel() {
+  const { workbench, layout, workedSurface, properties } = useServices()
+  const state = useWorkbenchSnapshot((snapshot) => snapshot.state)
+  const creating = useStore(properties.store, (snapshot) => snapshot.creating)
   const inspection = useMemo(() => buildInspection(state), [state])
 
   const inspect = (entity: LinkedEntity) => {
@@ -168,6 +246,35 @@ export function InspectionPanel() {
       type: 'selection.set',
       input: { entityType: entity.entityType, ids: [entity.id] },
     })
+  }
+
+  const definition = state.selection.entityType
+  if (
+    creating !== null ||
+    (definition !== null &&
+      definition !== 'building' &&
+      definition !== 'gridElement')
+  ) {
+    return (
+      // The panel scrolls itself, so it takes focus for keyboard scrolling
+      // (axe scrollable-region-focusable).
+      <section className={styles.panel} aria-label="Properties" tabIndex={0}>
+        <DefinitionProperties />
+        {creating === null ? (
+          <div className={styles.actions}>
+            <ActionButton
+              label="Clear selection from Properties"
+              disabledReason={null}
+              onPress={() =>
+                workbench.execute({ type: 'selection.clear', input: {} })
+              }
+            >
+              Clear selection
+            </ActionButton>
+          </div>
+        ) : null}
+      </section>
+    )
   }
 
   const pageActions = (
@@ -189,7 +296,7 @@ export function InspectionPanel() {
     </>
   )
 
-  // With nothing selected, Inspection shows the properties of whatever the
+  // With nothing selected, Properties shows the properties of whatever the
   // user is working in (decision 0018).
   if (inspection.kind === 'empty' && workedSurface === 'map') {
     return <MapProperties />
@@ -199,14 +306,15 @@ export function InspectionPanel() {
     return (
       // The panel scrolls itself, so it takes focus for keyboard scrolling
       // (axe scrollable-region-focusable).
-      <section className={styles.panel} aria-label="Inspection" tabIndex={0}>
+      <section className={styles.panel} aria-label="Properties" tabIndex={0}>
         <div className={styles.empty}>
           <p className={styles.emptyTitle}>
             <Info size={16} aria-hidden="true" /> Nothing selected
           </p>
           <p className={styles.muted}>
-            Select buildings or grid elements on the Map or Table page to see
-            their properties, results, warnings, and linked objects here.
+            Select buildings or grid elements on the Map or Table page, an
+            asset, or an archetype, schedule, measure, or scenario to see its
+            properties here. Definitions are edited here too.
           </p>
           <div className={styles.actions}>{pageActions}</div>
         </div>
@@ -217,7 +325,7 @@ export function InspectionPanel() {
   return (
     // The panel scrolls itself, so it takes focus for keyboard scrolling
     // (axe scrollable-region-focusable).
-    <section className={styles.panel} aria-label="Inspection" tabIndex={0}>
+    <section className={styles.panel} aria-label="Properties" tabIndex={0}>
       <header className={styles.header}>
         <p className={styles.eyebrow}>{inspection.eyebrow}</p>
         <h3 className={styles.title}>{inspection.title}</h3>
@@ -230,7 +338,7 @@ export function InspectionPanel() {
       <div className={styles.actions}>
         {pageActions}
         <ActionButton
-          label="Clear selection from Inspection"
+          label="Clear selection from Properties"
           disabledReason={null}
           onPress={() =>
             workbench.execute({ type: 'selection.clear', input: {} })

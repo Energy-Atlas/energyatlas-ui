@@ -56,6 +56,11 @@ import {
   createMessageCenter,
   type MessageCenter,
 } from './messages/messageCenter.ts'
+import {
+  createPropertiesService,
+  type PropertiesService,
+} from './properties/propertiesService.ts'
+import { forgetUnsavedEdits } from './properties/useEdits.ts'
 import type { ViewState } from './view/viewOperations.ts'
 import { createViewStore, type ViewStore } from './view/viewStore.ts'
 import {
@@ -77,6 +82,8 @@ type CoreServices = {
   agent: AgentAdapter
   /** Every event the workbench reports, its toasts, and their history (decision 0027). */
   messages: MessageCenter
+  /** A definition being created in the Properties panel (decision 0028). */
+  properties: PropertiesService
 }
 
 /**
@@ -95,9 +102,9 @@ export type Services = CoreServices & {
   /** Whether the Map page shows the OpenFreeMap basemap (decision 0012). */
   basemapEnabled: boolean
   setBasemapEnabled: (enabled: boolean) => void
-  /** Opens the Inspection panel, which follows the shared selection. */
+  /** Opens the Properties panel, which follows the shared selection. */
   showInspection: (source?: CommandSource) => void
-  /** The surface being worked in; Inspection shows its properties when nothing is selected. */
+  /** The surface being worked in; Properties shows its own properties when nothing is selected. */
   workedSurface: WorkedSurface
   claimWorked: (surface: 'map') => void
 }
@@ -179,10 +186,13 @@ function createCoreServices(): CoreServices {
     view,
     scheduler: browserScheduler,
   })
+  const properties = createPropertiesService(workbench)
   client.store.subscribe((snapshot, previous) => {
     if (snapshot.projectGeneration !== previous.projectGeneration) {
       agent.resetForProject()
       view.execute({ type: 'view.resetForProject', input: {} }, 'system')
+      properties.cancelCreate()
+      forgetUnsavedEdits()
     }
   })
   const messages = createMessageCenter({
@@ -202,6 +212,7 @@ function createCoreServices(): CoreServices {
     view,
     agent,
     messages,
+    properties,
   }
 }
 
@@ -341,4 +352,15 @@ export function useStageStates() {
 export function useLayoutVersion(): number {
   const { layout } = useServices()
   return useSyncExternalStore(layout.subscribe, layout.getVersion)
+}
+
+/**
+ * Reads one primitive fact about the layout, re-rendering only when it
+ * changes rather than on every model change (a splitter drag makes many).
+ */
+export function useLayoutValue<T extends string | number | boolean | null>(
+  read: (layout: LayoutController) => T,
+): T {
+  const { layout } = useServices()
+  return useSyncExternalStore(layout.subscribe, () => read(layout))
 }

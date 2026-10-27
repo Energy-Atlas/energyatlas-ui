@@ -4,7 +4,11 @@ import {
   type Command,
   type ValidationIssue,
 } from '../../domain/commands.ts'
-import type { CommandSource, WorkbenchState } from '../../domain/types.ts'
+import {
+  selectableCollection,
+  type CommandSource,
+  type WorkbenchState,
+} from '../../domain/types.ts'
 import { createInitialState } from '../../domain/initialState.ts'
 import type { ExecuteResult, Workbench } from '../../domain/workbench.ts'
 import { issuesFromError } from '../../server/apiError.ts'
@@ -131,11 +135,10 @@ export function mergeServerState(
   local: WorkbenchState,
 ): WorkbenchState {
   const { selection } = local
-  const exists = (id: string) =>
-    selection.entityType === 'gridElement'
-      ? id in server.gridElements
-      : id in server.buildings
-  const ids = selection.ids.filter(exists)
+  const collection = selection.entityType
+    ? selectableCollection(server, selection.entityType)
+    : {}
+  const ids = selection.ids.filter((id) => id in collection)
   const pendingEdits = Object.fromEntries(
     Object.entries(local.pendingEdits).filter(
       ([, edit]) => edit.entityId in server.buildings,

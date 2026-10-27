@@ -106,12 +106,20 @@
 }
 
 .hoverZone {
+  position: relative;
   min-width: 0;
 }
 
+/* The bar's search field: wide enough for a name, narrower in a small pane. */
+.search {
+  width: min(14rem, 100%);
+}
+
+/* A page can cap the height with --table-max-height on the table's class. */
 .scroll {
   position: relative;
   max-width: 100%;
+  max-height: var(--table-max-height, none);
   overflow: auto;
   border: var(--rule);
 }
@@ -223,12 +231,15 @@
   background: var(--row-hover);
 }
 
-.current > .td {
+/* The current or selected row is a fill, never an edge bar. */
+.current > .td,
+.tr[data-selected] > .td,
+.shaded .tr[data-selected]:nth-child(even) > .td {
   background: var(--color-selected-bg);
 }
 
-.current > .td:first-child {
-  box-shadow: inset 2px 0 0 var(--color-accent);
+.tr[data-selected] {
+  cursor: default;
 }
 
 /* Freezing keeps the first column in place while the rest scroll under it. */
@@ -261,7 +272,7 @@
 /* Freezing the header row bounds the table's height, so it scrolls within
    itself and the header stays on top. */
 .freezeHeader .scroll {
-  max-height: min(70vh, 36rem);
+  max-height: var(--table-max-height, min(70vh, 36rem));
 }
 
 .freezeHeader .th {
@@ -455,6 +466,7 @@
 }
 
 .gridZone {
+  position: relative;
   flex: 1;
   min-height: 12rem;
 }

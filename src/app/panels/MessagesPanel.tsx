@@ -2,7 +2,7 @@ import { CheckCheck, Trash2 } from 'lucide-react'
 import { useEffect, useId, useState, type ReactNode } from 'react'
 import { useStore } from 'zustand'
 import {
-  useLayoutVersion,
+  useLayoutValue,
   useServices,
   useWorkbenchSnapshot,
 } from '../WorkbenchContext.tsx'
@@ -101,15 +101,14 @@ export function MessageHistory({
  */
 export function MessagesPanel() {
   const headingId = useId()
-  const { messages, layout } = useServices()
-  useLayoutVersion()
+  const { messages } = useServices()
+  const open = useLayoutValue((layout) => layout.isPanelOpen('messages'))
   const runAction = useRunMessageAction()
   const projectId = useWorkbenchSnapshot(
     (snapshot) => snapshot.state.project.id,
   )
   const history = useStore(messages.store, (snapshot) => snapshot.messages)
   const [source, setSource] = useState<SourceFilter>('any')
-  const open = layout.isPanelOpen('messages')
 
   const scoped = history.filter((message) => inScope(message, projectId))
   const unread = scoped.filter((message) => !message.read).length

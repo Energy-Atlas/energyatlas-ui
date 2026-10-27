@@ -19,21 +19,13 @@ import formStyles from '../components/forms.module.css'
 import { InlineAlert } from '../components/InlineAlert.tsx'
 import { cx } from '../cx.ts'
 import { DialogFrame } from '../shell/HelpDialogs.tsx'
-import { DemoConditionsDialog } from '../shell/DemoConditionsDialog.tsx'
+import { openDemoPanel } from '../shell/demoSwitchStore.ts'
 import { ProjectList } from './ProjectList.tsx'
 import styles from './project.module.css'
 
 export function ProjectDialogs() {
-  const [conditionsOpen, setConditionsOpen] = useState(false)
-  return (
-    <>
-      <ProjectDialogsContent onOpenConditions={() => setConditionsOpen(true)} />
-      <DemoConditionsDialog
-        isOpen={conditionsOpen}
-        onOpenChange={setConditionsOpen}
-      />
-    </>
-  )
+  // Demo conditions open in the floating demo switch (decision 0028).
+  return <ProjectDialogsContent onOpenConditions={openDemoPanel} />
 }
 
 function ProjectDialogsContent({

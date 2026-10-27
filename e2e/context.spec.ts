@@ -37,9 +37,7 @@ async function selectFirstBuildingInTable(page: Page) {
 test.beforeEach(async ({ page }) => {
   await page.goto('/')
   await createProjectFromStart(page)
-  await expect(
-    page.getByRole('toolbar', { name: 'Workbench commands' }),
-  ).toBeVisible()
+  await expect(page.getByRole('main', { name: 'Workspace' })).toBeVisible()
 })
 
 test('inspection shows the shared selection read-only', async ({ page }) => {
@@ -50,7 +48,7 @@ test('inspection shows the shared selection read-only', async ({ page }) => {
   // Both panels are docked on the right; Reasoning is the one shown first.
   const reasoningTab = page.getByRole('tab', { name: 'Reasoning', exact: true })
   const inspectionTab = page.getByRole('tab', {
-    name: 'Inspection',
+    name: 'Properties',
     exact: true,
   })
   await expect(reasoningTab).toHaveAttribute('aria-selected', 'true')
@@ -58,13 +56,13 @@ test('inspection shows the shared selection read-only', async ({ page }) => {
 
   await inspectionTab.click()
   await expect(inspectionTab).toHaveAttribute('aria-selected', 'true')
-  const inspection = page.getByRole('region', { name: 'Inspection' })
+  const inspection = page.getByRole('region', { name: 'Properties' })
   await expect(inspection.getByText('Nothing selected')).toBeVisible()
 
   await selectFirstBuildingInTable(page)
   await expect(inspection.locator('header').first()).toContainText('B0001')
   await expect(
-    inspection.getByRole('region', { name: 'Properties' }),
+    inspection.getByRole('region', { name: 'Attributes' }),
   ).toContainText('Floors')
   await expect(
     inspection.getByRole('region', { name: 'Provenance' }),
@@ -72,7 +70,7 @@ test('inspection shows the shared selection read-only', async ({ page }) => {
   expect(await seriousViolations(page)).toEqual([])
 
   await inspection
-    .getByRole('button', { name: 'Clear selection from Inspection' })
+    .getByRole('button', { name: 'Clear selection from Properties' })
     .click()
   await expect(inspection.getByText('Nothing selected')).toBeVisible()
   await expect(page.getByText('0 selected', { exact: true })).toBeVisible()
@@ -81,21 +79,21 @@ test('inspection shows the shared selection read-only', async ({ page }) => {
 test('inspect selection opens the Inspection panel', async ({ page }) => {
   await runStages(page, ['Location setup / footprint capturing'])
   const inspectionTab = page.getByRole('tab', {
-    name: 'Inspection',
+    name: 'Properties',
     exact: true,
   })
   await expect(inspectionTab).toHaveAttribute('aria-selected', 'false')
 
   await selectFirstBuildingInTable(page)
   await page.keyboard.press('Control+k')
-  await page.keyboard.type('inspect selection')
+  await page.keyboard.type('show selection properties')
   await page.keyboard.press('Enter')
 
   await expect(inspectionTab).toHaveAttribute('aria-selected', 'true')
   await expect(page.getByTestId('status-notice')).toContainText(
-    'Showed the Inspection panel.',
+    'Showed the Properties panel.',
   )
-  const inspection = page.getByRole('region', { name: 'Inspection' })
+  const inspection = page.getByRole('region', { name: 'Properties' })
   await expect(inspection.locator('header').first()).toContainText('B0001')
 })
 
@@ -104,7 +102,7 @@ test('each panel has its own toggle, so both can be open at once', async ({
 }) => {
   const reasoningTab = page.getByRole('tab', { name: 'Reasoning', exact: true })
   const inspectionTab = page.getByRole('tab', {
-    name: 'Inspection',
+    name: 'Properties',
     exact: true,
   })
 
@@ -116,10 +114,10 @@ test('each panel has its own toggle, so both can be open at once', async ({
   await expect(inspectionTab).toBeVisible()
 
   await page.keyboard.press('Control+k')
-  await page.keyboard.type('inspection')
+  await page.keyboard.type('properties')
   await page.keyboard.press('Enter')
   await expect(inspectionTab).toHaveAttribute('aria-selected', 'true')
   await expect(page.getByTestId('status-notice')).toContainText(
-    'Showed the Inspection panel.',
+    'Showed the Properties panel.',
   )
 })

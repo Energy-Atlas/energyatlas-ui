@@ -1,11 +1,13 @@
-import { useMemo, useState } from 'react'
+import { useMemo, useState, type ReactNode } from 'react'
 import {
   Button,
   Cell,
   Column,
   ColumnResizer,
+  Input,
   ResizableTableContainer,
   Row,
+  SearchField,
   Table,
   TableBody,
   TableHeader,
@@ -18,6 +20,7 @@ import {
   fitWidths,
   formatCell,
   processRows,
+  searchRows,
   tableCsv,
   visibleColumns,
   type DataColumn,
@@ -29,6 +32,8 @@ import {
 } from '../tables/tableSettings.ts'
 import componentStyles from './components.module.css'
 import styles from './dataTable.module.css'
+import formStyles from './forms.module.css'
+import { ScrollJump } from './ScrollJump.tsx'
 import { ColumnTools, TableBar } from './tableTools.tsx'
 
 export type DataTableProps<Row> = {
@@ -49,6 +54,18 @@ export type DataTableProps<Row> = {
   onExport?: (csv: string, fileName: string, rowCount: number) => void
   /** Marks the current row, such as the drilled-down building. */
   currentKey?: string | null
+  /**
+   * Makes rows selectable one at a time (click, or arrows then Space), for a
+   * table whose selected row the Properties panel shows.
+   */
+  selection?: {
+    selectedKey: string | null
+    onSelect: (key: string) => void
+  }
+  /** A search field leading the table bar, over the shown columns' text. */
+  search?: { label: string; placeholder?: string }
+  /** Leads the table bar after the search, such as a New button. */
+  barStart?: ReactNode
   className?: string
 }
 
@@ -100,14 +117,24 @@ export function DataTable<Row>({
   exportOptions = null,
   onExport,
   currentKey = null,
+  selection,
+  search,
+  barStart,
   className,
 }: DataTableProps<Row>) {
   const [shownCount, setShownCount] = useState(pageSize ?? Infinity)
+  const [query, setQuery] = useState('')
   const shownColumns = visibleColumns(columns, settings)
   const processed = useMemo(
-    () => processRows(rows, columns, settings),
-    [rows, columns, settings],
+    () =>
+      processRows(
+        searchRows(rows, columns, settings, query),
+        columns,
+        settings,
+      ),
+    [rows, columns, settings, query],
   )
+  const filtered = Object.keys(settings.filters).length > 0
   const page = processed.slice(0, shownCount)
   const items: Item<Row>[] = page.map((row) => ({ id: rowKey(row), row }))
   const { style } = settings
@@ -171,6 +198,27 @@ export function DataTable<Row>({
         shown={processed.length}
         onChange={onChange}
         onExport={exportOptions && onExport ? exportCsv : null}
+        start={
+          search || barStart ? (
+            <>
+              {search ? (
+                <SearchField
+                  aria-label={search.label}
+                  className={styles.search}
+                  value={query}
+                  onChange={setQuery}
+                >
+                  <Input
+                    className={formStyles.input}
+                    placeholder={search.placeholder ?? 'Search rows'}
+                    maxLength={100}
+                  />
+                </SearchField>
+              ) : null}
+              {barStart}
+            </>
+          ) : undefined
+        }
       />
 
       <div
@@ -194,6 +242,22 @@ export function DataTable<Row>({
           <Table
             aria-label={label}
             className={styles.table}
+            selectionMode={selection ? 'single' : 'none'}
+            selectionBehavior="replace"
+            selectedKeys={
+              selection
+                ? selection.selectedKey
+                  ? [selection.selectedKey]
+                  : []
+                : undefined
+            }
+            onSelectionChange={(keys) => {
+              if (!selection || keys === 'all') return
+              const [key] = [...keys]
+              if (key !== undefined && String(key) !== selection.selectedKey) {
+                selection.onSelect(String(key))
+              }
+            }}
             sortDescriptor={sortDescriptor}
             // Clicking a header steps through ascending, descending, and
             // unsorted.
@@ -239,13 +303,29 @@ export function DataTable<Row>({
                     emptyText
                   ) : (
                     <>
-                      No rows match the filters.{' '}
-                      <Button
-                        className={componentStyles.button}
-                        onPress={() => onChange({ kind: 'clearFilters' })}
-                      >
-                        Clear filters
-                      </Button>
+                      No rows match{' '}
+                      {filtered && query.trim()
+                        ? 'the filters and search'
+                        : filtered
+                          ? 'the filters'
+                          : 'the search'}
+                      .{' '}
+                      {filtered ? (
+                        <Button
+                          className={componentStyles.button}
+                          onPress={() => onChange({ kind: 'clearFilters' })}
+                        >
+                          Clear filters
+                        </Button>
+                      ) : null}{' '}
+                      {query.trim() ? (
+                        <Button
+                          className={componentStyles.button}
+                          onPress={() => setQuery('')}
+                        >
+                          Clear search
+                        </Button>
+                      ) : null}
                     </>
                   )}
                 </p>
@@ -289,6 +369,11 @@ export function DataTable<Row>({
             </TableBody>
           </Table>
         </ResizableTableContainer>
+        <ScrollJump
+          label={label}
+          scroller={`.${styles.scroll}`}
+          stickyHeader={style.freezeHeader ? 'thead' : undefined}
+        />
       </div>
 
       {processed.length > page.length && pageSize ? (

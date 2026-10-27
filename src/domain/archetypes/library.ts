@@ -14,45 +14,85 @@ function span(from: number, to: number, value: number): [number, number][] {
   return Array.from({ length: to - from }, (_, index) => [from + index, value])
 }
 
+/**
+ * The days and week of a schedule with one profile for Monday to Friday and
+ * another for Saturday and Sunday, the shape most library schedules share.
+ */
+export function weekdayWeekend(
+  weekday: number[],
+  weekend: number[],
+): Pick<Schedule, 'days' | 'week'> {
+  return {
+    days: [
+      { id: 'weekday', name: 'Weekday', hours: weekday },
+      { id: 'weekend', name: 'Weekend', hours: weekend },
+    ],
+    week: [
+      'weekday',
+      'weekday',
+      'weekday',
+      'weekday',
+      'weekday',
+      'weekend',
+      'weekend',
+    ],
+  }
+}
+
 export const SCHEDULE_LIBRARY: readonly Schedule[] = [
   {
     id: 'schedule:office',
     name: 'Office occupancy',
-    weekday: profile([
-      ...span(7, 8, 0.3),
-      ...span(8, 17, 0.95),
-      ...span(17, 19, 0.4),
-    ]),
-    weekend: profile(span(9, 13, 0.15)),
+    ...weekdayWeekend(
+      profile([...span(7, 8, 0.3), ...span(8, 17, 0.95), ...span(17, 19, 0.4)]),
+      profile(span(9, 13, 0.15)),
+    ),
     source: { kind: 'library', libraryId: 'schedule:office' },
   },
   {
     id: 'schedule:residential',
     name: 'Residential occupancy',
-    weekday: profile(
-      [
-        ...span(0, 7, 0.9),
-        ...span(7, 9, 0.6),
-        ...span(9, 17, 0.3),
-        ...span(17, 24, 0.85),
-      ],
-      0.3,
+    ...weekdayWeekend(
+      profile(
+        [
+          ...span(0, 7, 0.9),
+          ...span(7, 9, 0.6),
+          ...span(9, 17, 0.3),
+          ...span(17, 24, 0.85),
+        ],
+        0.3,
+      ),
+      profile([...span(0, 10, 0.9), ...span(10, 24, 0.7)], 0.7),
     ),
-    weekend: profile([...span(0, 10, 0.9), ...span(10, 24, 0.7)], 0.7),
     source: { kind: 'library', libraryId: 'schedule:residential' },
   },
   {
     id: 'schedule:retail',
     name: 'Retail opening hours',
-    weekday: profile(span(10, 20, 0.85)),
-    weekend: profile(span(10, 18, 0.95)),
+    // Shops keep shorter hours on Sunday than on Saturday.
+    days: [
+      { id: 'weekday', name: 'Weekday', hours: profile(span(10, 20, 0.85)) },
+      { id: 'saturday', name: 'Saturday', hours: profile(span(10, 18, 0.95)) },
+      { id: 'sunday', name: 'Sunday', hours: profile(span(11, 17, 0.7)) },
+    ],
+    week: [
+      'weekday',
+      'weekday',
+      'weekday',
+      'weekday',
+      'weekday',
+      'saturday',
+      'sunday',
+    ],
     source: { kind: 'library', libraryId: 'schedule:retail' },
   },
   {
     id: 'schedule:school',
     name: 'School day',
-    weekday: profile([...span(8, 15, 0.95), ...span(15, 17, 0.3)]),
-    weekend: profile([], 0.02),
+    ...weekdayWeekend(
+      profile([...span(8, 15, 0.95), ...span(15, 17, 0.3)]),
+      profile([], 0.02),
+    ),
     source: { kind: 'library', libraryId: 'schedule:school' },
   },
 ]

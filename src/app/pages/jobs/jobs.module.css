@@ -64,18 +64,6 @@
 
 .message {
   margin: 0;
-  padding: var(--space-2) var(--space-3);
-  border: var(--rule);
-  border-radius: var(--radius-sm);
-  background: var(--color-surface-raised);
-}
-
-.messageFailed {
-  border-left: 2px solid var(--tone-danger-text);
-}
-
-.messageWarning {
-  border-left: 2px solid var(--tone-warning-text);
 }
 
 .progress {

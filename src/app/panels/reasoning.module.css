@@ -95,34 +95,125 @@
   color: var(--color-text-muted);
 }
 
-/* Tool calls: a quiet edge marks agent actions without boxing them. */
-.toolHeading {
-  display: flex;
+/* Tool calls: a run of calls collapses to one "Used N tools" line; opened,
+   each call is a quiet ruled cell. Only the input is in the mono face. */
+.toolGroup {
+  min-width: 0;
+}
+
+.toolSummary {
+  display: inline-flex;
   align-items: center;
   gap: var(--space-1);
+  color: var(--color-text-muted);
+  font-size: var(--font-size-small);
+  list-style: none;
+  cursor: pointer;
+  border-radius: var(--radius-sm);
+}
+
+.toolSummary::-webkit-details-marker {
+  display: none;
+}
+
+.toolSummary:hover {
+  color: var(--color-text);
+}
+
+.toolSummary:focus-visible {
+  outline: 2px solid var(--color-focus);
+  outline-offset: 2px;
+}
+
+.toolChevron {
+  transition: transform var(--transition);
+}
+
+.toolGroup[open] .toolChevron {
+  transform: rotate(90deg);
+}
+
+.toolRejected {
+  color: var(--tone-danger-text);
+}
+
+.toolList {
+  display: grid;
+  gap: var(--space-1);
+  margin: var(--space-2) 0 0;
+  padding: 0;
+  list-style: none;
 }
 
 .tool {
   display: grid;
   gap: 0.125rem;
-  padding-left: var(--space-2);
-  box-shadow: inset 2px 0 0 var(--color-border-subtle);
+  padding: var(--space-2);
+  border: var(--rule);
+  border-radius: var(--radius-md);
 }
 
-/* Approvals need attention while pending, then settle into the transcript. */
-/* Approvals are ruled cells; a pending one takes the warning edge and tint. */
+/* Icon, a title that wraps in its own column, and the status. */
+.toolRow {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: start;
+  gap: var(--space-1);
+}
+
+.toolTitle {
+  font-weight: 600;
+}
+
+.toolMeta {
+  margin: 0;
+  color: var(--color-text-muted);
+  font-size: var(--font-size-small);
+  overflow-wrap: anywhere;
+}
+
+.toolIssue {
+  margin: 0;
+  color: var(--tone-danger-text);
+}
+
+.toolDetails summary {
+  color: var(--color-text-muted);
+  font-size: var(--font-size-small);
+  cursor: pointer;
+}
+
+.toolDetails pre {
+  margin: var(--space-1) 0 0;
+  padding: var(--space-2);
+  border: var(--rule);
+  border-radius: var(--radius-sm);
+  background: var(--color-surface-raised);
+  font-family: var(--font-mono);
+  font-size: var(--font-size-small);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .toolChevron {
+    transition: none;
+  }
+}
+
+/* Approvals are ruled cells; a pending one takes the warning fill of toasts
+   and inline alerts, never an edge bar. */
 .approval {
   display: grid;
   gap: var(--space-1);
   padding: var(--space-2) var(--space-3);
   border: var(--rule);
-  border-left: 2px solid var(--color-border-interactive);
   border-radius: var(--radius-md);
   background: var(--color-surface-raised);
 }
 
 .approvalPending {
-  border-left-color: var(--tone-warning-text);
+  border-color: var(--tone-warning-text);
   background: var(--tone-warning-bg);
 }
 

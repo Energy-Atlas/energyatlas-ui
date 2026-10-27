@@ -1,5 +1,12 @@
 import { AxeBuilder } from '@axe-core/playwright'
-import { expect, test, type Page } from './test.ts'
+import {
+  expect,
+  openMeasures,
+  properties,
+  startNew,
+  test,
+  type Page,
+} from './test.ts'
 
 // Measures and scenarios (jobs rollout plan, slice 6): library, editing,
 // one measure of each kind per scenario, previews, the comparison set, and the
@@ -17,22 +24,17 @@ async function showWorkflow(page: Page) {
 
 async function openCreator(page: Page) {
   await page.goto('/?fixture=complete')
-  await page.getByRole('tab', { name: 'Creator', exact: true }).click()
-  const creator = page.getByRole('region', { name: 'Creator', exact: true })
-  await expect(creator).toBeVisible()
-  return creator
+  return openMeasures(page)
 }
 
 async function addFromLibrary(page: Page, name: string) {
-  const creator = page.getByRole('region', { name: 'Creator', exact: true })
+  const creator = page.getByRole('region', {
+    name: 'Measures and scenarios',
+    exact: true,
+  })
   await creator
-    .getByRole('listbox', { name: 'Synthetic measure' })
-    .getByRole('option', { name, exact: true })
-    .click()
-  await creator
-    .getByRole('button', {
-      name: 'Add the chosen library measure to the project',
-    })
+    .getByRole('grid', { name: 'Measure library' })
+    .getByRole('button', { name: `Add ${name} to the project` })
     .click()
   await expect(creator.getByRole('grid', { name: 'Measures' })).toContainText(
     name,
@@ -62,7 +64,7 @@ test('composes, previews, edits, and compares scenarios as one modeled set', asy
       .filter({ hasText: 'LED lighting' }),
   ).toContainText('Library')
 
-  const scenarioForm = creator.getByRole('region', { name: 'New scenario' })
+  const scenarioForm = await startNew(page, 'scenario')
   await scenarioForm.getByRole('textbox', { name: 'Name' }).fill('Lighting')
   const measures = scenarioForm.getByRole('group', { name: 'Measures' })
   await measures.getByRole('checkbox', { name: /^LED lighting/ }).focus()
@@ -84,16 +86,23 @@ test('composes, previews, edits, and compares scenarios as one modeled set', asy
   const scenarios = creator.getByRole('grid', { name: 'Scenarios' })
   await expect(scenarios).toContainText('Lighting')
 
-  // Leave the original scenario out of the comparison.
+  // Leave the original scenario out of the comparison: choose its row, then
+  // edit it in Properties; the edited field is marked until saved.
   await scenarios
-    .getByRole('button', { name: 'Edit scenario Envelope retrofit' })
+    .getByRole('row')
+    .filter({ hasText: 'Envelope retrofit' })
+    .getByRole('rowheader')
     .click()
-  const edit = creator.getByRole('region', { name: 'Edit Envelope retrofit' })
+  const edit = properties(page).getByRole('region', {
+    name: 'Envelope retrofit',
+  })
   await edit
     .getByRole('checkbox', { name: 'Include in the comparison set' })
     .focus()
   await page.keyboard.press('Space')
+  await expect(edit).toContainText('1 field edited, not saved.')
   await edit.getByRole('button', { name: 'Save scenario' }).click()
+  await expect(edit).toContainText('No unsaved edits.')
   await expect(
     scenarios.getByRole('row').filter({ hasText: 'Envelope retrofit' }),
   ).toContainText('Left out')

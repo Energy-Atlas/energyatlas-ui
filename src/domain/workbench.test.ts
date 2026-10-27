@@ -464,6 +464,37 @@ describe('workbench commands', () => {
     })
   })
 
+  test('selects definitions for the Properties panel by their own ids', () => {
+    const workbench = setup()
+    expect(
+      workbench.execute({
+        type: 'selection.set',
+        input: { entityType: 'archetype', ids: ['archetype:office'] },
+      }).outcome.status,
+    ).toBe('rejected')
+    workbench.execute({
+      type: 'archetype.addFromLibrary',
+      input: { libraryId: 'archetype:office' },
+    })
+    const selected = workbench.execute({
+      type: 'selection.set',
+      input: { entityType: 'archetype', ids: ['archetype:office'] },
+    })
+    expect(selected.outcome).toMatchObject({
+      status: 'applied',
+      summary: 'Selected 1 archetype(s).',
+    })
+    // A library archetype brings its schedule, which can be selected too.
+    workbench.execute({
+      type: 'selection.set',
+      input: { entityType: 'schedule', ids: ['schedule:office'] },
+    })
+    expect(workbench.getState().selection).toEqual({
+      entityType: 'schedule',
+      ids: ['schedule:office'],
+    })
+  })
+
   test('describes every command with a JSON Schema input for agent tools', () => {
     const catalog = describeCommands()
     const runStageEntry = catalog.find(

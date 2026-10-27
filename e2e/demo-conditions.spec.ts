@@ -1,4 +1,4 @@
-import { createProjectFromStart } from './test.ts'
+import { createProjectFromStart, openMeasures, startNew } from './test.ts'
 import { AxeBuilder } from '@axe-core/playwright'
 import { expect, test, type Page } from './test.ts'
 
@@ -98,8 +98,8 @@ test('shows rejected input on its field and the edit lock as a reason', async ({
   page,
 }) => {
   await page.goto('/?fixture=new&fault=rejectInput')
-  await page.getByRole('tab', { name: 'Creator', exact: true }).click()
-  const measureForm = page.getByRole('region', { name: 'New measure' })
+  await openMeasures(page)
+  const measureForm = await startNew(page, 'measure')
   await measureForm.getByRole('textbox', { name: 'Name' }).fill('Heat pumps')
   await measureForm.getByRole('button', { name: 'Create measure' }).click()
   await expect(
@@ -110,7 +110,8 @@ test('shows rejected input on its field and the edit lock as a reason', async ({
   ).toHaveAttribute('aria-invalid', 'true')
 
   await page.goto('/?fixture=new&fault=editLock')
-  await page.getByRole('tab', { name: 'Creator', exact: true }).click()
+  await openMeasures(page)
+  await startNew(page, 'measure')
   await measureForm.getByRole('textbox', { name: 'Name' }).fill('Heat pumps')
   await measureForm.getByRole('button', { name: 'Create measure' }).click()
   await expect(measureForm).toContainText('A run is in progress')

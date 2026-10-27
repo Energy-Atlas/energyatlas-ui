@@ -23,10 +23,9 @@
   border-radius: var(--radius-sm);
 }
 
-/* The current stage is an emphasis state: a tint and an accent edge, not a box. */
+/* The current stage is an emphasis state: a tint, never an edge bar. */
 .current {
   background: var(--color-selected-bg);
-  box-shadow: inset 2px 0 0 var(--color-accent);
 }
 
 .stageRow {

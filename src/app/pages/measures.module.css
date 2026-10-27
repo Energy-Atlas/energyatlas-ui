@@ -1,0 +1,34 @@
+/* Measures and scenarios (decision 0028): tables of definitions, each
+   edited in the Properties panel, then the comparison. */
+.page {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+}
+
+.section {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  min-width: 0;
+}
+
+.sectionTitle {
+  margin: 0;
+  color: var(--color-text-muted);
+  font-family: var(--label-font);
+  font-size: var(--label-size);
+  font-weight: var(--label-weight);
+  letter-spacing: var(--label-tracking);
+  text-transform: var(--label-case);
+}
+
+/* Definition tables scroll within a height of their own. */
+.table {
+  --table-max-height: 20rem;
+}
+
+.planned {
+  margin: 0;
+  color: var(--color-text-muted);
+}

@@ -64,6 +64,11 @@ import type {
   WorkbenchState,
 } from './types.ts'
 import {
+  SELECTABLE_ENTITIES,
+  selectableCollection,
+  type SelectableEntity,
+} from './types.ts'
+import {
   STAGE_IDS,
   hasActiveTask,
   stageRunBlocker,
@@ -168,6 +173,16 @@ const requestIdSchema = z
     'Optional client key for this submission; repeating it creates nothing new.',
   )
 
+const SELECTION_NOUNS: Record<SelectableEntity, string> = {
+  building: 'building(s)',
+  gridElement: 'grid element(s)',
+  archetype: 'archetype(s)',
+  schedule: 'schedule(s)',
+  measure: 'measure(s)',
+  scenario: 'scenario(s)',
+  asset: 'asset(s)',
+}
+
 const JOB_STATUS_WORDS: Record<Task['status'], string> = {
   queued: 'queued',
   running: 'running',
@@ -190,7 +205,7 @@ function itemInputBlocker(
   if (stageId === STAGE_IDS.scenarioModeling) {
     return Object.values(state.scenarios).some((scenario) => scenario.included)
       ? null
-      : 'Include at least one scenario in the comparison set. Open Creator to include one.'
+      : 'Include at least one scenario in the comparison set. Open Measures and scenarios to include one.'
   }
   if (stageId !== STAGE_IDS.preprocessing) return null
   const missing = state.buildingIds.filter(
@@ -366,6 +381,16 @@ const hourlyProfileSchema = z
       .max(1, 'Hourly values cannot be above 1.'),
   )
   .length(24, 'Give exactly 24 hourly values.')
+
+const dayProfileSchema = z.object({
+  id: z.string().min(1),
+  name: z.string().trim().min(1, 'Name every day type.').max(40),
+  hours: hourlyProfileSchema,
+})
+
+const weekSchema = z
+  .array(z.string().min(1, 'Choose a day type for every day.'))
+  .length(7, 'Choose a day type for each day from Monday to Sunday.')
 
 const yearSchema = z
   .number({ error: 'Enter a whole year, or leave it empty.' })
@@ -695,6 +720,12 @@ function uniqueName(items: { name: string }[], name: string): boolean {
   return !items.some((item) => item.name.trim().toLowerCase() === normalized)
 }
 
+/** Whether no two names match, ignoring case and surrounding spaces. */
+function uniqueNames(names: string[]): boolean {
+  const normalized = names.map((name) => name.trim().toLowerCase())
+  return new Set(normalized).size === normalized.length
+}
+
 export const commandDefinitions = {
   'workflow.setCurrentStage': defineCommand({
     title: 'Focus stage',
@@ -968,12 +999,15 @@ export const commandDefinitions = {
   'schedule.save': defineCommand({
     title: 'Save schedule',
     description:
-      'Create a schedule, or change one by id: a name and 24 hourly fractions from 0 to 1 for a weekday and for a weekend day. Archetypes using it become outdated.',
+      'Create a schedule, or change one by id: a name, one to seven day types (such as Weekday, Saturday, Sunday) each with 24 hourly fractions from 0 to 1, and the day type each day of the week uses, Monday first. Archetypes using it become outdated.',
     input: z.object({
       id: z.string().min(1).optional(),
       name: nameSchema,
-      weekday: hourlyProfileSchema,
-      weekend: hourlyProfileSchema,
+      days: z
+        .array(dayProfileSchema)
+        .min(1, 'Add at least one day type.')
+        .max(7, 'Use at most seven day types, one per day.'),
+      week: weekSchema,
     }),
     undoable: true,
     run(state, input, context) {
@@ -990,18 +1024,40 @@ export const commandDefinitions = {
           'name',
         )
       }
-      if ([...input.weekday, ...input.weekend].every((value) => value === 0)) {
+      const ids = input.days.map((day) => day.id)
+      if (new Set(ids).size !== ids.length) {
+        return rejected('Each day type needs its own id.', 'days')
+      }
+      if (!uniqueNames(input.days.map((day) => day.name))) {
+        return rejected('Give each day type a different name.', 'days')
+      }
+      const unknownDay = input.week.find((id) => !ids.includes(id))
+      if (unknownDay !== undefined) {
         return rejected(
-          'A schedule needs at least one hour above 0.',
-          'weekday',
+          `The week uses a day type that is not defined ("${unknownDay}").`,
+          'week',
         )
+      }
+      const unused = input.days.find((day) => !input.week.includes(day.id))
+      if (unused) {
+        return rejected(
+          `"${unused.name}" is not used on any day; assign it to a day or remove it.`,
+          'week',
+        )
+      }
+      if (input.days.every((day) => day.hours.every((value) => value === 0))) {
+        return rejected('A schedule needs at least one hour above 0.', 'days')
       }
       const id = existing?.id ?? allocateId(state, 'schedule')
       state.schedules[id] = {
         id,
         name: input.name,
-        weekday: [...input.weekday],
-        weekend: [...input.weekend],
+        days: input.days.map((day) => ({
+          id: day.id,
+          name: day.name.trim(),
+          hours: [...day.hours],
+        })),
+        week: [...input.week],
         source: editedSource(existing?.source ?? null, context.operationId),
       }
       // Only archetypes that use the schedule are affected.
@@ -1610,15 +1666,14 @@ export const commandDefinitions = {
   'selection.set': defineCommand({
     title: 'Select',
     description:
-      'Replace the shared selection with buildings or grid elements. Unknown ids are rejected.',
+      'Replace the shared selection with buildings, grid elements, or one definition (archetype, schedule, measure, scenario, or asset) for the Properties panel. Unknown ids are rejected.',
     input: z.object({
-      entityType: z.enum(['building', 'gridElement']),
+      entityType: z.enum(SELECTABLE_ENTITIES),
       ids: z.array(z.string().min(1)).max(10_000),
     }),
     undoable: false,
     run(state, { entityType, ids }) {
-      const collection: Record<string, unknown> =
-        entityType === 'building' ? state.buildings : state.gridElements
+      const collection = selectableCollection(state, entityType)
       const unknown = ids.filter((id) => !(id in collection))
       if (unknown.length > 0) {
         return rejected(
@@ -1634,7 +1689,7 @@ export const commandDefinitions = {
       return applied(
         unique.length === 0
           ? 'Selection cleared.'
-          : `Selected ${unique.length} ${entityType === 'building' ? 'building(s)' : 'grid element(s)'}.`,
+          : `Selected ${unique.length} ${SELECTION_NOUNS[entityType]}.`,
       )
     },
   }),

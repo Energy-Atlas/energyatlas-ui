@@ -12,7 +12,7 @@ import {
   Map as MapIcon,
   MessageSquare,
   Route,
-  ScanSearch,
+  SlidersHorizontal,
   Settings,
   SquarePlus,
   Table2,
@@ -21,19 +21,14 @@ import {
   Workflow,
   type LucideIcon,
 } from 'lucide-react'
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useEffect, type ReactNode } from 'react'
 import { useLayoutVersion, useServices } from '../WorkbenchContext.tsx'
-import {
-  useAppActions,
-  useInvokeAction,
-  type ShellDialogs,
-} from '../actions.ts'
+import { useAppActions, useInvokeAction } from '../actions.ts'
 import componentStyles from '../components/components.module.css'
 import '../global.css'
 import '../layout/flexlayout-theme.css'
 import { AccountPage } from '../pages/AccountPage.tsx'
-import { CreatorPage } from '../pages/CreatorPage.tsx'
-import { DemoConditionsDialog } from './DemoConditionsDialog.tsx'
+import { MeasuresPage } from '../pages/MeasuresPage.tsx'
 import { DashboardPage } from '../pages/DashboardPage.tsx'
 import { IssuesPage } from '../pages/IssuesPage.tsx'
 import { MapPage } from '../pages/MapPage.tsx'
@@ -46,31 +41,24 @@ import { ArchetypesPage } from '../pages/archetypes/ArchetypesPage.tsx'
 import { CalibrationPage } from '../pages/calibration/CalibrationPage.tsx'
 import { ResultsPage } from '../pages/results/ResultsPage.tsx'
 import { AssetsPanel } from '../panels/AssetsPanel.tsx'
-import { InspectionPanel } from '../panels/InspectionPanel.tsx'
+import { PropertiesPanel } from '../panels/PropertiesPanel.tsx'
 import { MessagesPanel } from '../panels/MessagesPanel.tsx'
 import { ReasoningPanel } from '../panels/ReasoningPanel.tsx'
 import { WorkflowPanel } from '../panels/WorkflowPanel.tsx'
 import { useShortcuts } from '../useShortcuts.ts'
-import { CommandPalette } from './CommandPalette.tsx'
-import { CapabilitiesDialog, ShortcutsDialog } from './HelpDialogs.tsx'
+import { openDemoPanel } from './demoSwitchStore.ts'
 import { Ribbon } from './Ribbon.tsx'
+import { ShellDialogHost } from './ShellDialogHost.tsx'
 import { StatusBar } from './StatusBar.tsx'
 import { ToastHost } from './ToastHost.tsx'
+import { useShellDialogs } from './useShellDialogs.ts'
 import styles from './shell.module.css'
-
-type OpenDialog =
-  | 'palette'
-  | 'shortcuts'
-  | 'capabilities'
-  | 'newProject'
-  | 'demoConditions'
-  | null
 
 const TAB_ICONS: Record<string, LucideIcon> = {
   'panel.assets': FolderTree,
   'panel.workflow': Workflow,
   'panel.reasoning': MessageSquare,
-  'panel.inspection': ScanSearch,
+  'panel.inspection': SlidersHorizontal,
   'panel.messages': Bell,
   'page.map': MapIcon,
   'page.table': Table2,
@@ -102,7 +90,21 @@ function renderTab(node: TabNode, values: ITabRenderValues) {
   if (node.isInsideBorder()) values.content = node.getName()
 }
 
+// FlexLayout calls the factory for every tab whenever its model changes, which
+// a splitter drag does on each pointer move. Returning the same element for a
+// tab lets React skip re-rendering pages whose own state did not change.
+const tabContent = new Map<string, { component: string; element: ReactNode }>()
+
 function renderTabContent(node: TabNode) {
+  const component = node.getComponent() ?? ''
+  const cached = tabContent.get(node.getId())
+  if (cached && cached.component === component) return cached.element
+  const element = createTabContent(node)
+  tabContent.set(node.getId(), { component, element })
+  return element
+}
+
+function createTabContent(node: TabNode): ReactNode {
   switch (node.getComponent()) {
     case 'panel.workflow':
       return <WorkflowPanel />
@@ -127,7 +129,7 @@ function renderTabContent(node: TabNode) {
     case 'panel.reasoning':
       return <ReasoningPanel />
     case 'panel.inspection':
-      return <InspectionPanel />
+      return <PropertiesPanel />
     case 'panel.messages':
       return <MessagesPanel />
     case 'page.map':
@@ -139,7 +141,7 @@ function renderTabContent(node: TabNode) {
     case 'page.roadmap':
       return <RoadmapPage />
     case 'page.creator':
-      return <CreatorPage />
+      return <MeasuresPage />
     default:
       return (
         <p className={componentStyles.page}>
@@ -151,18 +153,8 @@ function renderTabContent(node: TabNode) {
 }
 
 export function WorkbenchShell() {
-  const { lifecycle, layout } = useServices()
-  const [openDialog, setOpenDialog] = useState<OpenDialog>(null)
-  const dialogs = useMemo<ShellDialogs>(
-    () => ({
-      openPalette: () => setOpenDialog('palette'),
-      openShortcuts: () => setOpenDialog('shortcuts'),
-      openCapabilities: () => setOpenDialog('capabilities'),
-      openNewProject: () => lifecycle.openCreate(),
-      openDemoConditions: () => setOpenDialog('demoConditions'),
-    }),
-    [lifecycle],
-  )
+  const { layout } = useServices()
+  const { open, dialogs, onOpenChange } = useShellDialogs()
   const actions = useAppActions(dialogs)
   const invoke = useInvokeAction()
   useShortcuts(actions, invoke)
@@ -176,10 +168,6 @@ export function WorkbenchShell() {
     query.addEventListener('change', apply)
     return () => query.removeEventListener('change', apply)
   }, [layout])
-
-  const handleDialogChange = useCallback((isOpen: boolean) => {
-    if (!isOpen) setOpenDialog(null)
-  }, [])
 
   return (
     <div className={styles.shell}>
@@ -196,29 +184,16 @@ export function WorkbenchShell() {
       <ToastHost />
       <StatusBar
         onOpenPage={(page) => layout.openPage(page)}
-        onOpenDemoConditions={() => setOpenDialog('demoConditions')}
+        onOpenDemoConditions={openDemoPanel}
         onOpenMessages={() => {
           if (!layout.isPanelOpen('messages')) layout.togglePanel('messages')
         }}
       />
-      <CommandPalette
-        isOpen={openDialog === 'palette'}
-        onOpenChange={handleDialogChange}
+      <ShellDialogHost
+        open={open}
+        onOpenChange={onOpenChange}
         actions={actions}
         invoke={invoke}
-      />
-      <ShortcutsDialog
-        isOpen={openDialog === 'shortcuts'}
-        onOpenChange={handleDialogChange}
-        actions={actions}
-      />
-      <CapabilitiesDialog
-        isOpen={openDialog === 'capabilities'}
-        onOpenChange={handleDialogChange}
-      />
-      <DemoConditionsDialog
-        isOpen={openDialog === 'demoConditions'}
-        onOpenChange={handleDialogChange}
       />
     </div>
   )

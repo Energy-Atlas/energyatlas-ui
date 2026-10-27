@@ -1,6 +1,7 @@
-/* Selectable lists (decision 0027): one ruled box of rows, the selected row
-   an emphasis state with the accent edge, as in the Workflow stages. */
+/* Selectable lists (decision 0027): one ruled box of rows; the selected row
+   is a fill, never an edge bar. */
 .frame {
+  position: relative;
   display: flex;
   flex-direction: column;
   gap: var(--space-2);
@@ -58,7 +59,6 @@
 
 .row[data-selected] {
   background: var(--color-selected-bg);
-  box-shadow: inset 2px 0 0 var(--color-accent);
 }
 
 .row[data-focus-visible] {

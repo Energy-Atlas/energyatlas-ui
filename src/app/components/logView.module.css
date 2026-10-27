@@ -15,12 +15,26 @@
   gap: var(--space-2);
 }
 
+/* Takes the rest of the row, buttons at its end; when less than two buttons'
+   room is left, it wraps onto its own row instead of pushing past the edge. */
 .tools {
   display: flex;
-  margin-left: auto;
+  flex: 1 0 4.5rem;
+  justify-content: flex-end;
+  min-width: 0;
+}
+
+/* Holds the scroller and its jump buttons. */
+.scrollFrame {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
 }
 
 .scroll {
+  flex: 1;
   min-height: 0;
   overflow: auto;
   border: var(--rule);
@@ -59,11 +73,6 @@
   white-space: nowrap;
 }
 
-/* The time column keeps its width when a log has no times. */
-.time:empty {
-  display: none;
-}
-
 .level {
   margin-top: 0.125rem;
 }
@@ -84,7 +93,8 @@
   color: var(--tone-danger-text);
 }
 
-.line:has(.time:empty) {
+/* Lines without a time leave the time column out. */
+.untimed {
   grid-template-columns: auto minmax(0, 1fr);
 }
 

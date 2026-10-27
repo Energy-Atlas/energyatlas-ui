@@ -8,8 +8,13 @@ import {
   matchArchetype,
   previewAssignment,
   scheduleStats,
+  weekdayHours,
 } from './assignment.ts'
-import { ARCHETYPE_LIBRARY, SCHEDULE_LIBRARY } from './library.ts'
+import {
+  ARCHETYPE_LIBRARY,
+  SCHEDULE_LIBRARY,
+  weekdayWeekend,
+} from './library.ts'
 
 const S = STAGE_IDS
 
@@ -52,16 +57,36 @@ describe('archetype definitions', () => {
     ).toBe('archetype:residential-1980-on')
   })
 
-  test('schedule statistics count five weekdays and two weekend days', () => {
-    expect(scheduleStats({ weekday: flat(1), weekend: flat(0) })).toEqual({
+  test('schedule statistics sum each day of the week by its day type', () => {
+    expect(scheduleStats(weekdayWeekend(flat(1), flat(0)))).toEqual({
       weeklyHours: 120,
       annualHours: 120 * 52 + 24,
+      annualAverage: Math.round(((120 * 52 + 24) / 8760) * 1000) / 1000,
       min: 0,
       max: 1,
     })
+    // A Sunday type of its own counts once a week.
+    const threeTypes = {
+      days: [
+        { id: 'weekday', name: 'Weekday', hours: flat(0.5) },
+        { id: 'saturday', name: 'Saturday', hours: flat(0.25) },
+        { id: 'sunday', name: 'Sunday', hours: flat(0) },
+      ],
+      week: [
+        'weekday',
+        'weekday',
+        'weekday',
+        'weekday',
+        'weekday',
+        'saturday',
+        'sunday',
+      ],
+    }
+    expect(scheduleStats(threeTypes).weeklyHours).toBe(5 * 12 + 6)
+    expect(weekdayHours(threeTypes)).toEqual(flat(0.5))
     for (const schedule of SCHEDULE_LIBRARY) {
-      expect(schedule.weekday).toHaveLength(24)
-      expect(schedule.weekend).toHaveLength(24)
+      expect(schedule.week).toHaveLength(7)
+      for (const day of schedule.days) expect(day.hours).toHaveLength(24)
     }
   })
 
@@ -116,24 +141,56 @@ describe('archetype definitions', () => {
     const workbench = partway()
     const short = workbench.execute({
       type: 'schedule.save',
-      input: { name: 'Short', weekday: [0.5], weekend: flat(0) },
+      input: { name: 'Short', ...weekdayWeekend([0.5], flat(0)) },
     })
     expect(short.outcome).toMatchObject({
       status: 'rejected',
-      issues: [{ path: 'weekday' }],
+      issues: [{ path: 'days.0.hours' }],
     })
     const high = workbench.execute({
       type: 'schedule.save',
-      input: { name: 'High', weekday: flat(2), weekend: flat(0) },
+      input: { name: 'High', ...weekdayWeekend(flat(2), flat(0)) },
     })
     expect(high.outcome.status).toBe('rejected')
     const empty = workbench.execute({
       type: 'schedule.save',
-      input: { name: 'Empty', weekday: flat(0), weekend: flat(0) },
+      input: { name: 'Empty', ...weekdayWeekend(flat(0), flat(0)) },
     })
     expect(empty.outcome).toMatchObject({
       status: 'rejected',
       issues: [{ message: 'A schedule needs at least one hour above 0.' }],
+    })
+  })
+
+  test('rejects day types the week does not use or that share a name', () => {
+    const workbench = partway()
+    const { days } = weekdayWeekend(flat(0.5), flat(0.2))
+    const unused = workbench.execute({
+      type: 'schedule.save',
+      input: {
+        name: 'Unused',
+        days,
+        week: Array.from({ length: 7 }, () => 'weekday'),
+      },
+    })
+    expect(unused.outcome).toMatchObject({
+      status: 'rejected',
+      issues: [{ path: 'week' }],
+    })
+    if (unused.outcome.status === 'rejected') {
+      expect(unused.outcome.issues[0]?.message).toMatch(/Weekend/)
+    }
+    const twins = workbench.execute({
+      type: 'schedule.save',
+      input: {
+        name: 'Twins',
+        days: days.map((day) => ({ ...day, name: 'Day' })),
+        week: weekdayWeekend(flat(0), flat(0)).week,
+      },
+    })
+    expect(twins.outcome).toMatchObject({
+      status: 'rejected',
+      issues: [{ path: 'days' }],
     })
   })
 })
@@ -251,7 +308,10 @@ describe('assignment jobs', () => {
     const workbench = partway()
     workbench.execute({
       type: 'schedule.save',
-      input: { name: 'Office occupancy', weekday: flat(0.5), weekend: flat(0) },
+      input: {
+        name: 'Office occupancy',
+        ...weekdayWeekend(flat(0.5), flat(0)),
+      },
     })
     workbench.execute({
       type: 'archetype.addFromLibrary',
@@ -274,8 +334,7 @@ describe('assignment jobs', () => {
       input: {
         id: custom?.id,
         name: 'Office occupancy',
-        weekday: flat(0.6),
-        weekend: flat(0),
+        ...weekdayWeekend(flat(0.6), flat(0)),
       },
     })
     expect(states(workbench)[S.archetypes]).toBe('executed')

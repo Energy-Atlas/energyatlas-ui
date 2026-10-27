@@ -32,9 +32,7 @@ test('starts with an empty catalog and validates named creation', async ({
   await expect(
     page.getByText('No saved projects in this browser yet.', { exact: false }),
   ).toBeVisible()
-  await expect(
-    page.getByRole('toolbar', { name: 'Workbench commands' }),
-  ).toHaveCount(0)
+  await expect(page.getByRole('main', { name: 'Workspace' })).toHaveCount(0)
   await page
     .getByRole('button', { name: 'Create project', exact: true })
     .click()
@@ -84,9 +82,7 @@ test('keeps equal-name saved projects separate and opens them from Recent and Op
     .filter({ hasText: 'District' })
     .last()
     .click()
-  await expect(
-    page.getByRole('toolbar', { name: 'Workbench commands' }),
-  ).toBeVisible()
+  await expect(page.getByRole('main', { name: 'Workspace' })).toBeVisible()
   await page.reload()
   await expect(page.getByRole('main', { name: 'Projects' })).toBeVisible()
   await openRecentProject(page, 'District')
@@ -159,9 +155,7 @@ test('a failed save keeps the project open and the exit guard available', async 
     .getByRole('button', { name: 'Save and leave', exact: true })
     .click()
   await expect(guard.getByRole('alert')).toContainText('server failed')
-  await expect(
-    page.getByRole('toolbar', { name: 'Workbench commands' }),
-  ).toBeVisible()
+  await expect(page.getByRole('main', { name: 'Workspace' })).toBeVisible()
   await guard.getByRole('button', { name: 'Stay', exact: true }).click()
   await expect(guard).toBeHidden()
   await expect(page.getByTestId('save-status')).toContainText('Save failed')
@@ -277,9 +271,13 @@ test('start and creation render in every appearance, desktop size, and narrow la
       'cleanLight',
       'darkEngineering',
     ]) {
-      await page
-        .getByRole('combobox', { name: 'Appearance' })
-        .selectOption(appearance)
+      // The start screen has the menu bar's View > Appearance; the stored
+      // choice is set directly here to keep the loop short.
+      await page.evaluate((value) => {
+        localStorage.setItem('eaui.theme', value)
+      }, appearance)
+      await page.goto('/')
+      await expect(page.getByRole('main', { name: 'Projects' })).toBeVisible()
       await expect(page.locator('html')).toHaveAttribute(
         'data-appearance',
         appearance,

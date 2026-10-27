@@ -28,5 +28,6 @@ Keep short dated records of accepted decisions: status, context, decision, ratio
 - [0025: Jobs list with a detail pane](0025-jobs-list-and-detail-pane.md)
 - [0026: Autonomous roadmap through Results, with reviewed local integration](0026-autonomous-roadmap-through-results.md)
 - [0027: Unified panel components, one message system, and shared table widgets](0027-unified-panel-components.md)
+- [0028: Properties panel, definition tables, schedule day types, and the floating demo switch](0028-properties-panel-and-definition-tables.md)
 
 Number 0020 is used on the unmerged `feature/agentic` branch.

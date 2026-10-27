@@ -10,6 +10,7 @@ import {
 import { cx } from '../cx.ts'
 import componentStyles from './components.module.css'
 import formStyles from './forms.module.css'
+import { ScrollJump } from './ScrollJump.tsx'
 import styles from './selectableList.module.css'
 
 export type SelectableItem = {
@@ -161,6 +162,7 @@ export function SelectableList({
           )}
         </ListBox>
       )}
+      <ScrollJump label={ariaLabel} scroller={`.${styles.list}`} />
     </div>
   )
 }

@@ -99,6 +99,38 @@ export function toast(page: Page, text: string | RegExp): Locator {
 
 export const DEMO_CONDITIONS_KEY = 'eaui.demoConditions'
 
+/** The Properties panel, where the selection is shown and definitions edited (decision 0028). */
+export function properties(page: Page): Locator {
+  return page.getByRole('region', { name: 'Properties', exact: true })
+}
+
+/** Opens the Measures and scenarios page (formerly Creator). */
+export async function openMeasures(page: Page): Promise<Locator> {
+  await page
+    .getByRole('tab', { name: 'Measures and scenarios', exact: true })
+    .click()
+  const measures = page.getByRole('region', {
+    name: 'Measures and scenarios',
+    exact: true,
+  })
+  await expect(measures).toBeVisible()
+  return measures
+}
+
+/**
+ * Starts a new definition from its page's New button; the blank one opens in
+ * Properties, whose form region is named after it ("New measure").
+ */
+export async function startNew(
+  page: Page,
+  kind: 'archetype' | 'schedule' | 'measure' | 'scenario',
+): Promise<Locator> {
+  await page.getByRole('button', { name: `New ${kind}`, exact: true }).click()
+  const form = properties(page).getByRole('region', { name: `New ${kind}` })
+  await expect(form).toBeVisible()
+  return form
+}
+
 /** Normal product entry, through the same Create form a person uses. */
 export async function createProjectFromStart(
   page: Page,
@@ -113,9 +145,7 @@ export async function createProjectFromStart(
   await dialog
     .getByRole('button', { name: 'Create project', exact: true })
     .click()
-  await expect(
-    page.getByRole('toolbar', { name: 'Workbench commands' }),
-  ).toBeVisible()
+  await expect(page.getByRole('main', { name: 'Workspace' })).toBeVisible()
 }
 
 export async function openRecentProject(
@@ -128,9 +158,7 @@ export async function openRecentProject(
     .filter({ hasText: name })
     .first()
     .click()
-  await expect(
-    page.getByRole('toolbar', { name: 'Workbench commands' }),
-  ).toBeVisible()
+  await expect(page.getByRole('main', { name: 'Workspace' })).toBeVisible()
 }
 
 export const test = base.extend<{ basemapStub: undefined }>({

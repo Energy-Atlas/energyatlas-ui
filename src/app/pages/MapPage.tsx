@@ -453,7 +453,13 @@ export function MapPage() {
   }
 
   const ink = palette.ink
-  const selectedIds = selection.entityType ? selection.ids : []
+  // Only map objects are selected on the map; a selected definition (an
+  // archetype, a measure) is shown in Properties instead.
+  const selectedIds =
+    selection.entityType === 'building' ||
+    selection.entityType === 'gridElement'
+      ? selection.ids
+      : []
   const unavailable = METRICS.filter(
     (candidate) => !metrics[candidate.id].available,
   )

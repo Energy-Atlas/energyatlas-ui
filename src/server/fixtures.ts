@@ -40,7 +40,7 @@ export function isFixtureId(value: unknown): value is FixtureId {
   return typeof value === 'string' && value in FIXTURES
 }
 
-/** Scenario definitions need a scenario; create one as a user would in Creator. */
+/** Scenario definitions need a scenario; create one as a user would on the Measures and scenarios page. */
 function defineScenario(engine: Workbench) {
   if (Object.keys(engine.getState().scenarios).length > 0) return
   engine.execute(

@@ -24,9 +24,7 @@ test.describe('workbench shell', () => {
   test.beforeEach(async ({ page }) => {
     await page.goto('/')
     await createProjectFromStart(page)
-    await expect(
-      page.getByRole('toolbar', { name: 'Workbench commands' }),
-    ).toBeVisible()
+    await expect(page.getByRole('main', { name: 'Workspace' })).toBeVisible()
   })
 
   test('shows the ribbon, docked panels and pages, and the status bar', async ({
@@ -40,12 +38,12 @@ test.describe('workbench shell', () => {
       'Table',
       'Dashboard',
       'Roadmap',
-      'Creator',
+      'Measures and scenarios',
       'Settings',
       'Assets',
       'Workflow',
       'Reasoning',
-      'Inspection',
+      'Properties',
     ]) {
       await expect(page.getByRole('tab', { name, exact: true })).toBeVisible()
     }
@@ -91,7 +89,7 @@ test.describe('workbench shell', () => {
     for (const name of ['Map', 'Assets', 'Reasoning']) {
       await expect(item(menu, name)).toContainText('(on)')
     }
-    for (const name of ['Table', 'Workflow', 'Inspection']) {
+    for (const name of ['Table', 'Workflow', 'Properties']) {
       await expect(item(menu, name)).not.toContainText('(on)')
     }
     await page.keyboard.press('Escape')
@@ -367,9 +365,7 @@ test.describe('workbench shell', () => {
 test('edits the command palette query with Backspace', async ({ page }) => {
   await page.goto('/')
   await createProjectFromStart(page)
-  await expect(
-    page.getByRole('toolbar', { name: 'Workbench commands' }),
-  ).toBeVisible()
+  await expect(page.getByRole('main', { name: 'Workspace' })).toBeVisible()
   await page.keyboard.press('Control+k')
   const query = page.getByPlaceholder('Type a command')
   await expect(query).toBeVisible()

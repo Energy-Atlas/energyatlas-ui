@@ -25,6 +25,7 @@ import {
 import type { TableChange, TableSettings } from '../tables/tableSettings.ts'
 import componentStyles from './components.module.css'
 import styles from './dataTable.module.css'
+import { ScrollJump } from './ScrollJump.tsx'
 import { ColumnTools, TableBar, type FixedStyle } from './tableTools.tsx'
 
 export type GridTableProps<Row> = {
@@ -301,6 +302,7 @@ export function GridTable<Row>({
             {...gridOptions}
           />
         </HeaderContext.Provider>
+        <ScrollJump label={label} scroller=".ag-body-viewport" />
       </div>
     </div>
   )

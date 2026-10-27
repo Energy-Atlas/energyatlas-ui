@@ -1,36 +1,39 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useRef } from 'react'
 import { Button } from 'react-aria-components'
 import { useStore } from 'zustand'
-import {
-  APPEARANCE_LIST,
-  type AppearancePreference,
-} from '../appearance/appearances.ts'
+import { FIXTURES, FIXTURE_IDS } from '../../server/fixtures.ts'
 import { useClientSnapshot, useServices } from '../WorkbenchContext.tsx'
+import { forStartScreen, useAppActions, useInvokeAction } from '../actions.ts'
 import componentStyles from '../components/components.module.css'
-import formStyles from '../components/forms.module.css'
 import { InlineAlert } from '../components/InlineAlert.tsx'
+import { SelectableList } from '../components/SelectableList.tsx'
 import { cx } from '../cx.ts'
-import { DemoConditionsDialog } from '../shell/DemoConditionsDialog.tsx'
-import shellStyles from '../shell/shell.module.css'
-import markUrl from '../../assets/brand/energyatlas-mark.svg'
+import { Ribbon } from '../shell/Ribbon.tsx'
+import { ShellDialogHost } from '../shell/ShellDialogHost.tsx'
+import { useShellDialogs } from '../shell/useShellDialogs.ts'
+import { useShortcuts } from '../useShortcuts.ts'
 import { ProjectList } from './ProjectList.tsx'
-import { describeConditions } from '../../server/conditions.ts'
 import styles from './project.module.css'
 
+/**
+ * The start screen (decision 0024; menu bar and demos, decision 0028): the
+ * workbench's menu bar, with what needs a project unavailable, then Create
+ * and Open, the prebuilt demo projects, and the projects saved in this
+ * browser.
+ */
 export function ProjectStart() {
-  const { client, lifecycle, appearancePreference, setAppearance } =
-    useServices()
+  const { client, lifecycle } = useServices()
   const meta = useClientSnapshot((snapshot) => snapshot.meta)
-  const conditionLabels = useClientSnapshot((snapshot) =>
-    describeConditions(snapshot.conditions).join(', '),
-  )
   const pending = useClientSnapshot((snapshot) => snapshot.pending)
   const lifecycleSnapshot = useStore(lifecycle.store, (snapshot) => snapshot)
+  const { open, dialogs, onOpenChange } = useShellDialogs()
+  const actions = forStartScreen(useAppActions(dialogs))
+  const invoke = useInvokeAction()
+  useShortcuts(actions, invoke)
   const error =
     lifecycleSnapshot.dialog === null && lifecycleSnapshot.guard === null
       ? lifecycleSnapshot.issues.map((issue) => issue.message).join(' ')
       : ''
-  const [conditionsOpen, setConditionsOpen] = useState(false)
   const started = useRef(false)
   useEffect(() => {
     if (!started.current && !client.store.getState().meta.catalogReady) {
@@ -42,48 +45,26 @@ export function ProjectStart() {
     !meta.catalogReady ||
     pending.some((request) => request.type === 'project.list')
   const unavailable = lifecycleSnapshot.busy || pending.length > 0
+  const busyReason = lifecycleSnapshot.busy
+    ? 'Wait for the current project change to finish.'
+    : pending.length > 0
+      ? 'Wait for the server to answer first.'
+      : null
+
   return (
     <div className={styles.start}>
-      <header className={styles.header}>
-        <img
-          className={shellStyles.brandMark}
-          src={markUrl}
-          alt="EnergyAtlas"
-        />
-        <label className={styles.appearance}>
-          Appearance{' '}
-          <select
-            className={formStyles.input}
-            aria-label="Appearance"
-            value={appearancePreference}
-            onChange={(event) =>
-              setAppearance(event.target.value as AppearancePreference)
-            }
-          >
-            <option value="system">System</option>
-            {APPEARANCE_LIST.map((appearance) => (
-              <option key={appearance.id} value={appearance.id}>
-                {appearance.label}
-              </option>
-            ))}
-          </select>
-        </label>
-      </header>
+      <Ribbon actions={actions} invoke={invoke} projectHeading={false} />
       <main
         className={styles.content}
         aria-labelledby="projects-heading"
         tabIndex={-1}
       >
-        <div className={styles.titleRow}>
-          <h1 id="projects-heading" tabIndex={-1}>
-            Projects
-          </h1>
-          <span className={styles.metadata}>
-            Synthetic demo · browser storage
-          </span>
-        </div>
+        <h1 id="projects-heading" tabIndex={-1}>
+          Projects
+        </h1>
         <p>
-          Choose a saved project or create a new project to enter the workbench.
+          Choose a saved project or a demo, or create a new project to enter the
+          workbench.
         </p>
         <div className={styles.actions}>
           <Button
@@ -106,60 +87,75 @@ export function ProjectStart() {
             {`${error} Choose the project again to retry, or change Demo conditions.`}
           </InlineAlert>
         ) : null}
-        <section className={styles.section} aria-labelledby="recent-heading">
-          <h2 id="recent-heading" className={styles.sectionHeading}>
-            Recent projects
-          </h2>
-          {waiting ? (
-            <p role="status">Loading projects…</p>
-          ) : (
-            <>
-              {meta.catalogError ? (
-                <InlineAlert
-                  tone="danger"
-                  actions={
-                    <Button
-                      className={componentStyles.button}
-                      onPress={() => void client.listProjects()}
-                    >
-                      Try loading projects again
-                    </Button>
-                  }
-                >
-                  {meta.catalogError}
-                </InlineAlert>
-              ) : null}
-              {meta.projects.length ? (
-                <ProjectList
-                  projects={meta.projects.slice(0, 8)}
-                  disabled={unavailable}
-                />
-              ) : !meta.catalogError ? (
-                <p>
-                  No saved projects in this browser yet. Create a project, then
-                  save it to find it here.
-                </p>
-              ) : null}
-            </>
-          )}
-        </section>
+        <div className={styles.lists}>
+          <section className={styles.section} aria-labelledby="recent-heading">
+            <h2 id="recent-heading" className={styles.sectionHeading}>
+              Recent projects
+            </h2>
+            {waiting ? (
+              <p role="status">Loading projects…</p>
+            ) : (
+              <>
+                {meta.catalogError ? (
+                  <InlineAlert
+                    tone="danger"
+                    actions={
+                      <Button
+                        className={componentStyles.button}
+                        onPress={() => void client.listProjects()}
+                      >
+                        Try loading projects again
+                      </Button>
+                    }
+                  >
+                    {meta.catalogError}
+                  </InlineAlert>
+                ) : null}
+                {meta.projects.length ? (
+                  <ProjectList
+                    projects={meta.projects.slice(0, 8)}
+                    disabled={unavailable}
+                  />
+                ) : !meta.catalogError ? (
+                  <p>
+                    No saved projects in this browser yet. Create a project,
+                    then save it to find it here.
+                  </p>
+                ) : null}
+              </>
+            )}
+          </section>
+          <section className={styles.section} aria-labelledby="demos-heading">
+            <h2 id="demos-heading" className={styles.sectionHeading}>
+              Demo projects
+            </h2>
+            <SelectableList
+              aria-label="Demo projects"
+              className={styles.projects}
+              selectionMode="none"
+              items={FIXTURE_IDS.map((id) => ({
+                id,
+                title: FIXTURES[id].label,
+                meta: FIXTURES[id].description,
+                description: FIXTURES[id].description,
+              }))}
+              onAction={(id) => {
+                const fixture = FIXTURE_IDS.find(
+                  (candidate) => candidate === id,
+                )
+                if (fixture)
+                  void lifecycle.request({ type: 'fixture', fixture })
+              }}
+              disabledReason={busyReason}
+            />
+          </section>
+        </div>
       </main>
-      <footer className={styles.footer}>
-        <span>
-          Projects stay in this browser. No real backend or filesystem is
-          connected.
-          {conditionLabels ? ` Demo: ${conditionLabels}.` : ''}
-        </span>
-        <Button
-          className={componentStyles.button}
-          onPress={() => setConditionsOpen(true)}
-        >
-          Demo conditions…
-        </Button>
-      </footer>
-      <DemoConditionsDialog
-        isOpen={conditionsOpen}
-        onOpenChange={setConditionsOpen}
+      <ShellDialogHost
+        open={open}
+        onOpenChange={onOpenChange}
+        actions={actions}
+        invoke={invoke}
       />
     </div>
   )

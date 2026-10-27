@@ -10,6 +10,7 @@ import type { Task, WorkbenchState } from '../../../domain/types.ts'
 import { useClientSnapshot, useServices } from '../../WorkbenchContext.tsx'
 import { ActionButton } from '../../components/ActionButton.tsx'
 import componentStyles from '../../components/components.module.css'
+import { InlineAlert } from '../../components/InlineAlert.tsx'
 import { PropertyList } from '../../components/PropertyList.tsx'
 import { cx } from '../../cx.ts'
 import { formatTime } from '../../format.ts'
@@ -92,15 +93,21 @@ export function JobDetail({
       </div>
 
       {task.message ? (
-        <p
-          className={cx(
-            styles.message,
-            task.status === 'failed' && styles.messageFailed,
-            task.status === 'invalidated' && styles.messageWarning,
-          )}
+        <InlineAlert
+          tone={
+            task.status === 'failed'
+              ? 'danger'
+              : task.status === 'invalidated' || task.status === 'cancelled'
+                ? 'warning'
+                : 'info'
+          }
+          // The job's state, present whenever it is shown; the failure itself
+          // was announced as a message when it happened.
+          live="off"
+          className={styles.message}
         >
           {task.message}
-        </p>
+        </InlineAlert>
       ) : null}
 
       <ProgressBar

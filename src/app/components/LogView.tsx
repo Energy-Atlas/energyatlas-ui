@@ -1,4 +1,4 @@
-import { ArrowDownToLine, Copy, Download } from 'lucide-react'
+import { Copy, Download } from 'lucide-react'
 import {
   useEffect,
   useLayoutEffect,
@@ -10,6 +10,7 @@ import { downloadText, fileSlug } from '../csv.ts'
 import { cx } from '../cx.ts'
 import { formatTime } from '../format.ts'
 import { TONE_META, type Tone } from './InlineAlert.tsx'
+import { ScrollJump } from './ScrollJump.tsx'
 import { SegmentedFilter } from './SegmentedFilter.tsx'
 import { Toolbar, type ToolbarItem } from './Toolbar.tsx'
 import styles from './logView.module.css'
@@ -49,7 +50,10 @@ type LogViewProps = {
   entries: LogEntry[]
   /** Offers All and Problems (warnings and errors). */
   levelFilter?: boolean
-  /** Keeps the newest line in view until the reader scrolls up. */
+  /**
+   * Opens at the newest line and keeps it in view as lines arrive, while the
+   * reader is at the end; scrolling up stops following until they return.
+   */
   follow?: boolean
   /** Offers Copy and, with a file name, Download as text. */
   copyable?: boolean
@@ -96,7 +100,7 @@ export function LogView({
   listLabel,
   entries,
   levelFilter = false,
-  follow: followable = false,
+  follow = false,
   copyable = true,
   download = null,
   empty,
@@ -105,22 +109,19 @@ export function LogView({
   className,
 }: LogViewProps) {
   const [level, setLevel] = useState<LevelFilter>('all')
-  const [following, setFollowing] = useState(true)
   const [notice, setNotice] = useState('')
   const scrollRef = useRef<HTMLDivElement>(null)
-  // Scrolls this view makes itself are not the reader scrolling up.
-  const programmatic = useRef(false)
+  // Whether the reader is at the end, so new lines should stay in view.
+  const atEnd = useRef(true)
 
   const problems = entries.filter((entry) => PROBLEMS.has(entry.level))
   const shown = level === 'problems' ? problems : entries
-  const isFollowing = followable && following
 
   useLayoutEffect(() => {
     const scroller = scrollRef.current
-    if (!isFollowing || !scroller) return
-    programmatic.current = true
+    if (!follow || !scroller || !atEnd.current) return
     scroller.scrollTop = scroller.scrollHeight
-  }, [isFollowing, shown.length])
+  }, [follow, shown.length, level])
 
   useEffect(() => {
     if (!notice) return
@@ -129,19 +130,6 @@ export function LogView({
   }, [notice])
 
   const items: ToolbarItem[] = [
-    ...(followable
-      ? [
-          {
-            id: 'follow',
-            label: 'Follow latest',
-            icon: ArrowDownToLine,
-            iconOnly: true,
-            pressed: following,
-            disabledReason: null,
-            onPress: () => setFollowing((current) => !current),
-          },
-        ]
-      : []),
     ...(copyable
       ? [
           {
@@ -213,50 +201,76 @@ export function LogView({
       <div role="status" className="visually-hidden">
         {notice}
       </div>
-      <div
-        ref={scrollRef}
-        role={scrollable ? 'log' : undefined}
-        aria-label={scrollable ? ariaLabel : undefined}
-        className={cx(scrollable && styles.scroll)}
-        // Scrollable, so it must be reachable by keyboard.
-        tabIndex={scrollable ? 0 : undefined}
-        onScroll={(event) => {
-          if (programmatic.current) {
-            programmatic.current = false
-            return
-          }
-          const scroller = event.currentTarget
-          const atEnd =
-            scroller.scrollTop + scroller.clientHeight >=
-            scroller.scrollHeight - 4
-          if (followable && following !== atEnd) setFollowing(atEnd)
-        }}
-      >
-        {shown.length === 0 ? (
-          <div className={styles.empty}>
-            {entries.length === 0 ? (
-              (empty ?? 'No lines yet.')
-            ) : (
-              <>
-                No warnings or errors.{' '}
-                <button
-                  type="button"
-                  className={styles.linkButton}
-                  onClick={() => setLevel('all')}
-                >
-                  Show all
-                </button>
-              </>
-            )}
-          </div>
-        ) : (
-          <ol className={styles.lines} aria-label={listLabel}>
-            {shown.map((entry) => (
-              <LogLine key={entry.id} entry={entry} />
-            ))}
-          </ol>
-        )}
+      <div className={cx(scrollable && styles.scrollFrame)}>
+        <div
+          ref={scrollRef}
+          role={scrollable ? 'log' : undefined}
+          aria-label={scrollable ? ariaLabel : undefined}
+          className={cx(scrollable && styles.scroll)}
+          data-log-scroller=""
+          // Scrollable, so it must be reachable by keyboard.
+          tabIndex={scrollable ? 0 : undefined}
+          onScroll={(event) => {
+            const scroller = event.currentTarget
+            atEnd.current =
+              scroller.scrollTop + scroller.clientHeight >=
+              scroller.scrollHeight - 4
+          }}
+        >
+          <LogLines
+            entries={entries}
+            shown={shown}
+            empty={empty}
+            onShowAll={() => setLevel('all')}
+            listLabel={listLabel}
+          />
+        </div>
+        {scrollable ? (
+          <ScrollJump label={ariaLabel} scroller="[data-log-scroller]" />
+        ) : null}
       </div>
+    </div>
+  )
+}
+
+function LogLines({
+  entries,
+  shown,
+  empty,
+  onShowAll,
+  listLabel,
+}: {
+  entries: LogEntry[]
+  shown: LogEntry[]
+  empty: ReactNode
+  onShowAll: () => void
+  listLabel: string | undefined
+}) {
+  if (shown.length > 0) {
+    return (
+      <ol className={styles.lines} aria-label={listLabel}>
+        {shown.map((entry) => (
+          <LogLine key={entry.id} entry={entry} />
+        ))}
+      </ol>
+    )
+  }
+  return (
+    <div className={styles.empty}>
+      {entries.length === 0 ? (
+        (empty ?? 'No lines yet.')
+      ) : (
+        <>
+          No warnings or errors.{' '}
+          <button
+            type="button"
+            className={styles.linkButton}
+            onClick={onShowAll}
+          >
+            Show all
+          </button>
+        </>
+      )}
     </div>
   )
 }
@@ -266,15 +280,19 @@ function LogLine({ entry }: { entry: LogEntry }) {
   const Icon = tone.icon
   return (
     <li
-      className={cx(styles.line, entry.muted && styles.muted)}
+      className={cx(
+        styles.line,
+        entry.muted && styles.muted,
+        !entry.at && styles.untimed,
+      )}
       data-level={entry.level}
       aria-label={entry.label}
     >
-      <span className={styles.time}>
-        {entry.at ? (
-          <time dateTime={entry.at}>{formatTime(entry.at)}</time>
-        ) : null}
-      </span>
+      {entry.at ? (
+        <time className={styles.time} dateTime={entry.at}>
+          {formatTime(entry.at)}
+        </time>
+      ) : null}
       <Icon
         size={12}
         role="img"
@@ -284,7 +302,7 @@ function LogLine({ entry }: { entry: LogEntry }) {
       <div className={styles.body}>
         {entry.source || entry.tags?.length ? (
           <span className={styles.source}>
-            {[entry.source, ...(entry.tags ?? [])].filter(Boolean).join(' · ')}
+            {[entry.source, ...(entry.tags ?? [])].filter(Boolean).join(' Â· ')}
           </span>
         ) : null}
         <span className={styles.text}>{entry.text}</span>

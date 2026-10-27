@@ -43,7 +43,14 @@ type RibbonProps = {
   invoke: (action: AppAction) => void
 }
 
-export function Ribbon({ actions, invoke }: RibbonProps) {
+export function Ribbon({
+  actions,
+  invoke,
+  projectHeading = true,
+}: RibbonProps & {
+  /** False on the start screen, whose own heading names it. */
+  projectHeading?: boolean
+}) {
   const projectName = useWorkbenchSnapshot(
     (snapshot) => snapshot.state.project.name,
   )
@@ -54,7 +61,9 @@ export function Ribbon({ actions, invoke }: RibbonProps) {
       <div className={styles.brand}>
         <img className={styles.brandMark} src={markUrl} alt="EnergyAtlas" />
         {/* The mark alone is shown; the project name stays the page heading. */}
-        <h1 className="visually-hidden">{projectName}</h1>
+        {projectHeading ? (
+          <h1 className="visually-hidden">{projectName}</h1>
+        ) : null}
       </div>
       <Toolbar aria-label="Workbench commands" className={styles.toolbar}>
         {ACTION_GROUPS.map((group) => (

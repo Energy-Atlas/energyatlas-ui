@@ -423,3 +423,33 @@ buttons, so trailing row actions are not offered; a row's own action, or the det
 empty state, log text, the level filter, and job log levels), 101 development browser tests, and 3 production-preview
 tests passed; `git diff --check` clean. Jobs, Archetypes, Creator, the Reasoning tool calls, and the Messages panel
 were checked by eye; the gallery shows both components.
+
+## Owner review of step 5 (2026-10-27)
+
+The owner tested step 5 and asked for changes recorded in [decision 0028](decisions/0028-properties-panel-and-definition-tables.md).
+Built on `claude/ui-component-system` (2026-10-27), not merged into `master`.
+
+**Real:**
+
+- No left accent bars: the job message is an `InlineAlert`; intake and calibration issues, approvals, and selected
+  rows in lists, tables, and the Workflow panel use fills.
+- `ScrollJump` (`src/app/components/ScrollJump.tsx`) on `DataTable`, `GridTable`, `SelectableList`, and
+  `LogView`. The Follow latest toggle is gone; a log follows while the reader is at its end. Log, Messages, and
+  header toolbars wrap or move into More instead of running past the pane (a toolbar measured while its panel was
+  closed now measures again when shown).
+- Messages resizing: a splitter drag took 180 to 270 ms per pointer move (the whole shell re-rendered and the layout
+  was serialized to storage on every move); it now stays under 50 ms (tab content is cached, the layout is saved once
+  changes settle, and the Messages panel subscribes to its own open state only).
+- Reasoning: runs of tool calls collapse to "Used N tools" and open into the earlier cards; mono only for the input.
+- Properties panel (formerly Inspection) shows and edits archetypes, schedules, measures, and scenarios, and shows
+  assets from the Assets tree; New buttons create definitions there. Edited fields are marked; Cancel discards.
+- Archetypes page: project archetypes, the synthetic library, and schedules as tables with search and filters;
+  Measures and scenarios page (formerly Creator): measures, the measure library, scenarios, and the comparison.
+- Schedules have one to seven day types and a week; the editor drags or keys points, wraps hour fields to the pane,
+  and shows the annual average with equivalent full-load hours.
+- Start screen: the workbench menu bar (actions needing a project explain why), Recent projects and Demo projects,
+  no appearance select or demo boilerplate. The demo switch floats over every screen and can be moved.
+
+**Verification (2026-10-27):** typecheck, lint, and format clean; 362 unit tests (adds the definition selection,
+schedule day types and their migration from weekday/weekend); browser tests updated for the tables, Properties,
+the start screen, and the demo switch, with a new schedule editing test (drag keys, edited marks, Cancel).

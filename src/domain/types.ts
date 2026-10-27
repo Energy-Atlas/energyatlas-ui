@@ -81,12 +81,35 @@ export type Archetype = {
   source: DefinitionSource
 }
 
-/** A daily and weekly schedule: 24 hourly fractions for a weekday and a weekend day. */
+/** One kind of day in a schedule, such as Weekday or Sunday: 24 hourly fractions. */
+export type DayProfile = {
+  /** Stable within its schedule; the week refers to it. */
+  id: string
+  name: string
+  hours: number[]
+}
+
+/** The days of the week, Monday first, as a schedule's week lists them. */
+export const WEEK_DAYS = [
+  'Monday',
+  'Tuesday',
+  'Wednesday',
+  'Thursday',
+  'Friday',
+  'Saturday',
+  'Sunday',
+] as const
+
+/**
+ * A daily and weekly schedule: one or more day profiles of 24 hourly
+ * fractions, and which profile each day of the week uses.
+ */
 export type Schedule = {
   id: string
   name: string
-  weekday: number[]
-  weekend: number[]
+  days: DayProfile[]
+  /** The id of the day profile each day uses, Monday first (7 entries). */
+  week: string[]
   source: DefinitionSource
 }
 
@@ -408,7 +431,60 @@ export type Issue = {
   createdAt: string
 }
 
-export type SelectableEntity = 'building' | 'gridElement'
+/**
+ * What the shared selection can hold. Buildings and grid elements are map
+ * objects; the rest are definitions the Properties panel shows and edits.
+ */
+export type SelectableEntity =
+  | 'building'
+  | 'gridElement'
+  | 'archetype'
+  | 'schedule'
+  | 'measure'
+  | 'scenario'
+  | 'asset'
+
+export const SELECTABLE_ENTITIES = [
+  'building',
+  'gridElement',
+  'archetype',
+  'schedule',
+  'measure',
+  'scenario',
+  'asset',
+] as const satisfies readonly SelectableEntity[]
+
+/** The state collection holding each selectable kind. */
+export function selectableCollection(
+  state: Pick<
+    WorkbenchState,
+    | 'buildings'
+    | 'gridElements'
+    | 'archetypes'
+    | 'schedules'
+    | 'measures'
+    | 'scenarios'
+    | 'assets'
+  >,
+  entityType: SelectableEntity,
+): Record<string, unknown> {
+  switch (entityType) {
+    case 'building':
+      return state.buildings
+    case 'gridElement':
+      return state.gridElements
+    case 'archetype':
+      return state.archetypes
+    case 'schedule':
+      return state.schedules
+    case 'measure':
+      return state.measures
+    case 'scenario':
+      return state.scenarios
+    case 'asset':
+      return state.assets
+  }
+}
 
 export type Selection = {
   entityType: SelectableEntity | null

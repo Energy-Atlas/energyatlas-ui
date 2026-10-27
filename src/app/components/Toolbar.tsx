@@ -1,5 +1,5 @@
 import { Ellipsis, type LucideIcon } from 'lucide-react'
-import { useLayoutEffect, useRef, useState } from 'react'
+import { useCallback, useLayoutEffect, useRef, useState } from 'react'
 import { Separator, Toolbar as AriaToolbar } from 'react-aria-components'
 import { cx } from '../cx.ts'
 import componentStyles from './components.module.css'
@@ -61,31 +61,45 @@ export function Toolbar({
   const [available, setAvailable] = useState<number | null>(null)
   const key = itemKey(items)
 
-  // Measure every item, laid out once in an inert copy.
-  useLayoutEffect(() => {
+  // Measure every item, laid out once in an inert copy. A toolbar in a
+  // closed panel measures nothing, so it measures again when it is shown.
+  const measureItems = useCallback(() => {
     const measure = measureRef.current
     if (!measure) return
     const children = [...measure.children] as HTMLElement[]
     const more = children.pop()
     const gap = Number.parseFloat(getComputedStyle(measure).columnGap) || 0
-    setWidths({
-      key,
-      items: children.map((child) => child.getBoundingClientRect().width),
-      more: more?.getBoundingClientRect().width ?? 0,
-      gap,
-    })
+    const items = children.map((child) => child.getBoundingClientRect().width)
+    if (items.length > 0 && items.every((width) => width === 0)) return
+    setWidths((current) =>
+      current &&
+      current.key === key &&
+      current.gap === gap &&
+      current.items.join() === items.join()
+        ? current
+        : {
+            key,
+            items,
+            more: more?.getBoundingClientRect().width ?? 0,
+            gap,
+          },
+    )
   }, [key])
+
+  useLayoutEffect(measureItems, [measureItems])
 
   // Follow the space the frame is given.
   useLayoutEffect(() => {
     const frame = frameRef.current
     if (!frame || typeof ResizeObserver === 'undefined') return
     const observer = new ResizeObserver(([entry]) => {
-      if (entry) setAvailable(entry.contentRect.width)
+      if (!entry) return
+      setAvailable(entry.contentRect.width)
+      measureItems()
     })
     observer.observe(frame)
     return () => observer.disconnect()
-  }, [])
+  }, [measureItems])
 
   const overflow =
     widths && widths.key === key && available !== null && available > 0

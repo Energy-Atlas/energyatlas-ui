@@ -400,11 +400,11 @@ export function DashboardPage() {
               scenario stages.
             </span>
             <ActionButton
-              label="Open the Creator page"
+              label="Open the Measures and scenarios page"
               disabledReason={null}
               onPress={() => layout.openPage('creator')}
             >
-              Open Creator
+              Open Measures and scenarios
             </ActionButton>
           </div>
         ) : (
@@ -534,8 +534,8 @@ export function DashboardPage() {
         {data.leftOut.length > 0 ? (
           <p className={componentStyles.muted}>
             Left out of the comparison set, so not charted:{' '}
-            {data.leftOut.join(', ')}. Include them in Creator to model and
-            chart them.
+            {data.leftOut.join(', ')}. Include them in Measures and scenarios to
+            model and chart them.
           </p>
         ) : null}
       </section>

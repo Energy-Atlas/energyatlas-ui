@@ -1,0 +1,74 @@
+/* Definitions in the Properties panel (decision 0028): a header, the fields
+   in one column, and Save and Cancel at the end. The panel is narrow, so
+   nothing here is wider than it. */
+.definition {
+  display: grid;
+  gap: var(--space-3);
+  min-width: 0;
+}
+
+.header {
+  display: grid;
+  gap: 0.125rem;
+}
+
+.eyebrow {
+  margin: 0;
+  color: var(--color-text-muted);
+  font-family: var(--label-font);
+  font-size: var(--label-size);
+  font-weight: var(--label-weight);
+  letter-spacing: var(--label-tracking);
+  text-transform: var(--label-case);
+}
+
+.titleRow {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-1) var(--space-2);
+}
+
+.title {
+  margin: 0;
+  font-size: var(--font-size-title);
+  overflow-wrap: anywhere;
+}
+
+.provenance {
+  margin: 0;
+  color: var(--color-text-muted);
+  font-size: var(--font-size-small);
+}
+
+.fields {
+  display: grid;
+  gap: var(--space-3);
+  min-width: 0;
+}
+
+.footer {
+  display: grid;
+  gap: var(--space-1);
+  padding-top: var(--space-2);
+  border-top: var(--rule);
+}
+
+.editedNote {
+  margin: 0;
+  color: var(--color-text-muted);
+  font-size: var(--font-size-small);
+}
+
+.footerActions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: var(--space-1);
+}
+
+.actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-1);
+}

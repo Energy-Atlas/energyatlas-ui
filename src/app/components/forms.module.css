@@ -55,6 +55,26 @@
   color: var(--color-text-muted);
 }
 
+/* An edited value of something saved: the accent edge and a light tint, so
+   the edits stand out until they are saved or cancelled. */
+.edited .input,
+.input.edited {
+  border-color: var(--color-accent);
+  background: color-mix(in srgb, var(--color-accent) 10%, var(--field-bg));
+}
+
+.edited > .label::after,
+.edited .label::after {
+  content: '';
+  display: inline-block;
+  width: 0.375rem;
+  height: 0.375rem;
+  margin-left: 0.375rem;
+  border-radius: 50%;
+  background: var(--color-accent);
+  vertical-align: middle;
+}
+
 .fieldError {
   color: var(--tone-danger-text);
   font-size: var(--font-size-small);

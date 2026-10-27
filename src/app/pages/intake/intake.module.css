@@ -49,10 +49,10 @@
 .blocking {
   margin: 0;
   padding: var(--space-2) var(--space-3);
-  border: var(--rule);
-  border-left: 2px solid var(--tone-danger-text);
+  /* The danger fill of InlineAlert and toasts, never an edge bar. */
+  border: 1px solid var(--tone-danger-text);
   border-radius: var(--radius-sm);
-  background: var(--color-surface-raised);
+  background: var(--tone-danger-bg);
 }
 
 .issue {

@@ -1,4 +1,4 @@
-import { createProjectFromStart } from './test.ts'
+import { createProjectFromStart, openMeasures, startNew } from './test.ts'
 import { AxeBuilder } from '@axe-core/playwright'
 import { expect, test, type Page } from './test.ts'
 
@@ -40,9 +40,7 @@ test('dashboard compares a modeled scenario and previews adoption before applyin
   test.setTimeout(120_000)
   await page.goto('/')
   await createProjectFromStart(page)
-  await expect(
-    page.getByRole('toolbar', { name: 'Workbench commands' }),
-  ).toBeVisible()
+  await expect(page.getByRole('main', { name: 'Workspace' })).toBeVisible()
 
   await page.getByRole('tab', { name: 'Dashboard', exact: true }).click()
   await expect(page.getByText('No results yet')).toBeVisible()
@@ -58,13 +56,16 @@ test('dashboard compares a modeled scenario and previews adoption before applyin
     .click()
   await runStages(page, ['Archetype modeling', 'Baseline model setup'])
 
-  await page.getByRole('tab', { name: 'Creator', exact: true }).click()
-  const measureForm = page.getByRole('region', { name: 'New measure' })
+  await openMeasures(page)
+  const measureForm = await startNew(page, 'measure')
   await measureForm
     .getByRole('textbox', { name: 'Name' })
     .fill('Envelope retrofit')
   await measureForm.getByRole('button', { name: 'Create measure' }).click()
-  const scenarioForm = page.getByRole('region', { name: 'New scenario' })
+  await expect(page.getByRole('grid', { name: 'Measures' })).toContainText(
+    'Envelope retrofit',
+  )
+  const scenarioForm = await startNew(page, 'scenario')
   await scenarioForm
     .getByRole('textbox', { name: 'Name' })
     .fill('Half retrofitted')

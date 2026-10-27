@@ -143,11 +143,8 @@ describe('LogView', () => {
     expect(lines.children).toHaveLength(2)
     await userEvent.click(screen.getByRole('radio', { name: /^Problems/ }))
     expect(screen.getAllByRole('listitem')).toHaveLength(1)
-    expect(
-      screen
-        .getByRole('button', { name: 'Follow latest' })
-        .getAttribute('aria-pressed'),
-    ).toBe('true')
+    // Following is automatic at the end of the log; jump buttons replace the toggle.
+    expect(screen.queryByRole('button', { name: 'Follow latest' })).toBeNull()
   })
 
   test('reads job log levels from the runner wording', () => {

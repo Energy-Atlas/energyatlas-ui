@@ -1,6 +1,8 @@
 import {
   Check,
   ChevronDown,
+  ChevronRight,
+  CircleCheck,
   CircleX,
   CornerDownLeft,
   Info,
@@ -41,7 +43,7 @@ import type {
 } from '../agent/types.ts'
 import { ActionButton } from '../components/ActionButton.tsx'
 import { CapabilityBadge } from '../components/CapabilityBadge.tsx'
-import { LogView, type LogEntry } from '../components/LogView.tsx'
+import componentStyles from '../components/components.module.css'
 import menuStyles from '../components/menus.module.css'
 import { cx } from '../cx.ts'
 import styles from './reasoning.module.css'
@@ -77,42 +79,86 @@ function transcriptBlocks(items: TranscriptItem[]): TranscriptBlock[] {
   return blocks
 }
 
-function toolEntry(item: ToolItem): LogEntry {
+/** One tool call: what it did, whether it applied, and its input on demand. */
+function ToolCall({ item }: { item: ToolItem }) {
   const applied = item.result.status === 'applied'
-  const operations = item.result.operationIds.join(', ') || 'none'
-  return {
-    id: item.id,
-    level: applied ? 'success' : 'danger',
-    source: toolTypeOf(item.call),
-    tags: [applied ? 'Applied' : 'Rejected'],
-    text: item.title,
-    description:
-      [item.result.summary, ...item.result.issues.map((issue) => issue.message)]
-        .filter(Boolean)
-        .join(' ') || undefined,
-    detail: {
-      label: 'Input',
-      content: `Operations: ${operations}\n${JSON.stringify(toolInputOf(item.call), null, 2)}`,
-    },
-    label: `Tool call: ${item.title}`,
-  }
+  return (
+    <li className={styles.tool} aria-label={`Tool call: ${item.title}`}>
+      <div className={styles.toolRow}>
+        <Wrench size={14} aria-hidden="true" className={styles.icon} />
+        <span className={styles.toolTitle}>{item.title}</span>
+        {applied ? (
+          <span
+            className={cx(componentStyles.state, componentStyles.stateQuiet)}
+          >
+            <CircleCheck size={12} aria-hidden="true" />
+            Applied
+          </span>
+        ) : (
+          <span
+            className={cx(
+              componentStyles.state,
+              componentStyles.stateAttention,
+              componentStyles.danger,
+            )}
+          >
+            <CircleX size={12} aria-hidden="true" />
+            Rejected
+          </span>
+        )}
+      </div>
+      <p className={styles.toolMeta}>
+        {toolTypeOf(item.call)} ·{' '}
+        {item.result.operationIds.join(', ') || 'no operation'}
+      </p>
+      {item.result.summary ? (
+        <p className={styles.text}>{item.result.summary}</p>
+      ) : null}
+      {item.result.issues.map((issue) => (
+        <p key={issue.message} className={styles.toolIssue}>
+          {issue.message}
+        </p>
+      ))}
+      <details className={styles.toolDetails}>
+        <summary>Input</summary>
+        <pre>{JSON.stringify(toolInputOf(item.call), null, 2)}</pre>
+      </details>
+    </li>
+  )
 }
 
-/** A run of tool calls: what each did, its result, and its input on demand. */
+/**
+ * A run of consecutive tool calls, collapsed to "Used N tools" so the
+ * conversation stays readable; a rejected call is named in the summary.
+ */
 function ToolCalls({ items }: { items: ToolItem[] }) {
+  const rejected = items.filter(
+    (item) => item.result.status !== 'applied',
+  ).length
   return (
-    <li className={cx(styles.entry, styles.tool)}>
-      <p className={cx(styles.speaker, styles.toolHeading)}>
-        <Wrench size={14} aria-hidden="true" className={styles.icon} />
-        Tool calls
-      </p>
-      <LogView
-        aria-label="Tool calls"
-        listLabel={`${items.length} tool call${items.length === 1 ? '' : 's'}`}
-        entries={items.map(toolEntry)}
-        scrollable={false}
-        copyable={false}
-      />
+    <li className={styles.entry}>
+      <details className={styles.toolGroup}>
+        <summary className={styles.toolSummary}>
+          <ChevronRight
+            size={14}
+            aria-hidden="true"
+            className={styles.toolChevron}
+          />
+          <Wrench size={14} aria-hidden="true" className={styles.icon} />
+          Used {items.length} tool{items.length === 1 ? '' : 's'}
+          {rejected > 0 ? (
+            <span className={styles.toolRejected}>· {rejected} rejected</span>
+          ) : null}
+        </summary>
+        <ol
+          className={styles.toolList}
+          aria-label={`${items.length} tool call${items.length === 1 ? '' : 's'}`}
+        >
+          {items.map((item) => (
+            <ToolCall key={item.id} item={item} />
+          ))}
+        </ol>
+      </details>
     </li>
   )
 }

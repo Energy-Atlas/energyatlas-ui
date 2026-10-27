@@ -3,8 +3,9 @@ import { capabilities, type CapabilityId } from '../domain/capabilities.ts'
 import {
   ARCHETYPE_LIBRARY,
   SCHEDULE_LIBRARY,
+  weekdayWeekend,
 } from '../domain/archetypes/library.ts'
-import type { WorkbenchState } from '../domain/types.ts'
+import { SELECTABLE_ENTITIES, type WorkbenchState } from '../domain/types.ts'
 
 const id = z.string().min(1)
 const text = z.string()
@@ -128,13 +129,34 @@ const archetype = z.preprocess((value) => {
         source: { kind: 'project', operationId: 'saved-before-definitions' },
       }
 }, archetypeFields)
-const schedule = z.object({
-  id,
-  name: text,
-  weekday: z.array(number).length(24),
-  weekend: z.array(number).length(24),
-  source: definitionSource,
-})
+const hours = z.array(number).length(24)
+// Schedules saved before day types had one weekday and one weekend profile;
+// they load as those two day types (Monday to Friday, Saturday and Sunday).
+const schedule = z.preprocess(
+  (value) => {
+    if (!value || typeof value !== 'object' || 'days' in value) return value
+    const saved = value as Record<string, unknown> & {
+      weekday?: unknown
+      weekend?: unknown
+    }
+    const { weekday, weekend, ...rest } = saved
+    if (!Array.isArray(weekday) || !Array.isArray(weekend)) return value
+    return {
+      ...rest,
+      ...weekdayWeekend(weekday as number[], weekend as number[]),
+    }
+  },
+  z.object({
+    id,
+    name: text,
+    days: z
+      .array(z.object({ id, name: text, hours }))
+      .min(1)
+      .max(7),
+    week: z.array(id).length(7),
+    source: definitionSource,
+  }),
+)
 const meterUnit = z.enum(['kWh', 'MWh'])
 const fitMetrics = z.object({ cvrmsePercent: number, nmbePercent: number })
 const calibrationState = z.object({
@@ -416,7 +438,7 @@ export const projectStateSchema: z.ZodType<WorkbenchState, unknown> = z
       }),
     ),
     selection: z.object({
-      entityType: z.enum(['building', 'gridElement']).nullable(),
+      entityType: z.enum(SELECTABLE_ENTITIES).nullable(),
       ids,
     }),
     pendingEdits: record(

@@ -22,9 +22,7 @@ function reasoningPanel(page: Page) {
 test.beforeEach(async ({ page }) => {
   await page.goto('/')
   await createProjectFromStart(page)
-  await expect(
-    page.getByRole('toolbar', { name: 'Workbench commands' }),
-  ).toBeVisible()
+  await expect(page.getByRole('main', { name: 'Workspace' })).toBeVisible()
 })
 
 test('layout session runs missing stages after approval, then arranges the workbench', async ({
@@ -54,6 +52,11 @@ test('layout session runs missing stages after approval, then arranges the workb
     page.getByRole('tab', { name: 'Table', exact: true }),
   ).toHaveAttribute('aria-selected', 'true')
   await expect(page.getByText('5 selected', { exact: true })).toBeVisible()
+  // Runs of tool calls are collapsed to "Used N tools" until opened.
+  await panel
+    .getByText(/^Used \d+ tools?/)
+    .last()
+    .click()
   await expect(
     panel.getByRole('listitem', {
       name: 'Tool call: Select the 5 tallest buildings',
@@ -92,7 +95,7 @@ test('a model change waits for approval and rejecting it changes nothing', async
   ).toBeVisible()
 
   await page.keyboard.press('Control+k')
-  await page.keyboard.type('creator')
+  await page.keyboard.type('measures and scenarios')
   await page.keyboard.press('Enter')
   await expect(page.getByText('No measures yet.')).toBeVisible()
 })

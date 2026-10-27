@@ -23,7 +23,7 @@ import { dayOfYearLabel, timeOfDayLabel } from '../pages/sunPosition.ts'
 import type { ViewOperation } from '../view/viewOperations.ts'
 import styles from './inspection.module.css'
 
-// The map's own properties, shown in Inspection while the map is the surface
+// The map's own properties, shown in Properties while the map is the surface
 // being worked in and nothing is selected (decision 0018).
 
 type ControlProps = {
@@ -106,7 +106,7 @@ export function MapProperties() {
   const limits = LIGHTING_LIMITS
 
   return (
-    <section className={styles.panel} aria-label="Inspection" tabIndex={0}>
+    <section className={styles.panel} aria-label="Properties" tabIndex={0}>
       <header className={styles.header}>
         <p className={styles.eyebrow}>Map</p>
         <h3 id={headingId} className={styles.title}>

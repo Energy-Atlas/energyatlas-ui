@@ -26,9 +26,7 @@ async function seriousViolations(page: Page): Promise<string[]> {
 async function openWorkbench(page: Page) {
   await page.goto('/')
   await createProjectFromStart(page)
-  await expect(
-    page.getByRole('toolbar', { name: 'Workbench commands' }),
-  ).toBeVisible()
+  await expect(page.getByRole('main', { name: 'Workspace' })).toBeVisible()
 }
 
 test('loads the Geist typeface for workbench text', async ({ page }) => {

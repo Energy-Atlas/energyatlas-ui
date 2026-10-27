@@ -42,7 +42,7 @@ test('drills into a building and exports the published result as CSV', async ({
   await page.getByRole('radio', { name: 'Typical weekday (hourly)' }).focus()
   await page.keyboard.press('Space')
   await expect(results).toContainText(`Typical weekday, ${name} (kW)`)
-  await expect(results).toContainText('Weekday shape of the schedule')
+  await expect(results).toContainText('Weekday (Monday) shape of the schedule')
 
   const downloading = page.waitForEvent('download')
   await provenance

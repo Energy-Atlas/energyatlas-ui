@@ -24,6 +24,7 @@ import {
   RotateCcw,
   Save,
   ScanSearch,
+  SlidersHorizontal,
   Sun,
   Undo2,
   UserRound,
@@ -295,10 +296,10 @@ export function useAppActions(dialogs: ShellDialogs): AppAction[] {
       },
       {
         id: 'view.toggleInspection',
-        label: 'Inspection',
+        label: 'Properties',
         group: 'View',
         menuPath: ['Panels'],
-        icon: ScanSearch,
+        icon: SlidersHorizontal,
         shortcut: 'Ctrl+Alt+I',
         pressed: layout.isPanelOpen('inspection'),
         disabledReason: null,
@@ -354,13 +355,13 @@ export function useAppActions(dialogs: ShellDialogs): AppAction[] {
       },
       {
         id: 'view.inspectSelection',
-        label: 'Inspect selection',
+        label: 'Show selection properties',
         group: 'View',
         icon: ScanSearch,
         disabledReason:
           state.selection.ids.length > 0
             ? null
-            : 'Nothing is selected. Select buildings or grid elements on the Map or Table page first.',
+            : 'Nothing is selected. Select buildings or grid elements on the Map or Table page, or a definition in a table, first.',
         perform: () => showInspection(),
       },
       {
@@ -645,6 +646,39 @@ export function useAppActions(dialogs: ShellDialogs): AppAction[] {
     jobsView,
     toastsShown,
   ])
+}
+
+/** What the start screen offers from the shared menus; the rest need a project. */
+const START_ACTION_IDS = new Set([
+  'file.new',
+  'file.openProject',
+  'view.fullScreen',
+  'help.palette',
+  'help.shortcuts',
+  'help.capabilities',
+  'help.demoConditions',
+  'help.comments',
+  'account.logOut',
+])
+
+/**
+ * The shared actions as the start screen shows them (decision 0028): the
+ * same menu bar, with everything that needs an open project unavailable and
+ * saying so.
+ */
+export function forStartScreen(actions: AppAction[]): AppAction[] {
+  return actions.map((action) =>
+    START_ACTION_IDS.has(action.id) || action.id.startsWith('view.appearance.')
+      ? action
+      : {
+          ...action,
+          pressed: undefined,
+          disabledReason:
+            action.id === 'file.projects'
+              ? 'This is the Projects screen.'
+              : 'Open or create a project first.',
+        },
+  )
 }
 
 export function useInvokeAction(): (action: AppAction) => void {

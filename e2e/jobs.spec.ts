@@ -88,7 +88,7 @@ test('holds partial results, opens the job from its notice, and retries only fai
     .getByRole('button', { name: /^Select building / })
     .first()
     .click()
-  await expect(page.getByRole('region', { name: 'Inspection' })).toContainText(
+  await expect(page.getByRole('region', { name: 'Properties' })).toContainText(
     /Building/,
   )
 

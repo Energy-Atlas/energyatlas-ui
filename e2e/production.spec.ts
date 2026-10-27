@@ -22,9 +22,7 @@ test('the built bundle serves its assets and renders the map', async ({
 
   await page.goto(BASE_PATH)
   await createProjectFromStart(page)
-  await expect(
-    page.getByRole('toolbar', { name: 'Workbench commands' }),
-  ).toBeVisible()
+  await expect(page.getByRole('main', { name: 'Workspace' })).toBeVisible()
 
   // MapLibre derives this URL from import.meta.url at run time, so the bundler
   // never sees it and the build has to emit the file next to its chunk.

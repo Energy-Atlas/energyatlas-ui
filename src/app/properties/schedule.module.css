@@ -1,0 +1,146 @@
+/* The schedule editor (decision 0028): fits the Properties panel at any
+   width. The chart scales with the panel; hour fields wrap into rows. */
+.section {
+  display: grid;
+  gap: var(--space-2);
+  min-width: 0;
+}
+
+.sectionTitle {
+  margin: 0;
+  color: var(--color-text-muted);
+  font-family: var(--label-font);
+  font-size: var(--label-size);
+  font-weight: var(--label-weight);
+  letter-spacing: var(--label-tracking);
+  text-transform: var(--label-case);
+}
+
+.dayBar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-1);
+}
+
+.chart {
+  display: block;
+  width: 100%;
+  height: auto;
+  touch-action: none;
+  user-select: none;
+}
+
+.grid {
+  stroke: var(--color-border-subtle);
+  stroke-width: 1;
+}
+
+.tick {
+  fill: var(--color-text-muted);
+  font-family: var(--font-sans);
+  font-size: var(--font-size-label);
+}
+
+.line {
+  fill: none;
+  stroke: var(--color-accent);
+  stroke-width: 2;
+}
+
+.savedLine {
+  fill: none;
+  stroke: var(--color-text-muted);
+  stroke-dasharray: 4 3;
+  stroke-width: 1.5;
+}
+
+.hitArea {
+  fill: transparent;
+  cursor: ns-resize;
+}
+
+.handle {
+  fill: var(--color-surface);
+  stroke: var(--color-accent);
+  stroke-width: 2;
+  cursor: ns-resize;
+  outline: none;
+}
+
+.handleEdited {
+  fill: var(--color-accent);
+}
+
+.handleDragging,
+.handle:hover {
+  stroke-width: 3;
+}
+
+.handle:focus-visible {
+  stroke: var(--color-focus);
+  stroke-width: 3;
+}
+
+/* Hour fields: as many columns as fit, never wider than the panel. */
+.hours {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(3.25rem, 1fr));
+  gap: var(--space-1);
+  margin: 0;
+  padding: 0;
+  border: 0;
+  min-width: 0;
+}
+
+.hour {
+  display: grid;
+  gap: 0.125rem;
+  min-width: 0;
+}
+
+.hourLabel {
+  color: var(--color-text-muted);
+  font-size: var(--font-size-small);
+  font-variant-numeric: tabular-nums;
+}
+
+.hourInput {
+  min-width: 0;
+  padding-inline: 0.25rem;
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+}
+
+.week {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(6.5rem, 1fr));
+  gap: var(--space-2);
+}
+
+.stats {
+  display: grid;
+  gap: 0.125rem;
+  margin: 0;
+  padding: var(--space-2);
+  border: var(--rule);
+  border-radius: var(--radius-sm);
+  background: var(--color-surface-raised);
+}
+
+.statsValue {
+  font-size: var(--font-size-title);
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+
+.statsNote {
+  color: var(--color-text-muted);
+  font-size: var(--font-size-small);
+}
+
+.error {
+  margin: 0;
+  color: var(--tone-danger-text);
+  font-size: var(--font-size-small);
+}

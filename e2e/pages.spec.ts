@@ -1,8 +1,14 @@
-import { createProjectFromStart } from './test.ts'
+import {
+  createProjectFromStart,
+  openMeasures,
+  properties,
+  startNew,
+} from './test.ts'
 import { AxeBuilder } from '@axe-core/playwright'
 import { expect, test, type Page } from './test.ts'
 
-// First-slice build stage 3a: Assets panel, Creator, and Roadmap.
+// First-slice build stage 3a: Assets panel, measures and scenarios (formerly
+// Creator), and Roadmap.
 
 async function seriousViolations(page: Page): Promise<string[]> {
   const results = await new AxeBuilder({ page }).analyze()
@@ -31,17 +37,16 @@ async function runFirstStage(page: Page) {
 test.beforeEach(async ({ page }) => {
   await page.goto('/')
   await createProjectFromStart(page)
-  await expect(
-    page.getByRole('toolbar', { name: 'Workbench commands' }),
-  ).toBeVisible()
+  await expect(page.getByRole('main', { name: 'Workspace' })).toBeVisible()
 })
 
 test('assets panel shows project structure, planned groups, and stage provenance', async ({
   page,
 }) => {
+  // Choosing an asset shows it in Properties (decision 0028).
   const tree = page.locator('[aria-label="Project assets"]')
   await tree.getByText('Gas network', { exact: true }).click()
-  const details = page.getByRole('region', { name: 'Asset details' })
+  const details = properties(page)
   await expect(details).toContainText('Planned')
   await expect(details).toContainText('Gas network modeling is planned')
 
@@ -54,12 +59,12 @@ test('assets panel shows project structure, planned groups, and stage provenance
   expect(await seriousViolations(page)).toEqual([])
 })
 
-test('creator validates and creates measures and scenarios through commands', async ({
+test('measures and scenarios are created in Properties through commands', async ({
   page,
 }) => {
-  await page.getByRole('tab', { name: 'Creator', exact: true }).click()
+  await openMeasures(page)
 
-  const measureForm = page.getByRole('region', { name: 'New measure' })
+  const measureForm = await startNew(page, 'measure')
   await measureForm.getByRole('button', { name: 'Create measure' }).click()
   await expect(measureForm.getByText('Enter a name.')).toBeVisible()
 
@@ -71,7 +76,7 @@ test('creator validates and creates measures and scenarios through commands', as
     'Envelope retrofit',
   )
 
-  const scenarioForm = page.getByRole('region', { name: 'New scenario' })
+  const scenarioForm = await startNew(page, 'scenario')
   await scenarioForm
     .getByRole('textbox', { name: 'Name' })
     .fill('Half retrofitted')

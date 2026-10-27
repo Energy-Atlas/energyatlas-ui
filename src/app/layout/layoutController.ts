@@ -22,7 +22,8 @@ export const PAGES = {
   table: { name: 'Table', component: 'page.table' },
   dashboard: { name: 'Dashboard', component: 'page.dashboard' },
   roadmap: { name: 'Roadmap', component: 'page.roadmap' },
-  creator: { name: 'Creator', component: 'page.creator' },
+  // Creator became Measures and scenarios (decision 0028); the id stays.
+  creator: { name: 'Measures and scenarios', component: 'page.creator' },
   settings: { name: 'Settings', component: 'page.settings' },
   issues: { name: 'Issues', component: 'page.issues' },
   // Tasks became Jobs (decision 0023); the component id stays page.tasks.
@@ -40,7 +41,8 @@ export const PANELS = {
   // Reasoning keeps the panel.reasoning component id through both renames
   // (Reasoning, Context, Reasoning again) so saved layouts still restore.
   reasoning: { name: 'Reasoning', component: 'panel.reasoning' },
-  inspection: { name: 'Inspection', component: 'panel.inspection' },
+  // Inspection became Properties (decision 0028); the id stays panel.inspection.
+  inspection: { name: 'Properties', component: 'panel.inspection' },
   // The history of every message and toast (decision 0027).
   messages: { name: 'Messages', component: 'panel.messages' },
 } as const
@@ -255,13 +257,29 @@ export function createLayoutController(
   const listeners = new Set<() => void>()
   let model = restoreModel(storage)
 
-  const handleChange = () => {
-    version += 1
+  // A splitter drag changes the model on every pointer move, so the layout is
+  // written once the changes settle rather than serialized on each one.
+  let saveTimer: ReturnType<typeof setTimeout> | null = null
+  const save = () => {
+    saveTimer = null
     try {
       storage?.setItem(LAYOUT_KEY, JSON.stringify(model.toJson()))
     } catch {
       // Storage is blocked; the layout persists for this session only.
     }
+  }
+  if (typeof window !== 'undefined') {
+    window.addEventListener('pagehide', () => {
+      if (saveTimer !== null) {
+        clearTimeout(saveTimer)
+        save()
+      }
+    })
+  }
+  const handleChange = () => {
+    version += 1
+    if (saveTimer !== null) clearTimeout(saveTimer)
+    saveTimer = setTimeout(save, 250)
     for (const listener of listeners) listener()
   }
   model.addChangeListener(handleChange)

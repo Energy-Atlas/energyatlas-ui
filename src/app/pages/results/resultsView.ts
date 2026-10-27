@@ -1,4 +1,7 @@
-import { scheduleStats } from '../../../domain/archetypes/assignment.ts'
+import {
+  scheduleStats,
+  weekdayHours,
+} from '../../../domain/archetypes/assignment.ts'
 import type {
   ResultSet,
   StageState,
@@ -223,10 +226,10 @@ export function hourlyProfile(
   }
   const peak = annualKwh / annualHours
   return {
-    kw: schedule.weekday.map(
+    kw: weekdayHours(schedule).map(
       (fraction) => Math.round(fraction * peak * 10) / 10,
     ),
-    basis: `Weekday shape of the schedule "${schedule.name}", scaled to the annual demand.`,
+    basis: `Weekday (Monday) shape of the schedule "${schedule.name}", scaled to the annual demand.`,
   }
 }
 
