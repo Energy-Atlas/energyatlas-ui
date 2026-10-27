@@ -1,18 +1,25 @@
 import type { Task } from '../../../domain/types.ts'
-import { formatTime } from '../../format.ts'
+import { LogView } from '../../components/LogView.tsx'
+import { jobLogLevel } from './jobView.ts'
 import styles from './jobs.module.css'
 
-/** A job's retained log, oldest first, in the mono face of the operation log. */
+/** A job's retained log, oldest first, following the newest line. */
 export function JobLog({ task }: { task: Task }) {
   return (
-    <div className={styles.log} tabIndex={0} aria-label="Job log">
-      <ol aria-label={`Log of ${task.label}, attempt ${task.attempt}`}>
-        {task.log.map((line, index) => (
-          <li key={index}>
-            <time dateTime={line.at}>{formatTime(line.at)}</time> {line.message}
-          </li>
-        ))}
-      </ol>
-    </div>
+    <LogView
+      aria-label="Job log"
+      listLabel={`Log of ${task.label}, attempt ${task.attempt}`}
+      className={styles.log}
+      entries={task.log.map((line, index) => ({
+        id: String(index),
+        at: line.at,
+        level: jobLogLevel(line.message),
+        text: line.message,
+      }))}
+      levelFilter
+      follow
+      download={{ fileName: `${task.label} attempt ${task.attempt} log` }}
+      empty="No log lines yet."
+    />
   )
 }

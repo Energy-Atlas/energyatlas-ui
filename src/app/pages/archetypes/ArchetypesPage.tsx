@@ -1,12 +1,14 @@
 import { useId, useMemo, useState } from 'react'
+import {
+  SelectableList,
+  type SelectableItem,
+} from '../../components/SelectableList.tsx'
 import { InlineAlert } from '../../components/InlineAlert.tsx'
 import {
   FieldError,
   Form,
   Input,
   Label,
-  ListBox,
-  ListBoxItem,
   TextField,
 } from 'react-aria-components'
 import {
@@ -526,21 +528,28 @@ export function ArchetypesPage() {
       (input) =>
         (input as { stageId?: unknown }).stageId === STAGE_IDS.archetypes,
     ) ?? stageSubmitBlocker(state, STAGE_IDS.archetypes)
-  const archetypeItems: ListItem[] = [
-    { id: NEW, name: 'New archetype…', meta: null },
-    ...archetypes.map((item) => ({
-      id: item.id,
-      name: item.name,
-      meta: `${USE_LABELS[item.use]} · ${rangeLabel(item)} · ${item.euiKwhPerM2} kWh/m² · ${preview.byArchetype[item.id] ?? 0} buildings`,
-    })),
+  const archetypeItems: SelectableItem[] = [
+    { id: NEW, title: 'New archetype…' },
+    ...archetypes.map((item) =>
+      withMeta(
+        item.id,
+        item.name,
+        `${definitionMeta(item)} · ${preview.byArchetype[item.id] ?? 0} buildings`,
+      ),
+    ),
   ]
-  const scheduleItems: ListItem[] = [
-    { id: NEW, name: 'New schedule…', meta: null },
-    ...schedules.map((item) => ({
-      id: item.id,
-      name: item.name,
-      meta: `${scheduleStats(item).weeklyHours} full-load hours a week`,
-    })),
+  const libraryItems = available.map((entry) =>
+    withMeta(entry.id, entry.name, definitionMeta(entry)),
+  )
+  const scheduleItems: SelectableItem[] = [
+    { id: NEW, title: 'New schedule…' },
+    ...schedules.map((item) =>
+      withMeta(
+        item.id,
+        item.name,
+        `${scheduleStats(item).weeklyHours} full-load hours a week`,
+      ),
+    ),
   ]
 
   return (
@@ -571,29 +580,31 @@ export function ArchetypesPage() {
               also add or create archetypes first.
             </p>
           ) : null}
-          <DefinitionList
-            label="Project archetypes"
+          <SelectableList
+            aria-label="Project archetypes"
+            className={styles.list}
             items={archetypeItems}
-            selected={selected}
+            selectedId={selected}
             onSelect={setSelected}
+            search={{
+              label: 'Search project archetypes',
+              placeholder: 'Search archetypes',
+            }}
           />
           <div className={styles.library}>
-            <label className={formStyles.label} htmlFor={`${headingId}-lib`}>
-              Synthetic library
-            </label>
-            <select
-              id={`${headingId}-lib`}
-              className={formStyles.input}
-              value={libraryChoice}
-              onChange={(event) => setLibraryChoice(event.target.value)}
-            >
-              <option value="">Choose an archetype…</option>
-              {available.map((entry) => (
-                <option key={entry.id} value={entry.id}>
-                  {entry.name}
-                </option>
-              ))}
-            </select>
+            <h4 className={styles.libraryTitle}>Synthetic library</h4>
+            <SelectableList
+              aria-label="Synthetic library"
+              className={styles.list}
+              items={libraryItems}
+              selectedId={libraryChoice || null}
+              onSelect={setLibraryChoice}
+              empty={
+                <p className={componentStyles.empty}>
+                  Every library archetype is already in the project.
+                </p>
+              }
+            />
             <ActionButton
               label="Add the chosen library archetype to the project"
               disabledReason={
@@ -637,10 +648,11 @@ export function ArchetypesPage() {
       <div className={styles.split}>
         <div className={styles.listPane}>
           <h3 className={styles.sectionTitle}>Schedules</h3>
-          <DefinitionList
-            label="Schedules"
+          <SelectableList
+            aria-label="Schedules"
+            className={styles.list}
             items={scheduleItems}
-            selected={selectedSchedule}
+            selectedId={selectedSchedule}
             onSelect={setSelectedSchedule}
           />
         </div>
@@ -696,42 +708,11 @@ export function ArchetypesPage() {
   )
 }
 
-type ListItem = { id: string; name: string; meta: string | null }
+/** A list row whose meta line is also its description for assistive technology. */
+function withMeta(id: string, title: string, meta: string): SelectableItem {
+  return { id, title, meta, description: meta }
+}
 
-function DefinitionList({
-  label,
-  items,
-  selected,
-  onSelect,
-}: {
-  label: string
-  items: ListItem[]
-  selected: string
-  onSelect: (id: string) => void
-}) {
-  return (
-    <ListBox
-      aria-label={label}
-      className={styles.list}
-      items={items}
-      selectionMode="single"
-      selectionBehavior="replace"
-      disallowEmptySelection
-      selectedKeys={[selected]}
-      onSelectionChange={(keys) => {
-        if (keys === 'all') return
-        const [key] = [...keys]
-        if (typeof key === 'string') onSelect(key)
-      }}
-    >
-      {(item) => (
-        <ListBoxItem id={item.id} className={styles.row} textValue={item.name}>
-          <span className={styles.rowTitle}>{item.name}</span>
-          {item.meta ? (
-            <span className={styles.rowMeta}>{item.meta}</span>
-          ) : null}
-        </ListBoxItem>
-      )}
-    </ListBox>
-  )
+function definitionMeta(archetype: Archetype): string {
+  return `${USE_LABELS[archetype.use]} · ${rangeLabel(archetype)} · ${archetype.euiKwhPerM2} kWh/m²`
 }

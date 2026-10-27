@@ -387,3 +387,39 @@ toast held by hover and then leaving by itself, the counter opening the panel an
 filters, an action run from the history, Clear, and axe), and 3 production-preview tests passed; `git diff --check`
 clean. Toasts, the counter, and the panel were checked by eye in Dark; the gallery shows toasts in three tones and
 the history rows.
+
+## Step 5 status
+
+Built on `claude/ui-component-system` (2026-10-26), not merged into `master`. This completes the five steps.
+
+**Real:**
+
+- `src/app/components/SelectableList.tsx`: a React Aria `ListBox` with one row anatomy (the title as the option's
+  name, then a status badge and one muted meta line as its description), the selected row in the selection tint with
+  the accent edge, arrow keys and type-ahead, an optional search field ("Nothing matches" with Clear search), an
+  empty state, and a reason shown when the rows cannot be chosen. `selectionMode="single"` keeps one row selected
+  for a detail pane; `"none"` makes each row an action (Enter or click).
+- `src/app/components/LogView.tsx`: a `role="log"` region reached by keyboard, lines in Geist Mono with time,
+  level icon, source and tags, text, an optional second line, an optional detail read on demand, and actions. All
+  and Problems (warnings and errors) as a level filter; Follow latest, on by default and turned off when the reader
+  scrolls up; Copy lines; Download as text (`.txt`, one line per entry with ISO time, level, source, and text).
+  `scrollable={false}` suits a short log inside another scrolling view.
+- Migrated to `SelectableList`: the Jobs list; the Archetypes project archetypes (now with a search field), the
+  synthetic library (was a drop-down), and schedules; Creator's measure library (was a drop-down; the chosen
+  measure's description still shows under it); the saved projects on the start screen and in the Open project
+  dialog (a search field from six projects).
+- Migrated to `LogView`: the job log (levels read from the runner's wording: Failed, item failures and Cancelled,
+  Completed; Problems filter, follow, download); the agent's tool calls, where each run of consecutive calls is one
+  log in the transcript (the tool type and Applied or Rejected as tags, the summary and issues as the second line,
+  the input and operation ids on demand, each line still named "Tool call: …"); and the Messages history, now
+  oldest first and following the newest, with the source filter beside the level filter and Download.
+
+**Not migrated, on purpose:** Creator's measures and scenarios and the calibration variants stay data tables (step
+2): they compare several fields per row and keep sorting, filtering, and export. Listbox options cannot hold
+buttons, so trailing row actions are not offered; a row's own action, or the detail it selects, does the work.
+
+**Verification (2026-10-26):** typecheck, lint, and format clean; 358 unit tests (including
+`src/app/components/lists.test.tsx`: list naming, keyboard selection, search, actions, the disabled reason, the
+empty state, log text, the level filter, and job log levels), 101 development browser tests, and 3 production-preview
+tests passed; `git diff --check` clean. Jobs, Archetypes, Creator, the Reasoning tool calls, and the Messages panel
+were checked by eye; the gallery shows both components.

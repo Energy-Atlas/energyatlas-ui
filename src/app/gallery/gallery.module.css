@@ -87,3 +87,11 @@
   font-family: var(--font-mono);
   font-size: var(--font-size-small);
 }
+
+.list {
+  max-height: 14rem;
+}
+
+.log [role='log'] {
+  max-height: 14rem;
+}

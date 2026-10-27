@@ -96,54 +96,17 @@
 }
 
 /* Tool calls: a quiet edge marks agent actions without boxing them. */
+.toolHeading {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+}
+
 .tool {
   display: grid;
   gap: 0.125rem;
   padding-left: var(--space-2);
   box-shadow: inset 2px 0 0 var(--color-border-subtle);
-}
-
-/* Icon, a title that wraps in its own column, and the status. */
-.toolRow {
-  display: grid;
-  grid-template-columns: auto minmax(0, 1fr) auto;
-  align-items: start;
-  gap: var(--space-1);
-}
-
-.toolTitle {
-  font-weight: 600;
-}
-
-.toolMeta {
-  margin: 0;
-  color: var(--color-text-muted);
-  font-family: var(--font-mono);
-  font-size: var(--font-size-label);
-  overflow-wrap: anywhere;
-}
-
-.toolIssue {
-  margin: 0;
-  color: var(--tone-danger-text);
-}
-
-.toolDetails summary {
-  color: var(--color-text-muted);
-  font-size: var(--font-size-small);
-  cursor: pointer;
-}
-
-.toolDetails pre {
-  margin: var(--space-1) 0 0;
-  padding: var(--space-2);
-  border: var(--rule);
-  border-radius: var(--radius-sm);
-  background: var(--color-surface-raised);
-  font-family: var(--font-mono);
-  font-size: var(--font-size-small);
-  white-space: pre-wrap;
-  overflow-wrap: anywhere;
 }
 
 /* Approvals need attention while pending, then settle into the transcript. */

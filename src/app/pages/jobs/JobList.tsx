@@ -1,7 +1,6 @@
-import { ListBox, ListBoxItem } from 'react-aria-components'
 import type { Task } from '../../../domain/types.ts'
 import { useServices } from '../../WorkbenchContext.tsx'
-import componentStyles from '../../components/components.module.css'
+import { SelectableList } from '../../components/SelectableList.tsx'
 import { formatTime } from '../../format.ts'
 import { JobStatusBadge } from './JobStatusBadge.tsx'
 import { JOB_STATUS_LABELS, outcomeLabel } from './jobView.ts'
@@ -20,40 +19,25 @@ export function JobList({
 }) {
   const { view } = useServices()
   return (
-    <ListBox
+    <SelectableList
       aria-label="Jobs"
       className={styles.list}
-      items={jobs}
-      selectionMode="single"
-      selectionBehavior="replace"
-      disallowEmptySelection
-      selectedKeys={selectedId ? [selectedId] : []}
-      onSelectionChange={(keys) => {
-        if (keys === 'all') return
-        const [key] = [...keys]
-        if (typeof key === 'string' && key !== selectedId) {
-          view.execute({ type: 'jobs.select', input: { taskId: key } })
-        }
-      }}
-    >
-      {(task) => (
-        <ListBoxItem
-          id={task.id}
-          className={styles.row}
-          textValue={`${task.label}, attempt ${task.attempt}, ${JOB_STATUS_LABELS[task.status]}`}
-        >
-          <span className={styles.rowTitle}>{task.label}</span>
-          <span className={styles.rowMeta}>
-            <JobStatusBadge status={task.status} />
-            <span className={componentStyles.muted}>
-              Attempt {task.attempt} · {outcomeLabel(task, nounOf(task))} ·{' '}
-              <time dateTime={task.updatedAt}>
-                {formatTime(task.updatedAt)}
-              </time>
-            </span>
-          </span>
-        </ListBoxItem>
-      )}
-    </ListBox>
+      items={jobs.map((task) => ({
+        id: task.id,
+        title: task.label,
+        status: <JobStatusBadge status={task.status} />,
+        meta: (
+          <>
+            Attempt {task.attempt} · {outcomeLabel(task, nounOf(task))} ·{' '}
+            <time dateTime={task.updatedAt}>{formatTime(task.updatedAt)}</time>
+          </>
+        ),
+        description: `attempt ${task.attempt}, ${JOB_STATUS_LABELS[task.status]}`,
+      }))}
+      selectedId={selectedId}
+      onSelect={(taskId) =>
+        view.execute({ type: 'jobs.select', input: { taskId } })
+      }
+    />
   )
 }

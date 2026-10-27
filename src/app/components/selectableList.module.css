@@ -1,0 +1,85 @@
+/* Selectable lists (decision 0027): one ruled box of rows, the selected row
+   an emphasis state with the accent edge, as in the Workflow stages. */
+.frame {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  min-width: 0;
+  min-height: 0;
+}
+
+.search {
+  display: flex;
+}
+
+.search input {
+  flex: 1;
+  min-width: 0;
+}
+
+.reason {
+  margin: 0;
+  color: var(--color-text-muted);
+  font-size: var(--font-size-small);
+}
+
+.list {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  overflow: auto;
+  border: var(--rule);
+  border-radius: var(--radius-sm);
+  outline: none;
+}
+
+.list[data-focus-visible] {
+  outline: 2px solid var(--color-focus);
+  outline-offset: 2px;
+}
+
+.row {
+  display: flex;
+  flex-direction: column;
+  gap: 0.125rem;
+  padding: var(--space-1) var(--space-2);
+  border-bottom: 1px solid var(--color-border-subtle);
+  cursor: pointer;
+  outline: none;
+}
+
+.row:last-child {
+  border-bottom: none;
+}
+
+.row[data-hovered] {
+  background: color-mix(in srgb, var(--color-accent) 8%, transparent);
+}
+
+.row[data-selected] {
+  background: var(--color-selected-bg);
+  box-shadow: inset 2px 0 0 var(--color-accent);
+}
+
+.row[data-focus-visible] {
+  outline: 2px solid var(--color-focus);
+  outline-offset: -2px;
+}
+
+.row[data-disabled] {
+  cursor: not-allowed;
+  opacity: 0.6;
+}
+
+.title {
+  font-weight: 500;
+  overflow-wrap: anywhere;
+}
+
+.meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-1) var(--space-2);
+  font-size: var(--font-size-small);
+}

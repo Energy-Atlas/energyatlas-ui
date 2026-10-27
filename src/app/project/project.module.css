@@ -62,44 +62,11 @@
   padding-bottom: var(--space-3);
   margin: 0;
 }
+/* Saved projects are a SelectableList; long lists scroll within it. */
 .projects {
-  list-style: none;
-  margin: 0;
-  padding: 0;
+  max-height: 24rem;
 }
-.projects li + li {
-  border-top: var(--rule);
-}
-.projectRow {
-  display: grid;
-  gap: var(--space-1);
-  text-align: left;
-  padding: var(--space-3);
-  width: 100%;
-  border: 0;
-  background: var(--color-surface);
-  color: var(--color-text);
-  font: inherit;
-  cursor: pointer;
-  overflow-wrap: anywhere;
-}
-.projectRow[data-hovered] {
-  background: var(--color-surface-raised);
-}
-.projectRow[data-pressed] {
-  background: var(--color-selected-bg);
-}
-.projectRow[data-focus-visible] {
-  outline: var(--space-1) solid var(--color-focus);
-  outline-offset: calc(-1 * var(--space-1));
-}
-.projectRow[data-disabled] {
-  color: var(--color-text-muted);
-  cursor: wait;
-}
-.projectName {
-  font-weight: 600;
-}
+
 .metadata {
   color: var(--color-text-muted);
   font-size: var(--font-size-small);

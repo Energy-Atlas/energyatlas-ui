@@ -1,7 +1,6 @@
 import {
   Check,
   ChevronDown,
-  CircleCheck,
   CircleX,
   CornerDownLeft,
   Info,
@@ -42,7 +41,7 @@ import type {
 } from '../agent/types.ts'
 import { ActionButton } from '../components/ActionButton.tsx'
 import { CapabilityBadge } from '../components/CapabilityBadge.tsx'
-import componentStyles from '../components/components.module.css'
+import { LogView, type LogEntry } from '../components/LogView.tsx'
 import menuStyles from '../components/menus.module.css'
 import { cx } from '../cx.ts'
 import styles from './reasoning.module.css'
@@ -53,11 +52,69 @@ const PROMPT_FIELD_MAX_ROWS = 6
 /** Pressing the left half of the split button queues the message. */
 const DEFAULT_SEND_MODE = 'queue'
 
+type ToolItem = Extract<TranscriptItem, { kind: 'tool' }>
+
 type EntryProps = {
-  item: TranscriptItem
+  item: Exclude<TranscriptItem, ToolItem>
   onFollow: (target: ReferenceTarget) => void
   onApprove: (itemId: string) => void
   onDecline: (itemId: string) => void
+}
+
+/** Consecutive tool calls read as one log; everything else stays an entry. */
+type TranscriptBlock =
+  | { kind: 'entry'; item: Exclude<TranscriptItem, ToolItem> }
+  | { kind: 'tools'; id: string; items: ToolItem[] }
+
+function transcriptBlocks(items: TranscriptItem[]): TranscriptBlock[] {
+  const blocks: TranscriptBlock[] = []
+  for (const item of items) {
+    const last = blocks.at(-1)
+    if (item.kind !== 'tool') blocks.push({ kind: 'entry', item })
+    else if (last?.kind === 'tools') last.items.push(item)
+    else blocks.push({ kind: 'tools', id: item.id, items: [item] })
+  }
+  return blocks
+}
+
+function toolEntry(item: ToolItem): LogEntry {
+  const applied = item.result.status === 'applied'
+  const operations = item.result.operationIds.join(', ') || 'none'
+  return {
+    id: item.id,
+    level: applied ? 'success' : 'danger',
+    source: toolTypeOf(item.call),
+    tags: [applied ? 'Applied' : 'Rejected'],
+    text: item.title,
+    description:
+      [item.result.summary, ...item.result.issues.map((issue) => issue.message)]
+        .filter(Boolean)
+        .join(' ') || undefined,
+    detail: {
+      label: 'Input',
+      content: `Operations: ${operations}\n${JSON.stringify(toolInputOf(item.call), null, 2)}`,
+    },
+    label: `Tool call: ${item.title}`,
+  }
+}
+
+/** A run of tool calls: what each did, its result, and its input on demand. */
+function ToolCalls({ items }: { items: ToolItem[] }) {
+  return (
+    <li className={cx(styles.entry, styles.tool)}>
+      <p className={cx(styles.speaker, styles.toolHeading)}>
+        <Wrench size={14} aria-hidden="true" className={styles.icon} />
+        Tool calls
+      </p>
+      <LogView
+        aria-label="Tool calls"
+        listLabel={`${items.length} tool call${items.length === 1 ? '' : 's'}`}
+        entries={items.map(toolEntry)}
+        scrollable={false}
+        copyable={false}
+      />
+    </li>
+  )
 }
 
 function approvalLabel(
@@ -110,58 +167,6 @@ function TranscriptEntry({ item, onFollow, onApprove, onDecline }: EntryProps) {
           </button>
         </li>
       )
-    case 'tool': {
-      const applied = item.result.status === 'applied'
-      return (
-        <li
-          className={cx(styles.entry, styles.tool)}
-          aria-label={`Tool call: ${item.title}`}
-        >
-          <div className={styles.toolRow}>
-            <Wrench size={14} aria-hidden="true" className={styles.icon} />
-            <span className={styles.toolTitle}>{item.title}</span>
-            {applied ? (
-              <span
-                className={cx(
-                  componentStyles.state,
-                  componentStyles.stateQuiet,
-                )}
-              >
-                <CircleCheck size={12} aria-hidden="true" />
-                Applied
-              </span>
-            ) : (
-              <span
-                className={cx(
-                  componentStyles.state,
-                  componentStyles.stateAttention,
-                  componentStyles.danger,
-                )}
-              >
-                <CircleX size={12} aria-hidden="true" />
-                Rejected
-              </span>
-            )}
-          </div>
-          <p className={styles.toolMeta}>
-            {toolTypeOf(item.call)} ·{' '}
-            {item.result.operationIds.join(', ') || 'no operation'}
-          </p>
-          {item.result.summary ? (
-            <p className={styles.text}>{item.result.summary}</p>
-          ) : null}
-          {item.result.issues.map((issue) => (
-            <p key={issue.message} className={styles.toolIssue}>
-              {issue.message}
-            </p>
-          ))}
-          <details className={styles.toolDetails}>
-            <summary>Input</summary>
-            <pre>{JSON.stringify(toolInputOf(item.call), null, 2)}</pre>
-          </details>
-        </li>
-      )
-    }
     case 'approval':
       return (
         <li
@@ -448,15 +453,19 @@ export function ReasoningPanel() {
           </p>
         ) : (
           <ol className={styles.transcript}>
-            {transcript.map((item) => (
-              <TranscriptEntry
-                key={item.id}
-                item={item}
-                onFollow={follow}
-                onApprove={(itemId) => agent.approve(itemId)}
-                onDecline={(itemId) => agent.decline(itemId)}
-              />
-            ))}
+            {transcriptBlocks(transcript).map((block) =>
+              block.kind === 'tools' ? (
+                <ToolCalls key={block.id} items={block.items} />
+              ) : (
+                <TranscriptEntry
+                  key={block.item.id}
+                  item={block.item}
+                  onFollow={follow}
+                  onApprove={(itemId) => agent.approve(itemId)}
+                  onDecline={(itemId) => agent.decline(itemId)}
+                />
+              ),
+            )}
           </ol>
         )}
         <div ref={endRef} />

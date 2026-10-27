@@ -1,4 +1,5 @@
 import { useId, useMemo, useState } from 'react'
+import { SelectableList } from '../components/SelectableList.tsx'
 import {
   Button,
   Checkbox,
@@ -293,7 +294,6 @@ function sourceLabel(source: Measure['source']): string {
 
 function MeasureLibrary() {
   const headingId = useId()
-  const selectId = useId()
   const { client } = useServices()
   const measures = useWorkbenchSnapshot((snapshot) => snapshot.state.measures)
   const pending = useClientSnapshot((snapshot) => snapshot.pending)
@@ -311,30 +311,32 @@ function MeasureLibrary() {
         <h3 id={headingId}>Measure library</h3>
         <CapabilityBadge id="creator.measure" />
       </div>
-      <label className={formStyles.label} htmlFor={selectId}>
-        Synthetic measure
-      </label>
-      <select
-        id={selectId}
-        className={formStyles.input}
-        value={choice}
-        onChange={(event) => setChoice(event.target.value)}
-      >
-        <option value="">Choose a measure…</option>
-        {available.map((entry) => (
-          <option key={entry.libraryId} value={entry.libraryId}>
-            {entry.name}
-          </option>
-        ))}
-      </select>
+      <SelectableList
+        aria-label="Synthetic measure"
+        className={styles.library}
+        items={available.map((entry) => {
+          const meta = `${KIND_LABELS[entry.kind]} · ${
+            entry.kind === 'pv'
+              ? 'from estimated PV yield'
+              : `${entry.savingsPercent}% savings`
+          } · applies to ${entry.appliesTo}`
+          return {
+            id: entry.libraryId,
+            title: entry.name,
+            meta,
+            description: meta,
+          }
+        })}
+        selectedId={choice || null}
+        onSelect={setChoice}
+        empty={
+          <p className={componentStyles.empty}>
+            Every library measure is already in the project.
+          </p>
+        }
+      />
       {chosen ? (
-        <p className={formStyles.description}>
-          {KIND_LABELS[chosen.kind]},{' '}
-          {chosen.kind === 'pv'
-            ? 'from estimated PV yield'
-            : `${chosen.savingsPercent}% savings`}
-          , applies to {chosen.appliesTo}. {chosen.description}
-        </p>
+        <p className={formStyles.description}>{chosen.description}</p>
       ) : null}
       <ActionButton
         label="Add the chosen library measure to the project"

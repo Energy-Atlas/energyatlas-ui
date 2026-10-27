@@ -39,8 +39,9 @@ test('adds a library archetype, shows coverage, and reassigns as a job', async (
   ).toContainText(/Mixed use\s*\d+\s*0\s*\d+/)
 
   await archetypes
-    .getByRole('combobox', { name: 'Synthetic library' })
-    .selectOption({ label: 'Mixed use' })
+    .getByRole('listbox', { name: 'Synthetic library' })
+    .getByRole('option', { name: 'Mixed use', exact: true })
+    .click()
   await archetypes
     .getByRole('button', {
       name: 'Add the chosen library archetype to the project',

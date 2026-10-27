@@ -1,0 +1,151 @@
+/* Log output (decision 0027): lines in the mono face, time and level in
+   narrow columns, the source in the family's meta label. */
+.view {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  min-width: 0;
+  min-height: 0;
+}
+
+.bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.tools {
+  display: flex;
+  margin-left: auto;
+}
+
+.scroll {
+  min-height: 0;
+  overflow: auto;
+  border: var(--rule);
+  border-radius: var(--radius-sm);
+}
+
+.scroll:focus-visible {
+  outline: 2px solid var(--color-focus);
+  outline-offset: 2px;
+}
+
+.lines {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  font-family: var(--font-mono);
+  font-size: var(--font-size-small);
+}
+
+.line {
+  display: grid;
+  grid-template-columns: auto auto minmax(0, 1fr);
+  align-items: start;
+  gap: var(--space-2);
+  padding: 0.125rem var(--space-2);
+  border-bottom: 1px solid var(--color-border-subtle);
+}
+
+.line:last-child {
+  border-bottom: none;
+}
+
+.time {
+  color: var(--color-text-muted);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+/* The time column keeps its width when a log has no times. */
+.time:empty {
+  display: none;
+}
+
+.level {
+  margin-top: 0.125rem;
+}
+
+.line[data-level='info'] .level {
+  color: var(--tone-info-text);
+}
+
+.line[data-level='success'] .level {
+  color: var(--tone-success-text);
+}
+
+.line[data-level='warning'] .level {
+  color: var(--tone-warning-text);
+}
+
+.line[data-level='danger'] .level {
+  color: var(--tone-danger-text);
+}
+
+.line:has(.time:empty) {
+  grid-template-columns: auto minmax(0, 1fr);
+}
+
+.body {
+  display: flex;
+  flex-direction: column;
+  gap: 0.125rem;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.source {
+  color: var(--color-text-muted);
+  font-family: var(--label-font);
+  font-size: var(--label-size);
+  letter-spacing: var(--label-tracking);
+  text-transform: var(--label-case);
+}
+
+.line[data-level='danger'] .text {
+  color: var(--tone-danger-text);
+}
+
+.description {
+  color: var(--color-text-muted);
+}
+
+.muted .text {
+  color: var(--color-text-muted);
+}
+
+.detail summary {
+  color: var(--color-text-muted);
+  cursor: pointer;
+}
+
+.detail pre {
+  margin: var(--space-1) 0 0;
+  overflow-x: auto;
+  white-space: pre-wrap;
+}
+
+.actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-1);
+  margin-top: var(--space-1);
+  font-family: var(--font-sans);
+}
+
+.empty {
+  padding: var(--space-2);
+  color: var(--color-text-muted);
+}
+
+.linkButton {
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--color-accent);
+  font: inherit;
+  text-decoration: underline;
+  cursor: pointer;
+}

@@ -68,7 +68,7 @@ test('keeps equal-name saved projects separate and opens them from Recent and Op
   await fileAction(page, /^Projects/)
   const recent = page.getByRole('region', { name: 'Recent projects' })
   await expect(
-    recent.getByRole('button').filter({ hasText: 'District' }),
+    recent.getByRole('option').filter({ hasText: 'District' }),
   ).toHaveCount(2)
   const saved = await page.evaluate(
     () =>
@@ -80,7 +80,7 @@ test('keeps equal-name saved projects separate and opens them from Recent and Op
   await page.getByRole('button', { name: 'Open project', exact: true }).click()
   const dialog = page.getByRole('dialog', { name: 'Open project' })
   await dialog
-    .getByRole('button')
+    .getByRole('option')
     .filter({ hasText: 'District' })
     .last()
     .click()
@@ -107,7 +107,7 @@ test('a failed Recent open reports the error and lets the same project retry', a
   await conditions.getByText('Every request fails', { exact: true }).click()
   await conditions.getByRole('button', { name: 'Done' }).click()
   const recent = page.getByRole('region', { name: 'Recent projects' })
-  await recent.getByRole('button').filter({ hasText: 'Retry district' }).click()
+  await recent.getByRole('option').filter({ hasText: 'Retry district' }).click()
   await expect(page.getByRole('main', { name: 'Projects' })).toBeVisible()
   await expect(page.getByRole('alert')).toContainText('server failed')
   await page
@@ -115,7 +115,7 @@ test('a failed Recent open reports the error and lets the same project retry', a
     .click()
   await conditions.getByRole('button', { name: 'Back to normal' }).click()
   await conditions.getByRole('button', { name: 'Done' }).click()
-  await recent.getByRole('button').filter({ hasText: 'Retry district' }).click()
+  await recent.getByRole('option').filter({ hasText: 'Retry district' }).click()
   await expect(page.getByRole('heading', { level: 1 })).toHaveText(
     'Retry district',
   )

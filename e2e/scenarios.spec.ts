@@ -26,8 +26,9 @@ async function openCreator(page: Page) {
 async function addFromLibrary(page: Page, name: string) {
   const creator = page.getByRole('region', { name: 'Creator', exact: true })
   await creator
-    .getByRole('combobox', { name: 'Synthetic measure' })
-    .selectOption({ label: name })
+    .getByRole('listbox', { name: 'Synthetic measure' })
+    .getByRole('option', { name, exact: true })
+    .click()
   await creator
     .getByRole('button', {
       name: 'Add the chosen library measure to the project',

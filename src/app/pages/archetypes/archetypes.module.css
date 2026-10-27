@@ -60,71 +60,24 @@
 }
 
 .list {
-  display: flex;
-  flex-direction: column;
   max-height: 20rem;
-  overflow: auto;
-  border: var(--rule);
-  border-radius: var(--radius-sm);
-  outline: none;
 }
 
-.list[data-focus-visible] {
-  outline: 2px solid var(--color-focus);
-  outline-offset: 2px;
-}
-
-.row {
-  display: flex;
-  flex-direction: column;
-  gap: 0.125rem;
-  padding: var(--space-1) var(--space-2);
-  border-bottom: 1px solid var(--color-border-subtle);
-  cursor: pointer;
-  outline: none;
-}
-
-.row:last-child {
-  border-bottom: none;
-}
-
-.row[data-hovered] {
-  background: color-mix(in srgb, var(--color-accent) 8%, transparent);
-}
-
-.row[data-selected] {
-  background: var(--color-surface-raised);
-  box-shadow: inset 2px 0 0 var(--color-accent);
-}
-
-.row[data-focus-visible] {
-  outline: 2px solid var(--color-focus);
-  outline-offset: -2px;
-}
-
-.rowTitle {
-  font-weight: 500;
-}
-
-.rowMeta {
-  color: var(--color-text-muted);
-  font-size: var(--font-size-small);
-}
-
+/* The library: a heading, the list of archetypes not yet in the project, and
+   Add under it. */
 .library {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: flex-end;
-  gap: var(--space-1) var(--space-2);
+  display: grid;
+  justify-items: start;
+  gap: var(--space-1);
 }
 
-.library label {
-  flex-basis: 100%;
+.library .list {
+  justify-self: stretch;
 }
 
-.library select {
-  flex: 1;
-  min-width: 10rem;
+.libraryTitle {
+  margin: 0;
+  font-size: var(--font-size-base);
 }
 
 .fields {

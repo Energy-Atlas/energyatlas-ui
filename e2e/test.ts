@@ -124,7 +124,7 @@ export async function openRecentProject(
 ) {
   await page
     .getByRole('main', { name: 'Projects' })
-    .getByRole('button')
+    .getByRole('option')
     .filter({ hasText: name })
     .first()
     .click()

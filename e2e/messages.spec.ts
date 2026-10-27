@@ -77,9 +77,9 @@ test('events pop up as toasts and stay in the Messages panel', async ({
   await expect(counter).toHaveAccessibleName(
     'No unread messages. Open Messages.',
   )
-  const history = panel.getByRole('list', { name: 'Message history' })
-  // Newest first: opening the panel is the latest operation.
-  await expect(history.getByRole('listitem').first()).toContainText(
+  const history = panel.getByRole('log', { name: 'Message history' })
+  // Oldest first, following the newest: opening the panel is the latest.
+  await expect(history.getByRole('listitem').last()).toContainText(
     'Showed the Messages panel.',
   )
   await expect(history).toContainText('completed.')
@@ -105,6 +105,6 @@ test('events pop up as toasts and stay in the Messages panel', async ({
 
   // Clearing empties this project's history.
   await panel.getByRole('button', { name: 'Clear messages' }).click()
-  await expect(history).toBeHidden()
-  await expect(panel).toContainText('No messages yet.')
+  await expect(history.getByRole('listitem')).toHaveCount(0)
+  await expect(history).toContainText('No messages yet.')
 })

@@ -1,3 +1,4 @@
+import type { LogLevel } from '../../components/LogView.tsx'
 import {
   groupOf,
   isActiveStatus,
@@ -164,4 +165,18 @@ export function shownJob(
 ): Task | null {
   const selected = selectedTaskId ? state.tasks[selectedTaskId] : undefined
   return selected ?? listJobs(state, filter)[0] ?? null
+}
+
+/**
+ * The level of a job log line, read from the wording the job runner writes
+ * (`src/domain/commands.ts`): failures, item failures and cancellation, and
+ * completion; everything else is progress.
+ */
+export function jobLogLevel(message: string): LogLevel {
+  if (message.startsWith('Failed')) return 'danger'
+  if (message.startsWith('Cancelled') || /\d+ failed/.test(message)) {
+    return 'warning'
+  }
+  if (message.startsWith('Completed')) return 'success'
+  return 'info'
 }

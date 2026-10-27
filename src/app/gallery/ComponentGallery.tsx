@@ -19,10 +19,11 @@ import { StatusTag } from '../components/CapabilityBadge.tsx'
 import componentStyles from '../components/components.module.css'
 import { DataTable } from '../components/DataTable.tsx'
 import { InlineAlert } from '../components/InlineAlert.tsx'
+import { LogView, type LogEntry } from '../components/LogView.tsx'
 import { MenuButton } from '../components/MenuButton.tsx'
+import { SelectableList } from '../components/SelectableList.tsx'
 import type { Message } from '../messages/messageCenter.ts'
-import { MessageRow } from '../panels/MessagesPanel.tsx'
-import messageStyles from '../panels/messages.module.css'
+import { MessageHistory } from '../panels/MessagesPanel.tsx'
 import { Toast } from '../shell/ToastHost.tsx'
 import { HeaderCount, PanelHeader } from '../components/PanelHeader.tsx'
 import { PropertyList } from '../components/PropertyList.tsx'
@@ -119,6 +120,31 @@ const SAMPLE_MESSAGES: Message[] = [
   }),
 ]
 
+const SAMPLE_LOG: LogEntry[] = [
+  { id: '1', at: SAMPLE_AT, level: 'info', text: 'Started.' },
+  {
+    id: '2',
+    at: SAMPLE_AT,
+    level: 'warning',
+    text: 'Processed 240 of 464 items; 3 failed in this batch.',
+  },
+  {
+    id: '3',
+    at: SAMPLE_AT,
+    level: 'success',
+    text: 'Completed. Joined 464 footprints to parcels.',
+  },
+  {
+    id: '4',
+    level: 'danger',
+    source: 'selection.set',
+    tags: ['Rejected'],
+    text: 'Select buildings',
+    description: 'Unknown building "B9999".',
+    detail: { label: 'Input', content: '{\n  "ids": ["B9999"]\n}' },
+  },
+]
+
 function initialAppearance(): AppearanceId {
   const requested = new URLSearchParams(window.location.search).get(
     'appearance',
@@ -198,6 +224,7 @@ const BUILDING_COLUMNS: DataColumn<GalleryBuilding>[] = [
  * every appearance, and a new component is added here with its states.
  */
 export default function ComponentGallery() {
+  const [listChoice, setListChoice] = useState('a')
   const [appearance, setAppearance] = useState<AppearanceId>(initialAppearance)
   const [last, setLast] = useState('Nothing pressed yet.')
   const [filter, setFilter] = useState<JobFilter>('all')
@@ -501,15 +528,67 @@ export default function ComponentGallery() {
 
         <section className={styles.cell}>
           <h2>Message history</h2>
-          <ol className={messageStyles.list} aria-label="Message history">
-            {SAMPLE_MESSAGES.map((message) => (
-              <MessageRow
-                key={message.id}
-                message={message}
-                onAction={(action) => note(`${action.label} pressed.`)}
-              />
-            ))}
-          </ol>
+          <MessageHistory
+            className={styles.log}
+            messages={SAMPLE_MESSAGES}
+            onAction={(action) => note(`${action.label} pressed.`)}
+          />
+        </section>
+
+        <section className={styles.cell}>
+          <h2>Selectable list</h2>
+          <SelectableList
+            aria-label="Sample jobs"
+            className={styles.list}
+            items={[
+              {
+                id: 'a',
+                title: 'Geospatial preprocessing',
+                status: <StateBadge state="failed" />,
+                meta: 'Attempt 1 · 3 of 464 items failed',
+              },
+              {
+                id: 'b',
+                title: 'Shading calculation',
+                status: <StateBadge state="running" />,
+                meta: 'Attempt 1 · 40 %',
+              },
+              {
+                id: 'c',
+                title: 'Location setup',
+                status: <StateBadge state="executed" />,
+                meta: 'Attempt 2 · Published',
+              },
+            ]}
+            selectedId={listChoice}
+            onSelect={(id) => {
+              setListChoice(id)
+              note(`Selected ${id}.`)
+            }}
+            search={{ label: 'Search sample jobs', placeholder: 'Search jobs' }}
+          />
+          <SelectableList
+            aria-label="Sample projects"
+            selectionMode="none"
+            items={[
+              { id: 'p', title: 'Synthetic district', meta: 'Saved today' },
+            ]}
+            onAction={() => note('Opened.')}
+            disabledReason="Wait for the current project change to finish."
+          />
+        </section>
+
+        <section className={styles.cell}>
+          <h2>Log view</h2>
+          <LogView
+            aria-label="Sample log"
+            listLabel="Sample log lines"
+            className={styles.log}
+            entries={SAMPLE_LOG}
+            levelFilter
+            follow
+            download={{ fileName: 'sample log' }}
+          />
         </section>
 
         <section className={styles.cell}>
