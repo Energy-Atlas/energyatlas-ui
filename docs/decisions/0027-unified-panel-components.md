@@ -2,7 +2,9 @@
 
 Date: 2026-10-26
 
-Status: accepted by the owner (choices made on 2026-10-26); not yet implemented.
+Status: accepted by the owner (choices made on 2026-10-26); implemented in five steps on `claude/ui-component-system`
+and integrated into local `master` on 2026-10-27 (fast-forward, not pushed). See
+[unified panel components](../ui-component-system.md) for each step and its verification.
 
 ## Context
 

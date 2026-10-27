@@ -3,7 +3,8 @@
 Date: 2026-10-27
 
 Status: accepted by the owner (review feedback on 2026-10-27, after step 5 of
-[decision 0027](0027-unified-panel-components.md)); implemented on `claude/ui-component-system`.
+[decision 0027](0027-unified-panel-components.md)); implemented on `claude/ui-component-system` and integrated into
+local `master` on 2026-10-27 (fast-forward, not pushed).
 
 ## Context
 

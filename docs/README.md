@@ -2,7 +2,7 @@
 
 - [Autonomous implementation handoff, 2026-10-26](20261026_autonomous-roadmap-handoff.md): next agent starts here; approved scope through Results, local-merge authority, kickoff message, repository/worktree locations, and verification baseline.
 - [Roadmap slices 3–8 completion report, 2026-10-26](20261026_roadmap-completion.md): start here after the autonomous run: what merged where, the shared job contract, verification, limits, next steps.
-- [Unified panel components](ui-component-system.md): proposal after the owner's 2026-10-26 review: component catalogue, message panel and toast host, table and column widgets, open choices.
+- [Unified panel components](ui-component-system.md): proposal after the owner's 2026-10-26 review, the status and verification of each of its five steps and of the decision 0028 review fixes, and their integration into local `master` on 2026-10-27.
 - [Results plan and status](results.md): roadmap step 8 as built: published results, drill-down, series, provenance, CSV export.
 - [Calibration plan and status](calibration.md): roadmap step 7 as built: meter validation, fit jobs, calibrated variants, explicit adoption.
 - [Measures and scenarios plan and status](measures-scenarios.md): roadmap step 6 as built: measure library, editing, composition rule, comparison sets, modeled comparison.

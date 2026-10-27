@@ -468,3 +468,12 @@ Built on `claude/ui-component-system`, not merged. Recorded in
 
 **Verification (2026-10-27):** typecheck, lint, and format clean; 364 unit tests (adds fitted widths and the menu
 tooltip); browser tests extended for library inspection, the average line, and the heat map.
+
+## Integration into local master (2026-10-27)
+
+At the owner's request, `claude/ui-component-system` (steps 1 to 5, the decision 0028 review fixes and both
+follow-ups) was fast-forwarded into local `master`; master had not moved since the branch started at `4400c69`, so
+no merge commit was needed. Not pushed. The per-step "not merged" notes above describe the branch before this.
+
+**Verification on the integrated tree:** typecheck, lint, and format clean; 364 unit tests, 102 development browser
+tests, and 3 production-preview tests passed; `git diff --check` clean.
