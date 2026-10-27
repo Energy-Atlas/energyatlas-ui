@@ -76,6 +76,15 @@ the Messages panel's laggy resizing and toolbar overflow.
   column per day from a Monday, one row per hour, darker nearer 1) that redraws as values or the week change. Then
   the week, seven compact day selects in one row, above the day types; each day type's 24 hour fields fit two rows.
 
+## Second follow-up (2026-10-27)
+
+- **Closing Properties.** The Clear selection buttons are replaced by one × at the top right of the Properties
+  panel, in the same place for every kind of content (buildings, grid elements, definitions, library entries,
+  assets, a new definition). It clears the selection or leaves a new definition; when the shown definition has
+  unsaved edits it first asks "Leave with unsaved edits?" with Keep editing and Discard and leave.
+- **Annual average.** In the schedule editor it is a field like Schedule name: a label at the same level over a
+  read-only box (an `output`, announced as it changes), followed by the year heat map.
+
 ## Consequences
 
 - No new package.

@@ -465,16 +465,26 @@ function HourFields({
   )
 }
 
-/** The annual average on its own line, read-only and updated as values change. */
+/**
+ * The annual average as a field like the name, but read-only: an output
+ * that updates, and is announced, as values change.
+ */
 function AnnualAverage({ value }: { value: number | null }) {
+  const id = useId()
   return (
-    <p className={styles.average} role="status" aria-live="polite">
-      <span className={styles.averageLabel}>Annual average</span>{' '}
-      <span className={styles.averageValue}>
+    <div className={formStyles.field}>
+      <label className={formStyles.label} htmlFor={id}>
+        Annual average
+      </label>
+      <output
+        id={id}
+        className={cx(formStyles.input, formStyles.readOnly, styles.average)}
+        aria-live="polite"
+      >
         {value === null
           ? 'Enter 0 to 1 in every hour'
           : formatNumber(value, { maxDigits: 3 })}
-      </span>
-    </p>
+      </output>
+    </div>
   )
 }

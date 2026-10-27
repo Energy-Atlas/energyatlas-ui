@@ -1,5 +1,6 @@
-import { Info, TriangleAlert } from 'lucide-react'
-import { useId, useMemo, type ReactNode } from 'react'
+import { Info, TriangleAlert, X } from 'lucide-react'
+import { useId, useMemo, useState, type ReactNode } from 'react'
+import { Button } from 'react-aria-components'
 import { useStore } from 'zustand'
 import {
   ARCHETYPE_LIBRARY,
@@ -16,6 +17,11 @@ import { AssetProperties } from '../properties/AssetProperties.tsx'
 import { MeasureProperties } from '../properties/MeasureProperties.tsx'
 import { ScenarioProperties } from '../properties/ScenarioProperties.tsx'
 import { ScheduleProperties } from '../properties/ScheduleProperties.tsx'
+import componentStyles from '../components/components.module.css'
+import { cx } from '../cx.ts'
+import { shownEdits } from '../properties/useEdits.ts'
+import { DialogFrame } from '../shell/HelpDialogs.tsx'
+import shellStyles from '../shell/shell.module.css'
 import { MapProperties } from './MapProperties.tsx'
 import styles from './inspection.module.css'
 import {
@@ -309,20 +315,8 @@ export function PropertiesPanel() {
       // The panel scrolls itself, so it takes focus for keyboard scrolling
       // (axe scrollable-region-focusable).
       <section className={styles.panel} aria-label="Properties" tabIndex={0}>
+        <CloseSelection />
         <DefinitionProperties />
-        {creating === null ? (
-          <div className={styles.actions}>
-            <ActionButton
-              label="Clear selection from Properties"
-              disabledReason={null}
-              onPress={() =>
-                workbench.execute({ type: 'selection.clear', input: {} })
-              }
-            >
-              Clear selection
-            </ActionButton>
-          </div>
-        ) : null}
       </section>
     )
   }
@@ -376,6 +370,7 @@ export function PropertiesPanel() {
     // The panel scrolls itself, so it takes focus for keyboard scrolling
     // (axe scrollable-region-focusable).
     <section className={styles.panel} aria-label="Properties" tabIndex={0}>
+      <CloseSelection />
       <header className={styles.header}>
         <p className={styles.eyebrow}>{inspection.eyebrow}</p>
         <h3 className={styles.title}>{inspection.title}</h3>
@@ -385,18 +380,69 @@ export function PropertiesPanel() {
       ) : (
         <MultipleView inspection={inspection} onInspect={inspect} />
       )}
-      <div className={styles.actions}>
-        {pageActions}
-        <ActionButton
-          label="Clear selection from Properties"
-          disabledReason={null}
-          onPress={() =>
-            workbench.execute({ type: 'selection.clear', input: {} })
-          }
-        >
-          Clear selection
-        </ActionButton>
-      </div>
+      <div className={styles.actions}>{pageActions}</div>
     </section>
+  )
+}
+
+/**
+ * Closes what Properties shows (decision 0028): an ? at the panel's top
+ * right, in the same place for every kind of content, that clears the
+ * selection or leaves a new definition. With unsaved edits it asks first.
+ */
+function CloseSelection() {
+  const { workbench, properties } = useServices()
+  const [confirming, setConfirming] = useState(false)
+  const [count, setCount] = useState(0)
+  const close = () => {
+    properties.cancelCreate()
+    if (workbench.getState().selection.entityType !== null) {
+      workbench.execute({ type: 'selection.clear', input: {} })
+    }
+  }
+  return (
+    <>
+      <Button
+        className={styles.close}
+        aria-label="Clear selection from Properties"
+        onPress={() => {
+          const edits = shownEdits()
+          if (edits.count === 0) {
+            close()
+            return
+          }
+          setCount(edits.count)
+          setConfirming(true)
+        }}
+      >
+        <X size={16} aria-hidden="true" />
+      </Button>
+      <DialogFrame
+        title="Leave with unsaved edits?"
+        role="alertdialog"
+        isOpen={confirming}
+        onOpenChange={setConfirming}
+      >
+        <p>
+          {count === 1 ? '1 field is' : `${count} fields are`} edited and not
+          saved. Leaving discards {count === 1 ? 'it' : 'them'}.
+        </p>
+        <div className={shellStyles.dialogActions}>
+          <Button slot="close" className={componentStyles.button}>
+            Keep editing
+          </Button>
+          <Button
+            className={cx(componentStyles.button, componentStyles.primary)}
+            onPress={() => {
+              shownEdits().discard()
+              setConfirming(false)
+              close()
+            }}
+          >
+            Discard and leave
+          </Button>
+        </div>
+      </DialogFrame>
+    </>
   )
 }

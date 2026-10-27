@@ -1,10 +1,46 @@
 /* The Inspection panel scrolls itself; the overlay thumb in global.css
    reserves no width. */
 .panel {
+  position: relative;
   box-sizing: border-box;
   height: 100%;
   overflow: auto;
   padding: var(--space-3);
+}
+
+/* Closing what Properties shows: one × at the top right of every kind of
+   content (decision 0028); headers keep clear of it. */
+.close {
+  position: absolute;
+  top: var(--space-2);
+  right: var(--space-2);
+  z-index: 1;
+  display: grid;
+  place-items: center;
+  width: 1.75rem;
+  height: 1.75rem;
+  padding: 0;
+  border: 1px solid transparent;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--color-text-muted);
+  cursor: pointer;
+  outline: none;
+}
+
+.close[data-hovered] {
+  border-color: var(--color-border-interactive);
+  color: var(--color-text);
+}
+
+.close[data-focus-visible] {
+  outline: 2px solid var(--color-focus);
+  outline-offset: 1px;
+}
+
+.panel > header,
+.panel > section > header {
+  padding-right: 2rem;
 }
 
 .header {

@@ -1,7 +1,19 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 
 function same(a: unknown, b: unknown): boolean {
   return a === b || JSON.stringify(a) === JSON.stringify(b)
+}
+
+/**
+ * The definition the Properties panel shows: how many of its fields are
+ * edited and how to drop those edits. Its close button asks before leaving
+ * edits behind (decision 0028). Properties shows one definition at a time.
+ */
+let shown: { key: string; count: number; discard: () => void } | null = null
+
+/** How many unsaved fields the shown definition has, and how to drop them. */
+export function shownEdits(): { count: number; discard: () => void } {
+  return shown ?? { count: 0, discard: () => undefined }
 }
 
 /**
@@ -50,12 +62,28 @@ export function useEdits<T extends Record<string, unknown>>(
   const fields = Object.keys(edits) as (keyof T)[]
   const isEdited = (field: keyof T) =>
     field in edits && !same(edits[field], saved[field])
+  const editedCount = fields.filter(isEdited).length
+
+  useEffect(() => {
+    shown = {
+      key,
+      count: editedCount,
+      discard: () => {
+        unsaved.delete(key)
+        setEdits({})
+      },
+    }
+    return () => {
+      if (shown?.key === key) shown = null
+    }
+  }, [key, editedCount])
+
   return {
     value: { ...saved, ...edits },
     set: (field, value) => keep({ ...edits, [field]: value }),
     patch: (values) => keep({ ...edits, ...values }),
     isEdited,
-    editedCount: fields.filter(isEdited).length,
+    editedCount,
     reset: () => keep({}),
   }
 }

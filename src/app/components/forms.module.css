@@ -57,7 +57,8 @@
 
 /* Read-only values, such as a library entry in Properties: no field fill. */
 .input[readonly],
-.input:disabled {
+.input:disabled,
+.readOnly {
   border-style: dashed;
   background: transparent;
   color: var(--color-text-muted);

@@ -166,7 +166,11 @@ test('edits a schedule by dragging or keys, marks edits, and cancels them', asyn
   })
   const average = schedule.getByRole('status')
   const before = await average.textContent()
-  await expect(average).toHaveText(/^Annual average\s+0\.\d+$/)
+  // A read-only field under its own label, like the name.
+  await expect(average).toHaveText(/^0\.\d+$/)
+  await expect(
+    schedule.getByText('Annual average', { exact: true }),
+  ).toBeVisible()
   await expect(
     schedule.getByRole('img', { name: /^The schedule over a year/ }),
   ).toBeVisible()
@@ -191,10 +195,36 @@ test('edits a schedule by dragging or keys, marks edits, and cancels them', asyn
     .selectOption('Sunday')
   await expect(schedule).toContainText('2 fields edited, not saved.')
 
+  // Closing Properties with unsaved edits asks first; Keep editing keeps them.
+  const close = properties(page).getByRole('button', {
+    name: 'Clear selection from Properties',
+  })
+  await close.click()
+  const leave = page.getByRole('alertdialog', {
+    name: 'Leave with unsaved edits?',
+  })
+  await expect(leave).toContainText('2 fields are edited and not saved.')
+  await leave.getByRole('button', { name: 'Keep editing' }).click()
+  await expect(schedule).toContainText('2 fields edited, not saved.')
+
   await schedule.getByRole('button', { name: 'Discard the edits' }).click()
   await expect(schedule).toContainText('No unsaved edits.')
   await expect(point).toHaveAttribute('aria-valuetext', '0.05')
   await expect(average).toHaveText(before ?? '')
+
+  // Without edits, the × closes at once; with them, Discard and leave does.
+  await close.click()
+  await expect(properties(page)).toContainText('Nothing selected')
+  await archetypes
+    .getByRole('grid', { name: 'Schedules' })
+    .getByRole('row')
+    .filter({ hasText: 'Office occupancy' })
+    .getByRole('rowheader')
+    .click()
+  await schedule.getByRole('textbox', { name: 'Weekday, hour 12' }).fill('0.5')
+  await close.click()
+  await leave.getByRole('button', { name: 'Discard and leave' }).click()
+  await expect(properties(page)).toContainText('Nothing selected')
 })
 
 test('archetypes render in every appearance and a narrow pane without serious axe violations', async ({
