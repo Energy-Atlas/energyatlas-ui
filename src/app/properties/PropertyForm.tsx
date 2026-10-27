@@ -1,4 +1,4 @@
-import { useId, type ReactNode } from 'react'
+import { createContext, useContext, useId, type ReactNode } from 'react'
 import {
   FieldError,
   Form,
@@ -33,7 +33,21 @@ type PropertyFormProps = {
   onSubmit: () => void
   /** Discards the edits, or leaves the new definition. */
   onCancel: () => void
+  /**
+   * Why nothing here can be changed, such as a library entry; the fields are
+   * read-only and Save and Cancel are unavailable with this reason.
+   */
+  readOnly?: string | null
+  /** Buttons beside Save and Cancel, such as Add to project. */
+  actions?: ReactNode
   children: ReactNode
+}
+
+const ReadOnlyContext = createContext(false)
+
+/** Whether the fields of the enclosing definition are read-only. */
+export function usePropertyReadOnly(): boolean {
+  return useContext(ReadOnlyContext)
 }
 
 /**
@@ -53,10 +67,16 @@ export function PropertyForm({
   submitLabel,
   onSubmit,
   onCancel,
+  readOnly = null,
+  actions,
   children,
 }: PropertyFormProps) {
   const headingId = useId()
   const unchanged = !creating && editedCount === 0
+  const cancelReason =
+    readOnly ?? (unchanged ? 'Nothing has been edited.' : null)
+  const saveReason =
+    readOnly ?? waiting ?? (unchanged ? 'Nothing has been edited.' : null)
   return (
     <section className={styles.definition} aria-labelledby={headingId}>
       <header className={styles.header}>
@@ -74,28 +94,33 @@ export function PropertyForm({
         validationBehavior="aria"
         onSubmit={(event) => {
           event.preventDefault()
-          if (waiting || unchanged) return
+          if (saveReason) return
           onSubmit()
         }}
       >
-        {children}
+        <ReadOnlyContext.Provider value={readOnly !== null}>
+          {children}
+        </ReadOnlyContext.Provider>
         {error ? <InlineAlert tone="danger">{error}</InlineAlert> : null}
         <div className={styles.footer}>
           <p className={styles.editedNote} aria-live="polite">
-            {creating
-              ? null
-              : editedCount === 0
-                ? 'No unsaved edits.'
-                : `${editedCount} field${editedCount === 1 ? '' : 's'} edited, not saved.`}
+            {readOnly
+              ? readOnly
+              : creating
+                ? null
+                : editedCount === 0
+                  ? 'No unsaved edits.'
+                  : `${editedCount} field${editedCount === 1 ? '' : 's'} edited, not saved.`}
           </p>
           <div className={styles.footerActions}>
+            {actions}
             <ActionButton
               label={
                 creating
                   ? `Cancel the new ${eyebrow.toLowerCase()}`
                   : 'Discard the edits'
               }
-              disabledReason={unchanged ? 'Nothing has been edited.' : null}
+              disabledReason={cancelReason}
               onPress={onCancel}
             >
               Cancel
@@ -103,10 +128,8 @@ export function PropertyForm({
             <button
               type="submit"
               className={cx(componentStyles.button, componentStyles.primary)}
-              aria-disabled={waiting || unchanged ? true : undefined}
-              title={
-                waiting ?? (unchanged ? 'Nothing has been edited.' : undefined)
-              }
+              aria-disabled={saveReason ? true : undefined}
+              title={saveReason ?? undefined}
             >
               {submitLabel}
             </button>
@@ -136,10 +159,12 @@ export function TextProperty({
   onChange: (value: string) => void
 }) {
   const descriptionId = useId()
+  const readOnly = usePropertyReadOnly()
   return (
     <TextField
       className={cx(formStyles.field, edited && formStyles.edited)}
       value={value}
+      isReadOnly={readOnly}
       inputMode={inputMode}
       isInvalid={Boolean(error)}
       onChange={onChange}
@@ -174,6 +199,7 @@ export function SelectProperty({
   onChange: (value: string) => void
 }) {
   const id = useId()
+  const readOnly = usePropertyReadOnly()
   return (
     <div className={cx(formStyles.field, edited && formStyles.edited)}>
       <label className={formStyles.label} htmlFor={id}>
@@ -183,6 +209,7 @@ export function SelectProperty({
         id={id}
         className={formStyles.input}
         value={value}
+        disabled={readOnly}
         aria-invalid={error ? true : undefined}
         aria-describedby={error ? `${id}-error` : undefined}
         onChange={(event) => onChange(event.target.value)}

@@ -433,7 +433,8 @@ export type Issue = {
 
 /**
  * What the shared selection can hold. Buildings and grid elements are map
- * objects; the rest are definitions the Properties panel shows and edits.
+ * objects; definitions are shown and edited in the Properties panel; library
+ * entries are shown there read-only (decision 0028).
  */
 export type SelectableEntity =
   | 'building'
@@ -443,6 +444,9 @@ export type SelectableEntity =
   | 'measure'
   | 'scenario'
   | 'asset'
+  | 'libraryArchetype'
+  | 'librarySchedule'
+  | 'libraryMeasure'
 
 export const SELECTABLE_ENTITIES = [
   'building',
@@ -452,39 +456,10 @@ export const SELECTABLE_ENTITIES = [
   'measure',
   'scenario',
   'asset',
+  'libraryArchetype',
+  'librarySchedule',
+  'libraryMeasure',
 ] as const satisfies readonly SelectableEntity[]
-
-/** The state collection holding each selectable kind. */
-export function selectableCollection(
-  state: Pick<
-    WorkbenchState,
-    | 'buildings'
-    | 'gridElements'
-    | 'archetypes'
-    | 'schedules'
-    | 'measures'
-    | 'scenarios'
-    | 'assets'
-  >,
-  entityType: SelectableEntity,
-): Record<string, unknown> {
-  switch (entityType) {
-    case 'building':
-      return state.buildings
-    case 'gridElement':
-      return state.gridElements
-    case 'archetype':
-      return state.archetypes
-    case 'schedule':
-      return state.schedules
-    case 'measure':
-      return state.measures
-    case 'scenario':
-      return state.scenarios
-    case 'asset':
-      return state.assets
-  }
-}
 
 export type Selection = {
   entityType: SelectableEntity | null

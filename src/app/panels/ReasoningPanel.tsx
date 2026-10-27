@@ -45,6 +45,7 @@ import { ActionButton } from '../components/ActionButton.tsx'
 import { CapabilityBadge } from '../components/CapabilityBadge.tsx'
 import componentStyles from '../components/components.module.css'
 import menuStyles from '../components/menus.module.css'
+import { unavailableRef } from '../components/unavailable.ts'
 import { cx } from '../cx.ts'
 import styles from './reasoning.module.css'
 
@@ -385,13 +386,15 @@ function ModelMenu({ label }: { label: string }) {
               id={option.id}
               className={menuStyles.menuItem}
               textValue={option.label}
+              // Greyed out; the reason is the tooltip (decision 0028).
+              ref={unavailableRef(option.unavailableReason)}
             >
               <span className={menuStyles.menuCheck} aria-hidden="true" />
               <Text slot="label" className={menuStyles.menuLabel}>
                 {option.label}
               </Text>
               {option.unavailableReason ? (
-                <Text slot="description" className={menuStyles.menuDescription}>
+                <Text slot="description" className="visually-hidden">
                   {option.unavailableReason}
                 </Text>
               ) : null}
@@ -657,8 +660,13 @@ export function ReasoningPanel() {
                         <MenuItem
                           key={option.id}
                           id={option.id}
-                          className={menuStyles.menuItem}
+                          className={cx(
+                            menuStyles.menuItem,
+                            blocker && menuStyles.unavailable,
+                          )}
                           textValue={option.label}
+                          // Greyed out with the reason as tooltip (decision 0028).
+                          ref={unavailableRef(blocker)}
                         >
                           <span
                             className={menuStyles.menuCheck}
@@ -669,7 +677,11 @@ export function ReasoningPanel() {
                           </Text>
                           <Text
                             slot="description"
-                            className={menuStyles.menuDescription}
+                            className={
+                              blocker
+                                ? 'visually-hidden'
+                                : menuStyles.menuDescription
+                            }
                           >
                             {blocker ?? option.description}
                           </Text>

@@ -55,6 +55,14 @@
   color: var(--color-text-muted);
 }
 
+/* Read-only values, such as a library entry in Properties: no field fill. */
+.input[readonly],
+.input:disabled {
+  border-style: dashed;
+  background: transparent;
+  color: var(--color-text-muted);
+}
+
 /* An edited value of something saved: the accent edge and a light tint, so
    the edits stand out until they are saved or cancelled. */
 .edited .input,

@@ -1,6 +1,11 @@
 import { Info, TriangleAlert } from 'lucide-react'
 import { useId, useMemo, type ReactNode } from 'react'
 import { useStore } from 'zustand'
+import {
+  ARCHETYPE_LIBRARY,
+  SCHEDULE_LIBRARY,
+} from '../../domain/archetypes/library.ts'
+import { MEASURE_LIBRARY } from '../../domain/scenarios/library.ts'
 import type { SelectableEntity } from '../../domain/types.ts'
 import { useServices, useWorkbenchSnapshot } from '../WorkbenchContext.tsx'
 import { ActionButton } from '../components/ActionButton.tsx'
@@ -224,6 +229,51 @@ function DefinitionProperties() {
   if (entityType === 'asset' && id) {
     const asset = state.assets[id]
     return asset ? <AssetProperties asset={asset} /> : null
+  }
+  // Library entries are shown read-only, with Add to project where the
+  // library offers it (decision 0028).
+  if (entityType === 'libraryArchetype' && id) {
+    const entry = ARCHETYPE_LIBRARY.find((item) => item.id === id)
+    return entry ? (
+      <ArchetypeProperties
+        key={`library:${entry.id}`}
+        archetype={entry}
+        library
+        onCreated={select('archetype')}
+        onCancelCreate={cancel}
+      />
+    ) : null
+  }
+  if (entityType === 'librarySchedule' && id) {
+    const entry = SCHEDULE_LIBRARY.find((item) => item.id === id)
+    return entry ? (
+      <ScheduleProperties
+        key={`library:${entry.id}`}
+        schedule={entry}
+        library
+        onCreated={select('schedule')}
+        onCancelCreate={cancel}
+      />
+    ) : null
+  }
+  if (entityType === 'libraryMeasure' && id) {
+    const entry = MEASURE_LIBRARY.find((item) => item.libraryId === id)
+    return entry ? (
+      <MeasureProperties
+        key={`library:${entry.libraryId}`}
+        measure={{
+          id: entry.libraryId,
+          name: entry.name,
+          kind: entry.kind,
+          savingsPercent: entry.savingsPercent,
+          appliesTo: entry.appliesTo,
+          source: { kind: 'library', libraryId: entry.libraryId },
+        }}
+        library={entry}
+        onCreated={select('measure')}
+        onCancelCreate={cancel}
+      />
+    ) : null
   }
   return null
 }

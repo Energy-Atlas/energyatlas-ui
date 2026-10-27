@@ -4,11 +4,8 @@ import {
   type Command,
   type ValidationIssue,
 } from '../../domain/commands.ts'
-import {
-  selectableCollection,
-  type CommandSource,
-  type WorkbenchState,
-} from '../../domain/types.ts'
+import { selectableCollection } from '../../domain/selection.ts'
+import type { CommandSource, WorkbenchState } from '../../domain/types.ts'
 import { createInitialState } from '../../domain/initialState.ts'
 import type { ExecuteResult, Workbench } from '../../domain/workbench.ts'
 import { issuesFromError } from '../../server/apiError.ts'

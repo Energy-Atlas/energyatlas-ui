@@ -63,11 +63,8 @@ import type {
   Task,
   WorkbenchState,
 } from './types.ts'
-import {
-  SELECTABLE_ENTITIES,
-  selectableCollection,
-  type SelectableEntity,
-} from './types.ts'
+import { SELECTABLE_ENTITIES, type SelectableEntity } from './types.ts'
+import { selectableCollection } from './selection.ts'
 import {
   STAGE_IDS,
   hasActiveTask,
@@ -181,6 +178,9 @@ const SELECTION_NOUNS: Record<SelectableEntity, string> = {
   measure: 'measure(s)',
   scenario: 'scenario(s)',
   asset: 'asset(s)',
+  libraryArchetype: 'library archetype(s)',
+  librarySchedule: 'library schedule(s)',
+  libraryMeasure: 'library measure(s)',
 }
 
 const JOB_STATUS_WORDS: Record<Task['status'], string> = {
@@ -1666,7 +1666,7 @@ export const commandDefinitions = {
   'selection.set': defineCommand({
     title: 'Select',
     description:
-      'Replace the shared selection with buildings, grid elements, or one definition (archetype, schedule, measure, scenario, or asset) for the Properties panel. Unknown ids are rejected.',
+      'Replace the shared selection with buildings, grid elements, or one definition (archetype, schedule, measure, scenario, or asset) for the Properties panel, or one entry of the synthetic archetype, schedule, or measure library to show read-only. Unknown ids are rejected.',
     input: z.object({
       entityType: z.enum(SELECTABLE_ENTITIES),
       ids: z.array(z.string().min(1)).max(10_000),

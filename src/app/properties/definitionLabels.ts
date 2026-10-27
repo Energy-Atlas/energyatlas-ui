@@ -44,6 +44,10 @@ export function rangeLabel(
   return `${archetype.yearFrom} to ${archetype.yearTo}`
 }
 
+/** Why a library entry shown in Properties cannot be changed. */
+export const LIBRARY_READ_ONLY =
+  'Library entries are read-only. Add one to the project to edit its copy.'
+
 /** A short source for table cells. */
 export function sourceLabel(source: DefinitionSource): string {
   if (source.kind === 'library') return 'Library'

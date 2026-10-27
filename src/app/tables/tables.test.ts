@@ -6,6 +6,7 @@ import { describeTableChange, tableChangeIssue } from './tableChange.ts'
 import {
   columnHeader,
   describeFilter,
+  fitWidths,
   formatCell,
   processRows,
   searchRows,
@@ -129,6 +130,34 @@ describe('table settings', () => {
       { ok: good },
     )
     expect(parseStoredTables('garbage')).toEqual({})
+  })
+})
+
+describe('fitted column widths', () => {
+  // One pixel per character, so the arithmetic is easy to read.
+  const measure = {
+    cell: (text: string) => text.length,
+    header: (text: string) => text.length,
+  }
+
+  test('fit the widest text plus padding; header widgets count for headers only', () => {
+    const rows = [
+      { id: 'B1', use: 'x'.repeat(200), kwh: 1, name: 'A' },
+    ] satisfies Building[]
+    const widths = fitWidths(rows, COLUMNS, defaultTableSettings(), measure)
+    // A long cell sets the width: its text and the padding, no widgets.
+    expect(widths.use).toBe(200 + 20)
+    // A short column is its header with the two widgets, then the minimum.
+    expect(widths.id).toBe(Math.max(56, 'Building'.length + 46 + 20))
+  })
+
+  test('stay within limits', () => {
+    const rows = [
+      { id: 'B1', use: 'x'.repeat(1_000), kwh: 1, name: '' },
+    ] satisfies Building[]
+    const widths = fitWidths(rows, COLUMNS, defaultTableSettings(), measure)
+    expect(widths.use).toBe(360)
+    expect(widths.name).toBeGreaterThanOrEqual(56)
   })
 })
 

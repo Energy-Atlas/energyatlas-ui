@@ -11,9 +11,14 @@ import formStyles from '../components/forms.module.css'
 import { cx } from '../cx.ts'
 import { formatNumber } from '../format.ts'
 import { waitingReason } from '../service/usePendingReason.ts'
-import { provenanceSentence } from './definitionLabels.ts'
-import { PropertyForm, SelectProperty, TextProperty } from './PropertyForm.tsx'
+import { LIBRARY_READ_ONLY, provenanceSentence } from './definitionLabels.ts'
+import {
+  PropertyForm,
+  TextProperty,
+  usePropertyReadOnly,
+} from './PropertyForm.tsx'
 import { ScheduleChart } from './ScheduleChart.tsx'
+import { ScheduleYear } from './ScheduleYear.tsx'
 import styles from './schedule.module.css'
 import { useEdits } from './useEdits.ts'
 
@@ -62,18 +67,21 @@ function freshDayId(days: DayDraft[]): string {
 }
 
 /**
- * A schedule in Properties (decision 0028): its name, its day types (such
- * as Weekday, Saturday, Sunday), each drawn as 24 points to drag or typed
- * hour by hour, and which type each day of the week uses. The annual
- * average updates as values change.
+ * A schedule in Properties (decision 0028): its name, the annual average
+ * and the year as a heat map (both read-only and live), which day type each
+ * day of the week uses, and the day types (such as Weekday, Saturday,
+ * Sunday), each drawn as 24 points to drag or typed hour by hour.
  */
 export function ScheduleProperties({
   schedule,
+  library = false,
   onCreated,
   onCancelCreate,
 }: {
   /** Null creates a new schedule. */
   schedule: Schedule | null
+  /** A synthetic library entry, shown read-only (decision 0028). */
+  library?: boolean
   onCreated: (id: string) => void
   onCancelCreate: () => void
 }) {
@@ -81,7 +89,9 @@ export function ScheduleProperties({
   const pending = useClientSnapshot((snapshot) => snapshot.pending)
   const edits = useEdits(
     toFields(schedule),
-    schedule ? `schedule:${schedule.id}` : 'new:schedule',
+    schedule
+      ? `${library ? 'library:' : ''}schedule:${schedule.id}`
+      : 'new:schedule',
   )
   const [activeId, setActiveId] = useState(
     () => edits.value.days[0]?.id ?? 'weekday',
@@ -205,7 +215,12 @@ export function ScheduleProperties({
 
   return (
     <PropertyForm
-      eyebrow="Schedule"
+      eyebrow={library ? 'Library schedule' : 'Schedule'}
+      readOnly={
+        library
+          ? 'Library schedules are read-only. They come into the project with a library archetype that uses them, as an editable copy.'
+          : null
+      }
       title={schedule ? schedule.name : 'New schedule'}
       provenance={schedule ? provenanceSentence(schedule.source) : undefined}
       creating={creating}
@@ -240,6 +255,42 @@ export function ScheduleProperties({
         }}
       />
 
+      <AnnualAverage value={stats?.annualAverage ?? null} />
+      {allValid ? (
+        <ScheduleYear schedule={{ days: numbers, week: draft.week }} />
+      ) : null}
+
+      <section className={styles.section} aria-label="Week">
+        <h4 className={styles.sectionTitle}>Week</h4>
+        <div className={styles.week}>
+          {WEEK_DAYS.map((name, index) => (
+            <WeekDay
+              key={name}
+              name={name}
+              value={draft.week[index] ?? ''}
+              edited={
+                schedule !== null && schedule.week[index] !== draft.week[index]
+              }
+              options={dayTypes}
+              onChange={(id) => {
+                edits.set(
+                  'week',
+                  draft.week.map((current, day) =>
+                    day === index ? id : current,
+                  ),
+                )
+                clearErrors('week')
+              }}
+            />
+          ))}
+        </div>
+        {errors.week ? (
+          <p className={styles.error} role="alert">
+            {errors.week}
+          </p>
+        ) : null}
+      </section>
+
       <section className={styles.section} aria-label="Day types">
         <h4 className={styles.sectionTitle}>Day types</h4>
         <div className={styles.dayBar}>
@@ -260,8 +311,9 @@ export function ScheduleProperties({
                 label: 'Add a day type',
                 icon: Plus,
                 iconOnly: true,
-                disabledReason:
-                  draft.days.length >= 7
+                disabledReason: library
+                  ? LIBRARY_READ_ONLY
+                  : draft.days.length >= 7
                     ? 'A schedule has at most seven day types, one per day.'
                     : null,
                 onPress: addDayType,
@@ -271,8 +323,9 @@ export function ScheduleProperties({
                 label: `Remove ${active?.name || 'this day type'}`,
                 icon: Trash2,
                 iconOnly: true,
-                disabledReason:
-                  draft.days.length < 2
+                disabledReason: library
+                  ? LIBRARY_READ_ONLY
+                  : draft.days.length < 2
                     ? 'A schedule needs at least one day type.'
                     : null,
                 onPress: removeDayType,
@@ -299,6 +352,7 @@ export function ScheduleProperties({
               label={active.name || 'Day type'}
               values={active.hours.map(parse)}
               saved={creating ? null : (saved?.hours ?? null)}
+              readOnly={library}
               onChange={(hour, value) =>
                 setHour(active.id, hour, String(value))
               }
@@ -307,6 +361,7 @@ export function ScheduleProperties({
               day={active}
               saved={creating ? null : saved}
               invalid={Boolean(errors.days)}
+              readOnly={library}
               onChange={(hour, value) => setHour(active.id, hour, value)}
             />
           </>
@@ -317,54 +372,62 @@ export function ScheduleProperties({
           </p>
         ) : null}
       </section>
-
-      <section className={styles.section} aria-label="Week">
-        <h4 className={styles.sectionTitle}>Week</h4>
-        <div className={styles.week}>
-          {WEEK_DAYS.map((name, index) => (
-            <SelectProperty
-              key={name}
-              label={name}
-              value={draft.week[index] ?? ''}
-              edited={
-                schedule !== null && schedule.week[index] !== draft.week[index]
-              }
-              error={undefined}
-              options={dayTypes}
-              onChange={(id) => {
-                edits.set(
-                  'week',
-                  draft.week.map((current, day) =>
-                    day === index ? id : current,
-                  ),
-                )
-                clearErrors('week')
-              }}
-            />
-          ))}
-        </div>
-        {errors.week ? (
-          <p className={styles.error} role="alert">
-            {errors.week}
-          </p>
-        ) : null}
-      </section>
-
-      <ScheduleSummary stats={stats} />
     </PropertyForm>
   )
 }
 
-/** The active day type's 24 values as fields, wrapping to the panel width. */
+/** One day of the week and the day type it uses, compact enough for one row. */
+function WeekDay({
+  name,
+  value,
+  edited,
+  options,
+  onChange,
+}: {
+  name: string
+  value: string
+  edited: boolean
+  options: { value: string; label: string }[]
+  onChange: (value: string) => void
+}) {
+  const id = useId()
+  const readOnly = usePropertyReadOnly()
+  return (
+    <div className={cx(styles.weekDay, edited && formStyles.edited)}>
+      <label className={styles.weekDayLabel} htmlFor={id} title={name}>
+        {name.slice(0, 3)}
+      </label>
+      <select
+        id={id}
+        aria-label={name}
+        className={cx(formStyles.input, styles.weekSelect)}
+        value={value}
+        disabled={readOnly}
+        title={options.find((option) => option.value === value)?.label}
+        onChange={(event) => onChange(event.target.value)}
+      >
+        {options.map((option) => (
+          <option key={option.value} value={option.value}>
+            {option.label}
+          </option>
+        ))}
+      </select>
+    </div>
+  )
+}
+
+/** The active day type's 24 values as fields in two rows of twelve. */
 function HourFields({
   day,
   saved,
   invalid,
+  readOnly,
   onChange,
 }: {
   day: DayDraft
   saved: Schedule['days'][number] | null
   invalid: boolean
+  readOnly: boolean
   onChange: (hour: number, value: string) => void
 }) {
   return (
@@ -378,7 +441,7 @@ function HourFields({
         return (
           <label key={hour} className={styles.hour}>
             <span className={styles.hourLabel} aria-hidden="true">
-              {String(hour).padStart(2, '0')}:00
+              {hour}
             </span>
             <input
               className={cx(
@@ -391,6 +454,7 @@ function HourFields({
               aria-invalid={
                 invalid && !valid([parse(value)]) ? true : undefined
               }
+              readOnly={readOnly}
               value={value}
               onChange={(event) => onChange(hour, event.target.value)}
             />
@@ -401,40 +465,16 @@ function HourFields({
   )
 }
 
-/** The annual average and full-load hours, updated as values change. */
-function ScheduleSummary({
-  stats,
-}: {
-  stats: ReturnType<typeof scheduleStats> | null
-}) {
-  const labelId = useId()
+/** The annual average on its own line, read-only and updated as values change. */
+function AnnualAverage({ value }: { value: number | null }) {
   return (
-    <div
-      className={styles.stats}
-      role="status"
-      aria-live="polite"
-      aria-labelledby={labelId}
-    >
-      <span id={labelId} className={styles.sectionTitle}>
-        Annual average
+    <p className={styles.average} role="status" aria-live="polite">
+      <span className={styles.averageLabel}>Annual average</span>{' '}
+      <span className={styles.averageValue}>
+        {value === null
+          ? 'Enter 0 to 1 in every hour'
+          : formatNumber(value, { maxDigits: 3 })}
       </span>
-      {stats ? (
-        <>
-          <span className={styles.statsValue}>
-            {formatNumber(stats.annualAverage, { maxDigits: 3 })}
-          </span>
-          <span className={styles.statsNote}>
-            The constant value with the same yearly total:{' '}
-            {stats.annualHours.toLocaleString('en-US')} equivalent full-load
-            hours a year, {formatNumber(stats.weeklyHours, { maxDigits: 1 })} a
-            week; values range from {stats.min} to {stats.max}.
-          </span>
-        </>
-      ) : (
-        <span className={styles.statsNote}>
-          Enter a number from 0 to 1 in every hour to see the annual average.
-        </span>
-      )}
-    </div>
+    </p>
   )
 }

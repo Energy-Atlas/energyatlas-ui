@@ -180,6 +180,9 @@ describe('MenuButton', () => {
 
     await user.click(screen.getByRole('button', { name: 'Export' }))
     const pdf = screen.getByRole('menuitem', { name: /PDF/ })
+    // Greyed out, its reason the tooltip and its (hidden) description.
+    expect(pdf.getAttribute('title')).toBe('Planned.')
+    expect(pdf.getAttribute('aria-disabled')).toBe('true')
     expect(pdf.textContent).toContain('Planned.')
     await user.click(pdf)
     expect(onAction).toHaveBeenCalledTimes(1)

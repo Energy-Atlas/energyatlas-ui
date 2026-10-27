@@ -57,6 +57,25 @@ the Messages panel's laggy resizing and toolbar overflow.
 - **Resizing.** The layout is saved after changes settle rather than on every splitter move, and tab content is
   cached so a layout change does not re-render every page.
 
+## Follow-up review (2026-10-27)
+
+- **Menus.** An unavailable menu item is greyed out, with no second line; its reason is the hover tooltip and its
+  description for assistive technology. It stays focusable, and choosing it still reports why it cannot run. This
+  applies to the ribbon menus, `MenuButton`, and the Reasoning panel's menus; the command palette keeps its reasons
+  visible, since it is a search list rather than a dropdown.
+- **Fitted column widths.** "Fit content" and the default minimum widths measured text at 7.2 px per character, added
+  the header's two widgets to every column even when a cell was the widest text, and scaled headers by 1.1, so
+  columns came out 50 to 100 px too wide. Widths are now measured with the table's own header and cell fonts
+  (`useTextMeasure`, `src/app/tables/measureText.ts`) once its web fonts have loaded; the widgets count for the
+  header only, and a smaller estimate stands in until then.
+- **Library entries are inspectable.** The selection can also hold one entry of the archetype, schedule, or measure
+  library (`libraryArchetype`, `librarySchedule`, `libraryMeasure`); Properties shows it read-only (dashed fields,
+  Save and Cancel unavailable with the reason) with Add to project where the library offers it. The Archetypes page
+  gains a Schedule library table; schedules still come into the project with the library archetypes that use them.
+- **Schedule editor.** After the name: the annual average on one read-only line, then the year as a heat map (one
+  column per day from a Monday, one row per hour, darker nearer 1) that redraws as values or the week change. Then
+  the week, seven compact day selects in one row, above the day types; each day type's 24 hour fields fit two rows.
+
 ## Consequences
 
 - No new package.

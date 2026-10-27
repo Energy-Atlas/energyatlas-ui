@@ -18,6 +18,7 @@ import { cx } from '../cx.ts'
 import componentStyles from './components.module.css'
 import menuStyles from './menus.module.css'
 import styles from './primitives.module.css'
+import { unavailableRef } from './unavailable.ts'
 
 export type MenuEntry = {
   id: string
@@ -63,8 +64,8 @@ function keysToSet(keys: Selection): Set<string> {
 
 /**
  * A button that opens a menu (decision 0027), in the look of the ribbon
- * menus: a check column, the label, an optional shortcut, and a second line
- * that carries the reason an entry is unavailable.
+ * menus: a check column, the label, and an optional shortcut. An unavailable
+ * entry is greyed out with its reason as the tooltip (decision 0028).
  */
 export function MenuButton({
   label,
@@ -109,7 +110,7 @@ export function MenuButton({
           className={menuStyles.menu}
           selectionMode={selectionMode}
           // Choosing a checkable entry toggles it, so an unavailable one is
-          // disabled there; its reason stays on its second line.
+          // disabled there; its reason stays its tooltip and description.
           disabledKeys={
             selectionMode === 'none'
               ? undefined
@@ -151,7 +152,12 @@ export function MenuButton({
                   key={entry.id}
                   id={entry.id}
                   textValue={entry.label}
-                  className={menuStyles.menuItem}
+                  className={cx(
+                    menuStyles.menuItem,
+                    entry.disabledReason && menuStyles.unavailable,
+                  )}
+                  // Greyed out with its reason as the tooltip (decision 0028).
+                  ref={unavailableRef(entry.disabledReason)}
                 >
                   {({ isSelected }) => (
                     <>
@@ -161,12 +167,16 @@ export function MenuButton({
                       <Text slot="label" className={menuStyles.menuLabel}>
                         {entry.label}
                       </Text>
-                      {entry.disabledReason || entry.description ? (
+                      {entry.disabledReason ? (
+                        <Text slot="description" className="visually-hidden">
+                          {entry.disabledReason}
+                        </Text>
+                      ) : entry.description ? (
                         <Text
                           slot="description"
                           className={menuStyles.menuDescription}
                         >
-                          {entry.disabledReason ?? entry.description}
+                          {entry.description}
                         </Text>
                       ) : null}
                       {entry.shortcut ? (

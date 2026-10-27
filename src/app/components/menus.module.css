@@ -50,8 +50,18 @@
   background: var(--color-selected-bg);
 }
 
-.menuItem[data-disabled] {
+/* An unavailable item is greyed out; its reason is the hover tooltip and is
+   read to assistive technology, not printed as a second line (decision 0028).
+   It stays focusable, so choosing it still reports why it cannot run. */
+.menuItem[data-disabled],
+.unavailable,
+.unavailable .kbd {
   color: var(--color-text-muted);
+  opacity: 0.6;
+}
+
+.unavailable[data-focused] {
+  background: color-mix(in srgb, var(--color-selected-bg) 50%, transparent);
 }
 
 .menuCheck {

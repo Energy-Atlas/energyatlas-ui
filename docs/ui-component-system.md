@@ -453,3 +453,18 @@ Built on `claude/ui-component-system` (2026-10-27), not merged into `master`.
 **Verification (2026-10-27):** typecheck, lint, and format clean; 362 unit tests (adds the definition selection,
 schedule day types and their migration from weekday/weekend); browser tests updated for the tables, Properties,
 the start screen, and the demo switch, with a new schedule editing test (drag keys, edited marks, Cancel).
+
+## Follow-up review of decision 0028 (2026-10-27)
+
+Built on `claude/ui-component-system`, not merged. Recorded in
+[decision 0028](decisions/0028-properties-panel-and-definition-tables.md#follow-up-review-2026-10-27).
+
+- Menus grey out unavailable items with the reason as tooltip (`src/app/components/unavailable.ts`), no second line.
+- Fitted column widths are measured in the table's fonts (`useTextMeasure`); on the Archetypes table every
+  fitted column came within 3 px of its widest text, where the Name column had been about 100 px too wide.
+- Library archetypes, schedules (a new Schedule library table), and measures open read-only in Properties.
+- The schedule editor shows the annual average and a year heat map after the name, the week in one row, then the
+  day types with hour fields in two rows.
+
+**Verification (2026-10-27):** typecheck, lint, and format clean; 364 unit tests (adds fitted widths and the menu
+tooltip); browser tests extended for library inspection, the average line, and the heat map.

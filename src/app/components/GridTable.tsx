@@ -4,7 +4,13 @@ import type {
   SuppressHeaderKeyboardEventParams,
 } from 'ag-grid-community'
 import { AgGridReact, type AgGridReactProps } from 'ag-grid-react'
-import { createContext, useContext, useMemo, type ReactNode } from 'react'
+import {
+  createContext,
+  useContext,
+  useMemo,
+  useRef,
+  type ReactNode,
+} from 'react'
 import { cx } from '../cx.ts'
 import {
   shadedGridTheme,
@@ -26,6 +32,7 @@ import type { TableChange, TableSettings } from '../tables/tableSettings.ts'
 import componentStyles from './components.module.css'
 import styles from './dataTable.module.css'
 import { ScrollJump } from './ScrollJump.tsx'
+import { useTextMeasure } from './useTextMeasure.ts'
 import { ColumnTools, TableBar, type FixedStyle } from './tableTools.tsx'
 
 export type GridTableProps<Row> = {
@@ -114,9 +121,15 @@ export function GridTable<Row>({
       ),
     [rows, columns, settings, search],
   )
+  const zoneRef = useRef<HTMLDivElement>(null)
+  const measure = useTextMeasure(
+    zoneRef,
+    `.${styles.headLabel}`,
+    '.ag-cell-value, .ag-cell',
+  )
   const widths = useMemo(
-    () => fitWidths(rows, columns, settings),
-    [rows, columns, settings],
+    () => fitWidths(rows, columns, settings, measure),
+    [rows, columns, settings, measure],
   )
   // AG Grid holds the sort, so the header carries it to assistive technology
   // and Enter on a header steps it, but the order is the shared model's.
@@ -256,6 +269,7 @@ export function GridTable<Row>({
         </p>
       ) : null}
       <div
+        ref={zoneRef}
         className={styles.gridZone}
         // A column's widgets show while the pointer or focus is anywhere in
         // that column, not only on its header.

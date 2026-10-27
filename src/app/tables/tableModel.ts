@@ -250,32 +250,50 @@ export function describeFilter(filter: ColumnFilter, unit?: string): string {
   }
 }
 
-const CHAR_PX = 7.2
-const CELL_PADDING_PX = 24
-const HEADER_WIDGETS_PX = 44
+/** An estimate where text cannot be measured (tests, before first paint). */
+const CHAR_PX = 6.5
+/** Cell padding (0.5rem each side), the cell's rule, and a pixel to spare. */
+const CELL_PADDING_PX = 20
+/** The two column widgets in a header (1.25rem each) and their gaps. */
+const HEADER_WIDGETS_PX = 46
+const MIN_WIDTH_PX = 56
+const MAX_WIDTH_PX = 360
 
-/** Widths that fit each column's longest text, within sensible limits. */
+const ESTIMATE = {
+  cell: (text: string) => text.length * CHAR_PX,
+  header: (text: string) => text.length * CHAR_PX,
+}
+
+/**
+ * Widths that fit each column: its widest cell text, or its header label
+ * with the header's widgets, whichever is wider, plus padding. Text is
+ * measured in the table's fonts when `measure` is given (decision 0028);
+ * the widgets count only for the header, which holds them.
+ */
 export function fitWidths<Row>(
   rows: Row[],
   columns: DataColumn<Row>[],
   settings: TableSettings,
+  measure: {
+    cell: (text: string) => number
+    header: (text: string) => number
+  } | null = null,
 ): Record<string, number> {
+  const text = measure ?? ESTIMATE
   const sample = rows.slice(0, 200)
   const widths: Record<string, number> = {}
   for (const column of columns) {
     const format = settings.formats[column.id]
-    let longest = columnHeader(column, format).length * 1.1
+    const header = columnHeader(column, format)
+    let widest = text.header(header) + (column.action ? 0 : HEADER_WIDGETS_PX)
     for (const row of sample) {
-      longest = Math.max(
-        longest,
-        formatCell(column.value(row), column, format).length,
+      widest = Math.max(
+        widest,
+        text.cell(formatCell(column.value(row), column, format)),
       )
     }
     widths[column.id] = Math.round(
-      Math.min(
-        360,
-        Math.max(72, longest * CHAR_PX + CELL_PADDING_PX + HEADER_WIDGETS_PX),
-      ),
+      Math.min(MAX_WIDTH_PX, Math.max(MIN_WIDTH_PX, widest + CELL_PADDING_PX)),
     )
   }
   return widths

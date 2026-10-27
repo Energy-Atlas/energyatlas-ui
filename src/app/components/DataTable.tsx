@@ -1,4 +1,4 @@
-import { useMemo, useState, type ReactNode } from 'react'
+import { useMemo, useRef, useState, type ReactNode } from 'react'
 import {
   Button,
   Cell,
@@ -34,6 +34,7 @@ import componentStyles from './components.module.css'
 import styles from './dataTable.module.css'
 import formStyles from './forms.module.css'
 import { ScrollJump } from './ScrollJump.tsx'
+import { useTextMeasure } from './useTextMeasure.ts'
 import { ColumnTools, TableBar } from './tableTools.tsx'
 
 export type DataTableProps<Row> = {
@@ -138,9 +139,11 @@ export function DataTable<Row>({
   const page = processed.slice(0, shownCount)
   const items: Item<Row>[] = page.map((row) => ({ id: rowKey(row), row }))
   const { style } = settings
+  const frameRef = useRef<HTMLDivElement>(null)
+  const measure = useTextMeasure(frameRef, `.${styles.th}`, `.${styles.td}`)
   const widths = useMemo(
-    () => fitWidths(rows, columns, settings),
-    [rows, columns, settings],
+    () => fitWidths(rows, columns, settings, measure),
+    [rows, columns, settings, measure],
   )
 
   const sortDescriptor: SortDescriptor | undefined = settings.sort
@@ -179,6 +182,7 @@ export function DataTable<Row>({
 
   return (
     <div
+      ref={frameRef}
       className={cx(
         styles.frame,
         style.density === 'comfortable' && styles.comfortable,
@@ -235,8 +239,9 @@ export function DataTable<Row>({
         }}
       >
         <ResizableTableContainer
-          // Changing the width mode re-applies its default widths.
-          key={`${style.widths}:${shownColumns.map((column) => column.id).join('|')}`}
+          // Changing the width mode re-applies its default widths, as does
+          // measuring the text once the table's fonts are known.
+          key={`${style.widths}:${measure ? 'measured' : 'estimated'}:${shownColumns.map((column) => column.id).join('|')}`}
           className={styles.scroll}
         >
           <Table

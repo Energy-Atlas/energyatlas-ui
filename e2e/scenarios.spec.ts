@@ -55,6 +55,20 @@ test('composes, previews, edits, and compares scenarios as one modeled set', asy
 }) => {
   test.setTimeout(90_000)
   const creator = await openCreator(page)
+  // A library measure opens read-only in Properties.
+  await creator
+    .getByRole('grid', { name: 'Measure library' })
+    .getByRole('row')
+    .filter({ hasText: 'LED lighting' })
+    .getByRole('rowheader')
+    .click()
+  const libraryEntry = properties(page).getByRole('region', {
+    name: 'LED lighting',
+  })
+  await expect(libraryEntry).toContainText('Library measure')
+  await expect(
+    libraryEntry.getByRole('button', { name: 'Save measure' }),
+  ).toHaveAttribute('aria-disabled', 'true')
   await addFromLibrary(page, 'LED lighting')
   await addFromLibrary(page, 'Wall and roof insulation')
   await expect(

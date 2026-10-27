@@ -47,15 +47,32 @@ test('adds a library archetype, shows coverage, and reassigns as a job', async (
     coverage.getByRole('row').filter({ hasText: 'Mixed use' }),
   ).toContainText(/Mixed use\s*\d+\s*0\s*\d+/)
 
+  // A library entry opens read-only in Properties, where it can be added.
   await archetypes
     .getByRole('grid', { name: 'Synthetic library' })
+    .getByRole('row')
+    .filter({ hasText: 'Mixed use' })
+    .getByRole('rowheader')
+    .click()
+  const entry = properties(page).getByRole('region', { name: 'Mixed use' })
+  await expect(entry).toContainText('Library archetype')
+  await expect(
+    entry.getByRole('textbox', { name: 'Archetype name' }),
+  ).toHaveAttribute('readonly', '')
+  await expect(
+    entry.getByRole('button', { name: 'Save archetype' }),
+  ).toHaveAttribute('aria-disabled', 'true')
+  await entry
     .getByRole('button', { name: 'Add Mixed use to the project' })
     .click()
   await expect(table.getByRole('row')).toHaveCount(7)
-  // The added archetype is selected and shown in Properties.
+  // The added copy is selected and editable in Properties.
   await expect(
     properties(page).getByRole('region', { name: 'Mixed use' }),
-  ).toBeVisible()
+  ).toContainText('From the synthetic library.')
+  await expect(
+    properties(page).getByRole('textbox', { name: 'Archetype name' }),
+  ).not.toHaveAttribute('readonly', '')
   await expect(archetypes).toContainText('Archetype modeling')
   await expect(archetypes.getByText('Outdated').first()).toBeVisible()
   await expect(
@@ -149,6 +166,10 @@ test('edits a schedule by dragging or keys, marks edits, and cancels them', asyn
   })
   const average = schedule.getByRole('status')
   const before = await average.textContent()
+  await expect(average).toHaveText(/^Annual average\s+0\.\d+$/)
+  await expect(
+    schedule.getByRole('img', { name: /^The schedule over a year/ }),
+  ).toBeVisible()
 
   // The chart's points are sliders: Up raises an hour by 0.05.
   const point = schedule.getByRole('slider', { name: 'Weekday, hour 3' })

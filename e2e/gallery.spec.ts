@@ -91,10 +91,14 @@ test('a toolbar moves what does not fit into More and keeps the primary action',
   await expect(page.getByTestId('gallery-last')).toHaveText('Download pressed.')
   await more.click()
   const refresh = page.getByRole('menuitem', { name: /Refresh/ })
-  await expect(refresh).toContainText(
+  // Greyed out with its reason as the tooltip (decision 0028), yet still
+  // choosable, so choosing it reports the reason.
+  await expect(refresh).toHaveAttribute(
+    'title',
     'Results are current; nothing to refresh.',
   )
-  await refresh.click()
+  await expect(refresh).toHaveAttribute('aria-disabled', 'true')
+  await refresh.click({ force: true })
   await expect(page.getByTestId('gallery-last')).toHaveText(
     'Refresh is unavailable: Results are current; nothing to refresh.',
   )

@@ -254,6 +254,10 @@ export function MeasuresPage() {
             label: 'Search the measure library',
             placeholder: 'Search the library',
           }}
+          selection={{
+            selectedKey: selectedOf('libraryMeasure'),
+            onSelect: choose('libraryMeasure'),
+          }}
           exportable={false}
         />
       </section>

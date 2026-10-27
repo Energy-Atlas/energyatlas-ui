@@ -19,6 +19,7 @@ import { AccountAvatar } from '../components/AccountAvatar.tsx'
 import { DEMO_ACCOUNT } from '../demoAccount.ts'
 import { toAriaKeyShortcut } from '../shortcuts.ts'
 import menuStyles from '../components/menus.module.css'
+import { unavailableRef } from '../components/unavailable.ts'
 import styles from './shell.module.css'
 import markUrl from '../../assets/brand/energyatlas-mark.svg'
 
@@ -190,13 +191,21 @@ function RunSplitButton({ actions, invoke }: RibbonProps) {
   )
 }
 
-/** One menu row: check mark, label, reason when unavailable, and shortcut. */
+/**
+ * One menu row: check mark, label, and shortcut. An unavailable row is
+ * greyed out with its reason as the tooltip and its description for
+ * assistive technology (decision 0028); choosing it reports the reason.
+ */
 function ActionItem({ action }: { action: AppAction }) {
   return (
     <MenuItem
       id={action.id}
       textValue={action.label}
-      className={menuStyles.menuItem}
+      className={cx(
+        menuStyles.menuItem,
+        action.disabledReason && menuStyles.unavailable,
+      )}
+      ref={unavailableRef(action.disabledReason)}
     >
       <span className={menuStyles.menuCheck} aria-hidden="true">
         {action.pressed ? <Check size={14} /> : null}
@@ -206,7 +215,7 @@ function ActionItem({ action }: { action: AppAction }) {
         {action.pressed ? <span className="visually-hidden"> (on)</span> : null}
       </Text>
       {action.disabledReason ? (
-        <Text slot="description" className={menuStyles.menuDescription}>
+        <Text slot="description" className="visually-hidden">
           {action.disabledReason}
         </Text>
       ) : null}
@@ -215,12 +224,6 @@ function ActionItem({ action }: { action: AppAction }) {
       ) : null}
     </MenuItem>
   )
-}
-
-function disabledIds(actions: AppAction[]): string[] {
-  return actions
-    .filter((action) => action.disabledReason)
-    .map((action) => action.id)
 }
 
 function ActionMenu({
@@ -299,7 +302,6 @@ function MenuLevel({
     <Menu
       aria-label={`${label} menu`}
       className={menuStyles.menu}
-      disabledKeys={disabledIds(here)}
       onAction={onAction}
     >
       {here.map((action) => (

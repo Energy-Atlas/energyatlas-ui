@@ -53,6 +53,8 @@ type ScheduleChartProps = {
   values: number[]
   /** The saved values, drawn faintly behind edits; null when creating. */
   saved: number[] | null
+  /** Shows the values without letting them change, as for a library entry. */
+  readOnly?: boolean
   onChange: (hour: number, value: number) => void
 }
 
@@ -67,6 +69,7 @@ export function ScheduleChart({
   label,
   values,
   saved,
+  readOnly = false,
   onChange,
 }: ScheduleChartProps) {
   const svgRef = useRef<SVGSVGElement>(null)
@@ -86,6 +89,7 @@ export function ScheduleChart({
   }
 
   const drag = (event: PointerEvent<SVGElement>, hour: number) => {
+    if (readOnly) return
     const value = valueAt(event.clientY)
     if (value === null) return
     onChange(hour, round(snap(value, event.shiftKey ? FINE : COARSE)))
@@ -106,6 +110,10 @@ export function ScheduleChart({
       case 'ArrowRight':
         move(hour + 1)
         break
+      default:
+        if (readOnly) return
+    }
+    switch (event.key) {
       case 'ArrowUp':
         onChange(hour, round(snap(current + step, step)))
         break
@@ -118,6 +126,9 @@ export function ScheduleChart({
       case 'End':
         onChange(hour, 1)
         break
+      case 'ArrowLeft':
+      case 'ArrowRight':
+        break
       default:
         return
     }
@@ -127,10 +138,14 @@ export function ScheduleChart({
   return (
     <svg
       ref={svgRef}
-      className={styles.chart}
+      className={cx(styles.chart, readOnly && styles.chartReadOnly)}
       viewBox={`0 0 ${WIDTH} ${HEIGHT}`}
       role="group"
-      aria-label={`${label} profile: drag a point, or use the arrow keys`}
+      aria-label={
+        readOnly
+          ? `${label} profile, read-only`
+          : `${label} profile: drag a point, or use the arrow keys`
+      }
     >
       {[0, 0.5, 1].map((tick) => (
         <g key={tick}>
@@ -208,6 +223,7 @@ export function ScheduleChart({
               aria-label={`${label}, hour ${hour}`}
               aria-valuemin={0}
               aria-valuemax={1}
+              aria-readonly={readOnly || undefined}
               aria-valuenow={round(value)}
               aria-valuetext={`${round(value)}${edited(hour) ? ', edited' : ''}`}
               onFocus={() => setActive(hour)}

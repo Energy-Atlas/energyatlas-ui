@@ -279,6 +279,27 @@ export function ArchetypesPage() {
     },
   ]
 
+  // Library schedules come into the project with the archetypes that use
+  // them, so the library lists which archetypes those are.
+  const scheduleLibraryColumns: DataColumn<Schedule>[] = [
+    ...scheduleColumns.slice(0, 4),
+    {
+      id: 'usedByLibrary',
+      header: 'Used by library archetypes',
+      value: (schedule) =>
+        ARCHETYPE_LIBRARY.filter((entry) => entry.scheduleId === schedule.id)
+          .map((entry) => entry.name)
+          .join(', '),
+      wrap: true,
+    },
+    {
+      id: 'inProject',
+      header: 'In project',
+      value: (schedule) => (state.schedules[schedule.id] ? 'Yes' : 'No'),
+      type: 'enum',
+    },
+  ]
+
   return (
     <section
       className={`${componentStyles.page} ${styles.page}`}
@@ -342,6 +363,10 @@ export function ArchetypesPage() {
             label: 'Search the synthetic library',
             placeholder: 'Search the library',
           }}
+          selection={{
+            selectedKey: selectedOf('libraryArchetype'),
+            onSelect: choose('libraryArchetype'),
+          }}
           exportable={false}
         />
       </section>
@@ -372,6 +397,27 @@ export function ArchetypesPage() {
           selection={{
             selectedKey: selectedOf('schedule'),
             onSelect: choose('schedule'),
+          }}
+          exportable={false}
+        />
+      </section>
+
+      <section className={styles.section} aria-label="Schedule library">
+        <h3 className={styles.sectionTitle}>Schedule library</h3>
+        <WorkbenchTable
+          id="archetypes.scheduleLibrary"
+          aria-label="Schedule library"
+          columns={scheduleLibraryColumns}
+          rows={[...SCHEDULE_LIBRARY]}
+          rowKey={(schedule) => schedule.id}
+          className={styles.table}
+          search={{
+            label: 'Search the schedule library',
+            placeholder: 'Search the library',
+          }}
+          selection={{
+            selectedKey: selectedOf('librarySchedule'),
+            onSelect: choose('librarySchedule'),
           }}
           exportable={false}
         />

@@ -11,13 +11,23 @@ import {
   Text,
 } from 'react-aria-components'
 import type { Measure, MeasureKind } from '../../domain/types.ts'
-import { useClientSnapshot, useServices } from '../WorkbenchContext.tsx'
+import {
+  useClientSnapshot,
+  useServices,
+  useWorkbenchSnapshot,
+} from '../WorkbenchContext.tsx'
 import { splitIssues } from '../commandErrors.ts'
 import { CapabilityBadge } from '../components/CapabilityBadge.tsx'
 import formStyles from '../components/forms.module.css'
 import { cx } from '../cx.ts'
 import { waitingReason } from '../service/usePendingReason.ts'
-import { APPLIES_TO, provenanceSentence } from './definitionLabels.ts'
+import type { LibraryMeasure } from '../../domain/scenarios/library.ts'
+import { ActionButton } from '../components/ActionButton.tsx'
+import {
+  APPLIES_TO,
+  LIBRARY_READ_ONLY,
+  provenanceSentence,
+} from './definitionLabels.ts'
 import { PropertyForm, TextProperty } from './PropertyForm.tsx'
 import { useEdits } from './useEdits.ts'
 
@@ -53,14 +63,24 @@ function isAppliesTo(value: string): value is Measure['appliesTo'] {
 /** A measure in Properties: its name, kind, savings, and the buildings it applies to. */
 export function MeasureProperties({
   measure,
+  library = null,
   onCreated,
   onCancelCreate,
 }: {
   /** Null creates a new measure. */
   measure: Measure | null
+  /** A synthetic library entry, shown read-only (decision 0028). */
+  library?: LibraryMeasure | null
   onCreated: (id: string) => void
   onCancelCreate: () => void
 }) {
+  const inProject = useWorkbenchSnapshot((snapshot) =>
+    library
+      ? Object.values(snapshot.state.measures).some(
+          (item) => item.name.toLowerCase() === library.name.toLowerCase(),
+        )
+      : false,
+  )
   const { client, workbench } = useServices()
   const pending = useClientSnapshot((snapshot) => snapshot.pending)
   const edits = useEdits<MeasureFields>(
@@ -72,12 +92,17 @@ export function MeasureProperties({
           appliesTo: measure.appliesTo,
         }
       : EMPTY,
-    measure ? `measure:${measure.id}` : 'new:measure',
+    library
+      ? `library:measure:${library.libraryId}`
+      : measure
+        ? `measure:${measure.id}`
+        : 'new:measure',
   )
   const [errors, setErrors] = useState<Record<string, string>>({})
   const [error, setError] = useState<string | null>(null)
   const draft = edits.value
   const creating = measure === null
+  const readOnly = library !== null
   const highlight = (field: keyof MeasureFields) =>
     !creating && edits.isEdited(field)
   const update = <K extends keyof MeasureFields>(
@@ -122,7 +147,40 @@ export function MeasureProperties({
 
   return (
     <PropertyForm
-      eyebrow="Measure"
+      eyebrow={library ? 'Library measure' : 'Measure'}
+      readOnly={library ? LIBRARY_READ_ONLY : null}
+      actions={
+        library ? (
+          <ActionButton
+            label={`Add ${library.name} to the project`}
+            disabledReason={
+              inProject
+                ? 'Already in the project.'
+                : waitingReason(
+                    pending,
+                    'measure.addFromLibrary',
+                    'the measure is being added',
+                  )
+            }
+            onPress={() =>
+              void client
+                .execute({
+                  type: 'measure.addFromLibrary',
+                  input: { libraryId: library.libraryId },
+                })
+                .then((result) => {
+                  if (result.outcome.status !== 'applied') return
+                  const added = Object.values(
+                    workbench.getState().measures,
+                  ).find((item) => item.name === library.name)
+                  if (added) onCreated(added.id)
+                })
+            }
+          >
+            Add to project
+          </ActionButton>
+        ) : undefined
+      }
       title={measure ? measure.name : 'New measure'}
       meta={<CapabilityBadge id="creator.measure" />}
       provenance={measure ? provenanceSentence(measure.source) : undefined}
@@ -159,6 +217,7 @@ export function MeasureProperties({
       <RadioGroup
         className={cx(formStyles.field, highlight('kind') && formStyles.edited)}
         value={draft.kind}
+        isReadOnly={readOnly}
         orientation="horizontal"
         isInvalid={Boolean(errors.kind)}
         onChange={(value) => {
@@ -193,6 +252,7 @@ export function MeasureProperties({
         minValue={0}
         maxValue={100}
         isDisabled={draft.kind === 'pv'}
+        isReadOnly={readOnly}
         isInvalid={Boolean(errors.savingsPercent)}
         onChange={(value) =>
           update('savingsPercent', Number.isNaN(value) ? 0 : value)
@@ -223,6 +283,7 @@ export function MeasureProperties({
           highlight('appliesTo') && formStyles.edited,
         )}
         value={draft.appliesTo}
+        isReadOnly={readOnly}
         orientation="horizontal"
         isInvalid={Boolean(errors.appliesTo)}
         onChange={(value) => {

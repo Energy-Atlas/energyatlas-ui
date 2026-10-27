@@ -7,7 +7,13 @@ import {
 } from '../WorkbenchContext.tsx'
 import { splitIssues } from '../commandErrors.ts'
 import { waitingReason } from '../service/usePendingReason.ts'
-import { USES, provenanceSentence } from './definitionLabels.ts'
+import { SCHEDULE_LIBRARY } from '../../domain/archetypes/library.ts'
+import { ActionButton } from '../components/ActionButton.tsx'
+import {
+  LIBRARY_READ_ONLY,
+  USES,
+  provenanceSentence,
+} from './definitionLabels.ts'
 import { PropertyForm, SelectProperty, TextProperty } from './PropertyForm.tsx'
 import { useEdits } from './useEdits.ts'
 
@@ -46,20 +52,37 @@ function isUse(value: string): value is Archetype['use'] {
  */
 export function ArchetypeProperties({
   archetype,
+  library = false,
   onCreated,
   onCancelCreate,
 }: {
   /** Null creates a new archetype. */
   archetype: Archetype | null
+  /** A synthetic library entry, shown read-only (decision 0028). */
+  library?: boolean
   onCreated: (id: string) => void
   onCancelCreate: () => void
 }) {
   const { client, workbench } = useServices()
   const pending = useClientSnapshot((snapshot) => snapshot.pending)
-  const schedules = useWorkbenchSnapshot((snapshot) => snapshot.state.schedules)
+  const projectSchedules = useWorkbenchSnapshot(
+    (snapshot) => snapshot.state.schedules,
+  )
+  const inProject = useWorkbenchSnapshot((snapshot) =>
+    archetype ? archetype.id in snapshot.state.archetypes : false,
+  )
+  // A library entry names the library schedule it would bring.
+  const schedules = library
+    ? {
+        ...Object.fromEntries(SCHEDULE_LIBRARY.map((item) => [item.id, item])),
+        ...projectSchedules,
+      }
+    : projectSchedules
   const edits = useEdits(
     toFields(archetype),
-    archetype ? `archetype:${archetype.id}` : 'new:archetype',
+    archetype
+      ? `${library ? 'library:' : ''}archetype:${archetype.id}`
+      : 'new:archetype',
   )
   const [errors, setErrors] = useState<Record<string, string>>({})
   const [error, setError] = useState<string | null>(null)
@@ -134,7 +157,37 @@ export function ArchetypeProperties({
 
   return (
     <PropertyForm
-      eyebrow="Archetype"
+      eyebrow={library ? 'Library archetype' : 'Archetype'}
+      readOnly={library ? LIBRARY_READ_ONLY : null}
+      actions={
+        library && archetype ? (
+          <ActionButton
+            label={`Add ${archetype.name} to the project`}
+            disabledReason={
+              inProject
+                ? 'Already in the project.'
+                : waitingReason(
+                    pending,
+                    'archetype.addFromLibrary',
+                    'the archetype is being added',
+                  )
+            }
+            onPress={() =>
+              void client
+                .execute({
+                  type: 'archetype.addFromLibrary',
+                  input: { libraryId: archetype.id },
+                })
+                .then((result) => {
+                  if (result.outcome.status === 'applied')
+                    onCreated(archetype.id)
+                })
+            }
+          >
+            Add to project
+          </ActionButton>
+        ) : undefined
+      }
       title={archetype ? archetype.name : 'New archetype'}
       provenance={archetype ? provenanceSentence(archetype.source) : undefined}
       creating={creating}
