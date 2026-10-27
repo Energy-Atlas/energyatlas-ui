@@ -38,7 +38,7 @@ export type Transport = {
 export const OFFLINE_MESSAGE =
   'Not sent: the server cannot be reached (demo condition: offline).'
 
-const SERVER_ERROR_MESSAGE =
+export const SERVER_ERROR_MESSAGE =
   'The server failed to handle the request (demo condition: requests fail).'
 
 export function createTransport(

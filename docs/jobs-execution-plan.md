@@ -51,7 +51,9 @@ signature still matches. Held outputs are saved with the group.
 - View operations `jobs.select` and `jobs.setFilter` (active, attention, finished, all).
 - Actions: Retry selected job, Fresh run of the selected job's stage, Cancel selected job.
 - Notices: `createJobNotices` follows finished attempts per project generation; the status bar shows a nonmodal,
-  dismissible notice whose button selects the job and opens Jobs without moving focus elsewhere.
+  dismissible notice whose button selects the job and opens Jobs without moving focus elsewhere. (Since step 4 of
+  [decision 0027](decisions/0027-unified-panel-components.md), `watchJobCompletions` feeds the message store and the
+  notice is a toast kept in the Messages panel.)
 - Agent: `job.retry` and `task.cancel` become tools with approval.
 
 ## Tests

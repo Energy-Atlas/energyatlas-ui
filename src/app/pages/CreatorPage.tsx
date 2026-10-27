@@ -99,7 +99,8 @@ const EMPTY_SCENARIO: ScenarioDraft = {
   included: true,
 }
 
-type FormMessage = { tone: 'error' | 'success'; text: string } | null
+/** A blocking error for the whole form; results go to messages (decision 0027). */
+type FormError = string | null
 
 function isMeasureKind(value: string): value is MeasureKind {
   return MEASURE_KINDS.some((kind) => kind.value === value)
@@ -119,15 +120,8 @@ function withoutKey(
   return next
 }
 
-function Message({ message }: { message: FormMessage }) {
-  if (!message) return null
-  return message.tone === 'error' ? (
-    <InlineAlert tone="danger">{message.text}</InlineAlert>
-  ) : (
-    <InlineAlert tone="success" live="polite">
-      {message.text}
-    </InlineAlert>
-  )
+function FormErrorAlert({ error }: { error: FormError }) {
+  return error ? <InlineAlert tone="danger">{error}</InlineAlert> : null
 }
 
 export function CreatorPage() {
@@ -394,7 +388,7 @@ function MeasureCreator({
   )
   const [sending, setSending] = useState(false)
   const [errors, setErrors] = useState<Record<string, string>>({})
-  const [message, setMessage] = useState<FormMessage>(null)
+  const [error, setError] = useState<FormError>(null)
 
   const update = (field: keyof MeasureDraft, next: MeasureDraft) => {
     setDraft(next)
@@ -432,12 +426,13 @@ function MeasureCreator({
               }
               setDraft(EMPTY_MEASURE)
               setErrors({})
-              setMessage({ tone: 'success', text: result.outcome.summary })
+              // The status bar and the Messages panel report the result.
+              setError(null)
               return
             }
             const { fieldErrors, general } = splitIssues(result.outcome.issues)
             setErrors(fieldErrors)
-            setMessage(general ? { tone: 'error', text: general } : null)
+            setError(general)
           })
         }}
       >
@@ -550,7 +545,7 @@ function MeasureCreator({
           </FieldError>
         </RadioGroup>
 
-        <Message message={message} />
+        <FormErrorAlert error={error} />
         <Button
           type="submit"
           className={cx(componentStyles.button, componentStyles.primary)}
@@ -594,7 +589,7 @@ function ScenarioCreator({
   const preview = useMemo(() => previewScenario(state, draft), [state, draft])
   const [sending, setSending] = useState(false)
   const [errors, setErrors] = useState<Record<string, string>>({})
-  const [message, setMessage] = useState<FormMessage>(null)
+  const [error, setError] = useState<FormError>(null)
 
   const update = (field: keyof ScenarioDraft, next: ScenarioDraft) => {
     setDraft(next)
@@ -632,12 +627,13 @@ function ScenarioCreator({
               }
               setDraft(EMPTY_SCENARIO)
               setErrors({})
-              setMessage({ tone: 'success', text: result.outcome.summary })
+              // The status bar and the Messages panel report the result.
+              setError(null)
               return
             }
             const { fieldErrors, general } = splitIssues(result.outcome.issues)
             setErrors(fieldErrors)
-            setMessage(general ? { tone: 'error', text: general } : null)
+            setError(general)
           })
         }}
       >
@@ -740,7 +736,7 @@ function ScenarioCreator({
               ? `Affects ${preview.affected} modeled buildings; estimated ${preview.reductionPercent}% lower annual demand at ${draft.adoptionPercent}% adoption (synthetic preview).`
               : `${preview.measures.map((item) => `${item.name}: ${item.buildings} buildings`).join('; ')}. ${preview.reason ?? ''}`}
         </p>
-        <Message message={message} />
+        <FormErrorAlert error={error} />
         <Button
           type="submit"
           className={cx(componentStyles.button, componentStyles.primary)}

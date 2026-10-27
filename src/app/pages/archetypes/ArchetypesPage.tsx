@@ -1,4 +1,5 @@
 import { useId, useMemo, useState } from 'react'
+import { InlineAlert } from '../../components/InlineAlert.tsx'
 import {
   FieldError,
   Form,
@@ -151,7 +152,7 @@ function ArchetypeEditor({
   const pending = useClientSnapshot((snapshot) => snapshot.pending)
   const [draft, setDraft] = useState(() => toDraft(archetype))
   const [errors, setErrors] = useState<Record<string, string>>({})
-  const [message, setMessage] = useState<string | null>(null)
+  const [error, setError] = useState<string | null>(null)
   const saving = waitingReason(
     pending,
     'archetype.save',
@@ -200,7 +201,7 @@ function ArchetypeEditor({
           }
           if (Object.keys(local).length > 0) {
             setErrors(local)
-            setMessage(null)
+            setError(null)
             return
           }
           void client
@@ -219,7 +220,8 @@ function ArchetypeEditor({
             .then((result) => {
               if (result.outcome.status === 'applied') {
                 setErrors({})
-                setMessage(result.outcome.summary)
+                // The status bar and the Messages panel report the result.
+                setError(null)
                 if (!draft.id) {
                   const created = Object.values(
                     workbench.getState().archetypes,
@@ -232,7 +234,7 @@ function ArchetypeEditor({
                 result.outcome.issues,
               )
               setErrors(fieldErrors)
-              setMessage(general)
+              setError(general)
             })
         }}
       >
@@ -298,11 +300,7 @@ function ArchetypeEditor({
             {archetype ? 'Save archetype' : 'Create archetype'}
           </button>
         </div>
-        {message ? (
-          <p className={formStyles.description} role="status">
-            {message}
-          </p>
-        ) : null}
+        {error ? <InlineAlert tone="danger">{error}</InlineAlert> : null}
       </Form>
     </section>
   )
@@ -396,7 +394,7 @@ function ScheduleForm({
     ),
   }))
   const [errors, setErrors] = useState<Record<string, string>>({})
-  const [message, setMessage] = useState<string | null>(null)
+  const [error, setError] = useState<string | null>(null)
   const saving = waitingReason(
     pending,
     'schedule.save',
@@ -421,7 +419,7 @@ function ScheduleForm({
           ]
           if (hours.some((value) => !Number.isFinite(value))) {
             setErrors({ weekday: 'Enter a number from 0 to 1 in every hour.' })
-            setMessage(null)
+            setError(null)
             return
           }
           void client
@@ -437,7 +435,8 @@ function ScheduleForm({
             .then((result) => {
               if (result.outcome.status === 'applied') {
                 setErrors({})
-                setMessage(result.outcome.summary)
+                // The status bar and the Messages panel report the result.
+                setError(null)
                 if (!schedule) {
                   const created = Object.values(
                     workbench.getState().schedules,
@@ -453,7 +452,7 @@ function ScheduleForm({
                 })),
               )
               setErrors(fieldErrors)
-              setMessage(general)
+              setError(general)
             })
         }}
       >
@@ -482,11 +481,7 @@ function ScheduleForm({
             )
           }}
         />
-        {message ? (
-          <p className={formStyles.description} role="status">
-            {message}
-          </p>
-        ) : null}
+        {error ? <InlineAlert tone="danger">{error}</InlineAlert> : null}
         <button
           type="submit"
           className={`${componentStyles.button} ${componentStyles.primary}`}

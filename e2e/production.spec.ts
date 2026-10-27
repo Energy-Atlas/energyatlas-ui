@@ -1,4 +1,4 @@
-import { createProjectFromStart } from './test.ts'
+import { createProjectFromStart, notifications, toast } from './test.ts'
 import { BASE_PATH } from '../basePath.ts'
 import { expect, test } from './test.ts'
 
@@ -83,9 +83,11 @@ test('runs, holds, and retries a partial job in the built bundle', async ({
     .getByRole('region', { name: 'Workflow' })
     .getByRole('button', { name: /^Rerun Geospatial preprocessing/ })
     .click()
-  const notices = page.getByRole('region', { name: 'Job notices' })
+  const notices = notifications(page)
   await expect(notices).toContainText('partly failed', { timeout: 20_000 })
-  await notices.getByRole('button', { name: 'Open job' }).click()
+  await toast(page, /partly failed/)
+    .getByRole('button', { name: 'Open job' })
+    .click()
   const detail = page.getByRole('article')
   await detail.getByRole('button', { name: /^Retry \d+ failed items?/ }).click()
   await expect(detail).toContainText('Published', { timeout: 20_000 })

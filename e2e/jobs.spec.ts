@@ -1,5 +1,5 @@
 import { AxeBuilder } from '@axe-core/playwright'
-import { expect, test, type Page } from './test.ts'
+import { expect, test, type Page, notifications, toast } from './test.ts'
 
 // Jobs (decision 0025, jobs rollout plan): held item results, failed-item
 // retry with unchanged inputs, fresh runs after changes or cancellation,
@@ -56,7 +56,7 @@ test('holds partial results, opens the job from its notice, and retries only fai
     }),
   ).toBeVisible()
 
-  const notices = page.getByRole('region', { name: 'Job notices' })
+  const notices = notifications(page)
   await expect(notices).toContainText(
     /Geospatial preprocessing partly failed: \d+ of 464 items failed; successful results are held/,
   )
@@ -65,7 +65,9 @@ test('holds partial results, opens the job from its notice, and retries only fai
   expect(await page.evaluate(() => document.activeElement?.tagName)).toBe(
     before,
   )
-  await notices.getByRole('button', { name: 'Open job' }).click()
+  await toast(page, /partly failed/)
+    .getByRole('button', { name: 'Open job' })
+    .click()
   await expect(
     page.getByRole('tab', { name: 'Jobs', exact: true }),
   ).toHaveAttribute('aria-selected', 'true')
@@ -104,11 +106,15 @@ test('holds partial results, opens the job from its notice, and retries only fai
   await expect(notices).toContainText(
     'Geospatial preprocessing completed on attempt 2.',
   )
-  // Dismissing by keyboard never strands focus on a removed button.
-  await notices.getByRole('button', { name: /^Dismiss notice/ }).focus()
+  // Dismissing by keyboard never strands focus on a removed button: it
+  // moves to the next toast, or back to the workspace.
+  const completed = toast(page, 'completed on attempt 2.')
+  await completed.getByRole('button', { name: /^Dismiss: / }).focus()
   await page.keyboard.press('Enter')
-  await expect(notices).toBeHidden()
-  await expect(page.getByRole('main', { name: 'Workspace' })).toBeFocused()
+  await expect(completed).toBeHidden()
+  await expect(page.locator(':focus')).toHaveAccessibleName(
+    /^(Workspace|Dismiss: .*)$/,
+  )
   await showWorkflow(page)
   await expect(stageRow(page, PREPROCESSING)).toContainText('Complete')
 })

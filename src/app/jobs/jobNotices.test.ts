@@ -4,14 +4,31 @@ import { DEFAULT_CONDITIONS } from '../../server/conditions.ts'
 import { createTestProject } from '../../testing/testProject.ts'
 import { createViewStore } from '../view/viewStore.ts'
 import { listJobs, shownJob } from '../pages/jobs/jobView.ts'
-import { createJobNotices } from './jobNotices.ts'
+import {
+  createMessageCenter,
+  type MessageCenter,
+} from '../messages/messageCenter.ts'
 import { createWorkbench } from '../../domain/workbench.ts'
 import { buildFixture } from '../../server/fixtures.ts'
+
+/** Job messages, newest first. */
+function jobMessages(center: MessageCenter) {
+  return center.store
+    .getState()
+    .messages.filter((message) => message.source === 'job')
+    .toReversed()
+}
+
+/** Job messages still showing as toasts. */
+function jobToasts(center: MessageCenter) {
+  const { toasts } = center.store.getState()
+  return jobMessages(center).filter((message) => toasts.includes(message.id))
+}
 
 describe('job notices', () => {
   it('announces a partial failure once, naming held results', async () => {
     const project = createTestProject({ fixture: 'partway' })
-    const notices = createJobNotices(project.workbench)
+    const center = createMessageCenter({ workbench: project.workbench })
     const schema = project.client.execute({
       type: 'workflow.runStage',
       input: { stageId: STAGE_IDS.schema },
@@ -29,23 +46,35 @@ describe('job notices', () => {
     })
     await project.manual.settle()
     await run
-    const [latest, previous] = notices.store.getState().notices
-    expect(latest).toMatchObject({ tone: 'warning' })
-    expect(latest?.message).toMatch(/partly failed.*held/)
-    expect(previous?.message).toMatch(/Schema matching completed/)
-    notices.dismiss(latest?.id ?? '')
-    expect(notices.store.getState().notices).toHaveLength(1)
-    notices.dispose()
+    const [latest, previous, ...rest] = jobMessages(center)
+    expect(rest).toEqual([])
+    expect(latest).toMatchObject({ tone: 'warning', toast: true, read: false })
+    expect(latest?.text).toMatch(/partly failed.*held/)
+    expect(latest?.actions[0]).toMatchObject({
+      kind: 'openJob',
+      label: 'Open job',
+    })
+    expect(previous?.text).toMatch(/Schema matching completed/)
+    center.dismissToast(latest?.id ?? '')
+    expect(jobToasts(center)).toHaveLength(1)
+    expect(jobMessages(center)[0]?.read).toBe(true)
+    center.dispose()
   })
 
-  it('never carries notices or old jobs into another project', async () => {
+  it('never carries toasts or old jobs into another project', async () => {
     const project = createTestProject({ fixture: 'new' })
     project.client.setConditions({
       ...DEFAULT_CONDITIONS,
       latency: 'none',
       jobs: 'stall',
     })
-    const notices = createJobNotices(project.workbench)
+    const center = createMessageCenter({
+      workbench: project.workbench,
+      session: {
+        getGeneration: () => project.client.store.getState().projectGeneration,
+        subscribe: (listener) => project.client.store.subscribe(listener),
+      },
+    })
     void project.client.execute({
       type: 'workflow.runStage',
       input: { stageId: STAGE_IDS.location },
@@ -58,8 +87,8 @@ describe('job notices', () => {
     })
     await project.manual.settle(50)
     await replaced
-    expect(notices.store.getState().notices).toEqual([])
-    notices.dispose()
+    expect(jobToasts(center)).toEqual([])
+    center.dispose()
   })
 })
 
@@ -70,17 +99,17 @@ describe('job notice baseline', () => {
       type: 'workflow.runStage',
       input: { stageId: STAGE_IDS.location },
     })
-    const notices = createJobNotices(workbench)
+    const center = createMessageCenter({ workbench })
     const other = buildFixture('complete', () => new Date())
     other.project = { ...other.project, id: 'project:other' }
     const taskId = workbench.getState().taskIds.at(-1) ?? ''
     expect(other.tasks[taskId]?.status).toBe('succeeded')
     workbench.load(other, { type: 'project.open', title: 'Open', summary: '' })
-    expect(notices.store.getState().notices).toEqual([])
-    notices.dispose()
+    expect(jobMessages(center)).toEqual([])
+    center.dispose()
   })
 
-  it('clears notices when the project session generation changes', () => {
+  it('takes toasts off the screen when the project session generation changes', () => {
     const workbench = createWorkbench()
     workbench.execute({
       type: 'workflow.runStage',
@@ -88,21 +117,26 @@ describe('job notice baseline', () => {
     })
     let generation = 0
     const listeners = new Set<() => void>()
-    const notices = createJobNotices(workbench, {
-      getGeneration: () => generation,
-      subscribe: (listener) => {
-        listeners.add(listener)
-        return () => listeners.delete(listener)
+    const center = createMessageCenter({
+      workbench,
+      session: {
+        getGeneration: () => generation,
+        subscribe: (listener) => {
+          listeners.add(listener)
+          return () => listeners.delete(listener)
+        },
       },
     })
     const taskId = workbench.getState().taskIds.at(-1) ?? ''
     workbench.execute({ type: 'task.start', input: { taskId } }, 'system')
     workbench.execute({ type: 'task.complete', input: { taskId } }, 'system')
-    expect(notices.store.getState().notices).toHaveLength(1)
+    expect(jobToasts(center)).toHaveLength(1)
     generation = 1
     for (const listener of listeners) listener()
-    expect(notices.store.getState().notices).toEqual([])
-    notices.dispose()
+    expect(jobToasts(center)).toEqual([])
+    // The history keeps it, scoped to its project.
+    expect(jobMessages(center)).toHaveLength(1)
+    center.dispose()
   })
 })
 

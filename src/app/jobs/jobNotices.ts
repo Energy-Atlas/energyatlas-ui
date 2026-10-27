@@ -1,4 +1,3 @@
-import { createStore, type StoreApi } from 'zustand/vanilla'
 import {
   groupOf,
   isActiveStatus,
@@ -9,28 +8,18 @@ import type { Task, WorkbenchState } from '../../domain/types.ts'
 import type { Workbench } from '../../domain/workbench.ts'
 
 // Completion notices for jobs (jobs rollout plan, D6): project-scoped and
-// nonmodal. A notice appears when a job this session saw active finishes; it
-// never moves focus and never reaches another project, because the baseline
-// resets whenever the project identity changes.
+// nonmodal. A notice is raised when a job this session saw active finishes; it
+// never reaches another project, because the baseline resets whenever the
+// project identity changes. The message center (decision 0027) keeps them.
 
 export type JobNoticeTone = 'success' | 'warning' | 'danger'
 
 export type JobNotice = {
-  id: string
   projectId: string
   taskId: string
   tone: JobNoticeTone
   message: string
 }
-
-export type JobNotices = {
-  store: StoreApi<{ notices: JobNotice[] }>
-  dismiss: (id: string) => void
-  dispose: () => void
-}
-
-/** At most this many notices are kept; older ones drop off. */
-const LIMIT = 3
 
 function describe(
   task: Task,
@@ -66,22 +55,22 @@ export type SessionGeneration = {
   subscribe: (listener: () => void) => () => void
 }
 
-export function createJobNotices(
+/**
+ * Calls `onNotice` for every job that finishes after this session saw it
+ * active, oldest first; returns a function that stops watching.
+ */
+export function watchJobCompletions(
   workbench: Workbench,
+  onNotice: (notice: JobNotice) => void,
   session?: SessionGeneration,
-): JobNotices {
-  const store = createStore<{ notices: JobNotice[] }>()(() => ({
-    notices: [],
-  }))
+): () => void {
   let previous: WorkbenchState = workbench.getState()
-  let next = 1
   let generation = session?.getGeneration() ?? 0
   const unsubscribeSession = session?.subscribe(() => {
     const current = session.getGeneration()
     if (current === generation) return
     generation = current
     previous = workbench.getState()
-    store.setState({ notices: [] })
   })
 
   const unsubscribe = workbench.store.subscribe((snapshot) => {
@@ -89,11 +78,7 @@ export function createJobNotices(
     const before = previous
     previous = state
     if (state.tasks === before.tasks) return
-    if (state.project.id !== before.project.id) {
-      store.setState({ notices: [] })
-      return
-    }
-    const fresh: JobNotice[] = []
+    if (state.project.id !== before.project.id) return
     for (const id of state.taskIds) {
       const task = state.tasks[id]
       const earlier = before.tasks[id]
@@ -102,34 +87,13 @@ export function createJobNotices(
         continue
       const notice = describe(task, state)
       if (notice) {
-        fresh.push({
-          id: `job-notice-${next++}`,
-          projectId: state.project.id,
-          taskId: task.id,
-          ...notice,
-        })
+        onNotice({ projectId: state.project.id, taskId: task.id, ...notice })
       }
-    }
-    if (fresh.length > 0) {
-      store.setState({
-        notices: [...fresh.reverse(), ...store.getState().notices].slice(
-          0,
-          LIMIT,
-        ),
-      })
     }
   })
 
-  return {
-    store,
-    dismiss(id) {
-      store.setState({
-        notices: store.getState().notices.filter((notice) => notice.id !== id),
-      })
-    },
-    dispose() {
-      unsubscribe()
-      unsubscribeSession?.()
-    },
+  return () => {
+    unsubscribe()
+    unsubscribeSession?.()
   }
 }

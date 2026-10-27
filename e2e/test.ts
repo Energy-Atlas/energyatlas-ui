@@ -1,4 +1,4 @@
-import { expect, test as base, type Page } from '@playwright/test'
+import { expect, test as base, type Locator, type Page } from '@playwright/test'
 
 // Product specs import `test` and `expect` from here. Every page serves a small
 // stand-in for the OpenFreeMap style, TileJSON, and tiles, so tests stay
@@ -87,6 +87,16 @@ export async function blockBasemap(page: Page): Promise<void> {
 }
 
 /** The session key of the demo conditions (decision 0023). */
+/** The toasts region, where asynchronous events and failures pop up (decision 0027). */
+export function notifications(page: Page): Locator {
+  return page.getByRole('region', { name: 'Notifications' })
+}
+
+/** One toast, found by its text. */
+export function toast(page: Page, text: string | RegExp): Locator {
+  return notifications(page).locator('[data-tone]').filter({ hasText: text })
+}
+
 export const DEMO_CONDITIONS_KEY = 'eaui.demoConditions'
 
 /** Normal product entry, through the same Create form a person uses. */

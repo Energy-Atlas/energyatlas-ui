@@ -1,5 +1,5 @@
 import { AxeBuilder } from '@axe-core/playwright'
-import { expect, test, type Page } from './test.ts'
+import { expect, test, type Page, notifications, toast } from './test.ts'
 
 // Data intake (jobs rollout plan, slice 4): synthetic datasets, reviewed
 // mapping, row validation, stable-ID fusion preview, and fusion as a job.
@@ -64,7 +64,7 @@ test('maps, validates, previews, and applies a dataset as a job', async ({
   await expect(apply).not.toHaveAttribute('aria-disabled', 'true')
 
   await apply.click()
-  const notices = page.getByRole('region', { name: 'Job notices' })
+  const notices = notifications(page)
   await expect(notices).toContainText(
     'Data fusion: Assessor attributes completed.',
     { timeout: 15_000 },
@@ -108,13 +108,15 @@ test('holds fused records when some fail and retries only those', async ({
   await intake
     .getByRole('button', { name: 'Apply Assessor attributes' })
     .click()
-  const notices = page.getByRole('region', { name: 'Job notices' })
+  const notices = notifications(page)
   await expect(notices).toContainText(
     /Data fusion: Assessor attributes partly failed: \d+ of 53 records failed/,
     { timeout: 15_000 },
   )
   await expect(intake).toContainText('No dataset has been applied.')
-  await notices.getByRole('button', { name: 'Open job' }).click()
+  await toast(page, /partly failed/)
+    .getByRole('button', { name: 'Open job' })
+    .click()
   const detail = page.getByRole('article')
   await detail
     .getByRole('button', { name: /^Retry \d+ failed records?/ })

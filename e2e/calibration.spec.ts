@@ -1,5 +1,5 @@
 import { AxeBuilder } from '@axe-core/playwright'
-import { expect, test, type Page } from './test.ts'
+import { expect, test, type Page, notifications } from './test.ts'
 
 // Calibration (jobs rollout plan, slice 7; decision D10): meter validation,
 // a fit job, a separate calibrated variant, explicit Adopt and Revert.
@@ -58,7 +58,7 @@ test('validates meters, fits a variant, and adopts it only on request', async ({
   await calibration
     .getByRole('button', { name: /^Fit the modeled baseline/ })
     .click()
-  await expect(page.getByRole('region', { name: 'Job notices' })).toContainText(
+  await expect(notifications(page)).toContainText(
     'Calibration fit: District utility meters, 2025 completed',
     {
       timeout: 15_000,

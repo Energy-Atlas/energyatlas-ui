@@ -1,4 +1,5 @@
 import {
+  Bell,
   CircleX,
   Cpu,
   FlaskConical,
@@ -7,10 +8,12 @@ import {
   TriangleAlert,
 } from 'lucide-react'
 import { ProgressBar } from 'react-aria-components'
+import { useStore } from 'zustand'
 import type { Task } from '../../domain/types.ts'
 import { describeConditions } from '../../server/conditions.ts'
 import {
   useClientSnapshot,
+  useServices,
   useStageStates,
   useWorkbenchSnapshot,
 } from '../WorkbenchContext.tsx'
@@ -19,23 +22,30 @@ import { StateBadge } from '../components/StateBadge.tsx'
 import { cx } from '../cx.ts'
 import { formatTime } from '../format.ts'
 import type { PageId } from '../layout/layoutController.ts'
+import {
+  inScope,
+  worstTone,
+  type MessageTone,
+} from '../messages/messageCenter.ts'
 import styles from './shell.module.css'
 
-// Progress ticks are system bookkeeping; announcing each would drown out
-// the operations people care about.
-const QUIET_OPERATION_TYPES = new Set([
-  'task.start',
-  'task.reportProgress',
-  'view.resetForProject',
-])
+const UNREAD_TONE_CLASS = {
+  info: undefined,
+  success: styles.unreadSuccess,
+  warning: styles.unreadWarning,
+  danger: styles.unreadDanger,
+} satisfies Record<MessageTone, string | undefined>
 
 export function StatusBar({
   onOpenPage,
   onOpenDemoConditions,
+  onOpenMessages,
 }: {
   onOpenPage: (page: PageId) => void
   onOpenDemoConditions: () => void
+  onOpenMessages: () => void
 }) {
+  const { messages } = useServices()
   const state = useWorkbenchSnapshot((snapshot) => snapshot.state)
   const pending = useClientSnapshot((snapshot) => snapshot.pending)
   const dirty = useClientSnapshot((snapshot) => snapshot.meta.dirty)
@@ -45,7 +55,7 @@ export function StatusBar({
   const conditions = useClientSnapshot((snapshot) =>
     describeConditions(snapshot.conditions).join(', '),
   )
-  const log = useWorkbenchSnapshot((snapshot) => snapshot.log)
+  const history = useStore(messages.store, (snapshot) => snapshot.messages)
   const stageStates = useStageStates()
 
   const currentId = state.workflow.currentStageId
@@ -62,9 +72,14 @@ export function StatusBar({
   const warnings = state.issues.filter(
     (issue) => issue.severity === 'warning',
   ).length
-  const lastOperation = [...log]
-    .reverse()
-    .find((entry) => !QUIET_OPERATION_TYPES.has(entry.type))
+  // The last operation's sentence; jobs and the agent speak through toasts.
+  const lastOperation = history.findLast(
+    (message) => message.operationId !== null,
+  )
+  const unread = history.filter(
+    (message) => !message.read && inScope(message, state.project.id),
+  )
+  const unreadTone = worstTone(unread)
   const saveStatus = pending.some(
     (request) =>
       request.type === 'project.save' &&
@@ -78,13 +93,9 @@ export function StatusBar({
         : savedAt
           ? `Saved ${formatTime(savedAt)}`
           : 'Not saved'
-  const rejected = lastOperation?.status === 'rejected'
-  const notice = lastOperation
-    ? rejected
-      ? (lastOperation.issues[0]?.message ??
-        `${lastOperation.title} was not applied.`)
-      : (lastOperation.summary ?? lastOperation.title)
-    : 'Ready.'
+  const rejected =
+    lastOperation?.tone === 'warning' || lastOperation?.tone === 'danger'
+  const notice = lastOperation?.text ?? 'Ready.'
 
   return (
     <footer className={styles.statusBar} aria-label="Status bar">
@@ -132,6 +143,22 @@ export function StatusBar({
         onClick={() => onOpenPage('tasks')}
       >
         <ListChecks size={14} aria-hidden="true" /> {activeTasks.length}
+      </button>
+      <button
+        type="button"
+        className={cx(
+          styles.statusButton,
+          unreadTone && UNREAD_TONE_CLASS[unreadTone],
+        )}
+        aria-label={`${
+          unread.length === 0
+            ? 'No unread messages'
+            : `${unread.length} unread message${unread.length === 1 ? '' : 's'}`
+        }. Open Messages.`}
+        data-testid="unread-messages"
+        onClick={onOpenMessages}
+      >
+        <Bell size={14} aria-hidden="true" /> {unread.length}
       </button>
       {activeTasks.slice(0, 2).map((task) => (
         <ProgressBar

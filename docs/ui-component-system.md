@@ -339,3 +339,51 @@ whether AG Grid stays is still to run.
 production-preview tests passed; `git diff --check` clean. The grid was checked by eye in Dark and Light, narrow and
 wide: hover-revealed widgets, the value-search popover, shading, comfortable rows, a pinned first column, a hidden
 column, MWh/yr formatting with its popover kept open, and the Grid elements tab.
+
+## Step 4 status
+
+Built on `claude/ui-component-system` (2026-10-26), not merged into `master`.
+
+**Real:**
+
+- `src/app/messages/messageCenter.ts` is the one message store, `services.messages`. Each message has an id, time,
+  tone (info, success, warning, danger), source (Project, Jobs, Agent, Server, Workspace), actor (a person, the
+  agent, or the system), project id (none for the server connection), text, actions (Open job, Open Reasoning, or
+  a page), a toast flag, a read flag, and a resolved flag. It keeps 500 messages for the browser session.
+- What feeds it: every operation log entry except progress ticks (so commands, lifecycle results, save results,
+  layout and view changes, and refusals), finished jobs (`watchJobCompletions` in `jobs/jobNotices.ts`, which
+  replaces the notice store), the agent's approvals and notices, and reconnects (`service.resync`).
+- Which messages pop up, following the owner's choice: finished jobs, refused commands, server faults (offline,
+  requests failing), reconnects, the agent waiting for approval, and agent errors. A refusal whose every issue
+  names a field of a person's own form is shown beside those fields instead; the same refusal of an agent's
+  command pops up, since the agent has no form. Applied operations reach the status bar and the history only.
+  Messages that pop up start unread; the rest are read when they arrive.
+- Toasts (`shell/ToastHost.tsx`): one region, "Notifications", bottom right above the status bar; at most three,
+  newest nearest the status bar. Success and information toasts leave after six seconds, with the clock stopped
+  while the pointer or focus is on the toasts, and stay unread; warnings and errors stay until dismissed. A toast
+  never takes focus; **Ctrl+Alt+N** (View > Go to notifications) reaches the newest. Dismissing one marks it read
+  and moves focus to the next toast or back to the workspace; Open job moves focus to the job list. Messages that
+  are not operation log entries are announced politely by the region; operations already are, by the status bar.
+  Reduced motion removes the slide. A replaced project takes its toasts with it.
+- The Messages panel (`panels/MessagesPanel.tsx`) docks on the right border beside Reasoning and Inspection
+  (**Ctrl+Alt+M**, View > Panels > Messages). It lists this project's messages and the server's, newest first,
+  with time, source, actor, text, and the message's actions; filters by tone (All, Problems) and source (From:
+  Anywhere, Project, Jobs, Agent, Server, Workspace); Mark all read; and Clear messages. Messages count as read
+  while the panel is on screen. An answered approval is muted and marked "Answered".
+- The status bar keeps its last-operation sentence, now read from the store, and adds an unread counter (a bell
+  and the count) coloured by the worst unread tone; it opens the Messages panel.
+- Migrated: the job notice strip (now toasts and history), the status bar's sentence, and the per-form result lines
+  in Creator (measures and scenarios) and Archetypes (archetypes and schedules). Their successes are reported by
+  the status bar and the history; their blocking errors stay in the form as a danger `InlineAlert`.
+- Saved layouts from before keep their panels; the Messages panel docks on the right the first time it is opened.
+
+**Deferred:** Retry and Undo actions on messages; agent tools that read the history; the history as a `LogView`
+(step 5); messages kept across reloads (the history lasts for the browser session).
+
+**Verification (2026-10-26):** typecheck, lint, and format clean; 352 unit tests (including
+`src/app/messages/messageCenter.test.ts` and the job notices moved onto the store), 101 development browser tests
+(including `e2e/messages.spec.ts`: a refusal toast that never takes focus, Ctrl+Alt+N and keyboard dismissal, a job
+toast held by hover and then leaving by itself, the counter opening the panel and marking messages read, both
+filters, an action run from the history, Clear, and axe), and 3 production-preview tests passed; `git diff --check`
+clean. Toasts, the counter, and the panel were checked by eye in Dark; the gallery shows toasts in three tones and
+the history rows.

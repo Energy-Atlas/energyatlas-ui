@@ -20,6 +20,10 @@ import componentStyles from '../components/components.module.css'
 import { DataTable } from '../components/DataTable.tsx'
 import { InlineAlert } from '../components/InlineAlert.tsx'
 import { MenuButton } from '../components/MenuButton.tsx'
+import type { Message } from '../messages/messageCenter.ts'
+import { MessageRow } from '../panels/MessagesPanel.tsx'
+import messageStyles from '../panels/messages.module.css'
+import { Toast } from '../shell/ToastHost.tsx'
 import { HeaderCount, PanelHeader } from '../components/PanelHeader.tsx'
 import { PropertyList } from '../components/PropertyList.tsx'
 import { Section } from '../components/Section.tsx'
@@ -53,6 +57,66 @@ const STATES: StageState[] = [
   'failed',
   'stale',
   'unavailable',
+]
+
+const SAMPLE_AT = new Date(Date.UTC(2026, 9, 26, 14, 5)).toISOString()
+
+function sampleMessage(
+  id: string,
+  fields: Pick<Message, 'tone' | 'source' | 'text'> & Partial<Message>,
+): Message {
+  return {
+    id,
+    at: SAMPLE_AT,
+    actor: 'manual',
+    projectId: 'project:gallery',
+    operationId: null,
+    actions: [],
+    toast: true,
+    read: false,
+    resolved: false,
+    ...fields,
+  }
+}
+
+const SAMPLE_MESSAGES: Message[] = [
+  sampleMessage('job', {
+    tone: 'success',
+    source: 'job',
+    text: 'Geospatial preprocessing completed.',
+    actions: [{ kind: 'openJob', label: 'Open job', taskId: 'task-1' }],
+  }),
+  sampleMessage('partial', {
+    tone: 'warning',
+    source: 'job',
+    text: 'Geospatial preprocessing partly failed: 12 of 464 items failed; successful results are held.',
+    actions: [{ kind: 'openJob', label: 'Open job', taskId: 'task-2' }],
+  }),
+  sampleMessage('server', {
+    tone: 'danger',
+    source: 'server',
+    projectId: null,
+    text: 'Not sent: the server cannot be reached (demo condition: offline).',
+  }),
+  sampleMessage('applied', {
+    tone: 'info',
+    source: 'project',
+    toast: false,
+    read: true,
+    operationId: 'op-1',
+    text: 'Created the measure "Roof insulation".',
+  }),
+  sampleMessage('approval', {
+    tone: 'warning',
+    source: 'agent',
+    actor: 'agent',
+    resolved: true,
+    read: true,
+    text: 'The agent is waiting for your approval: Run Shading.',
+    actions: [
+      { kind: 'openPanel', label: 'Open Reasoning', panel: 'reasoning' },
+    ],
+  }),
 ]
 
 function initialAppearance(): AppearanceId {
@@ -421,6 +485,31 @@ export default function ComponentGallery() {
           <InlineAlert tone="danger" live="off" title="Fit failed">
             The meter series has 3 months missing.
           </InlineAlert>
+        </section>
+
+        <section className={styles.cell}>
+          <h2>Toasts</h2>
+          {SAMPLE_MESSAGES.slice(0, 3).map((message) => (
+            <Toast
+              key={message.id}
+              message={message}
+              onAction={(action) => note(`${action.label} pressed.`)}
+              onDismiss={() => note('Dismissed.')}
+            />
+          ))}
+        </section>
+
+        <section className={styles.cell}>
+          <h2>Message history</h2>
+          <ol className={messageStyles.list} aria-label="Message history">
+            {SAMPLE_MESSAGES.map((message) => (
+              <MessageRow
+                key={message.id}
+                message={message}
+                onAction={(action) => note(`${action.label} pressed.`)}
+              />
+            ))}
+          </ol>
         </section>
 
         <section className={styles.cell}>

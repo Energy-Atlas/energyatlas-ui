@@ -1,6 +1,8 @@
 import {
   ArrowRightLeft,
   Ban,
+  Bell,
+  BellDot,
   Columns2,
   Command,
   FilePlus,
@@ -48,6 +50,7 @@ import {
   retryActionBlocker,
 } from './pages/jobs/jobView.ts'
 import { DEFAULT_PAGES, PAGES, type PageId } from './layout/layoutController.ts'
+import { inScope } from './messages/messageCenter.ts'
 
 // One registry of app actions drives the ribbon menus, quick buttons, command
 // palette, and keyboard shortcuts, so they cannot drift apart. A disabled or
@@ -111,6 +114,7 @@ export function useAppActions(dialogs: ShellDialogs): AppAction[] {
     appearancePreference,
     setAppearance,
     showInspection,
+    messages,
   } = useServices()
   const snapshot = useWorkbenchSnapshot((current) => current)
   const pending = useClientSnapshot((current) => current.pending)
@@ -124,6 +128,13 @@ export function useAppActions(dialogs: ShellDialogs): AppAction[] {
   const layoutVersion = useLayoutVersion()
   const view = useServices().view
   const jobsView = useViewState((current) => current.jobs)
+  const toastsShown = useStore(messages.store, (current) => {
+    const projectId = snapshot.state.project.id
+    return current.toasts.filter((id) => {
+      const message = current.messages.find((item) => item.id === id)
+      return message !== undefined && inScope(message, projectId)
+    }).length
+  })
 
   return useMemo(() => {
     void layoutVersion
@@ -292,6 +303,36 @@ export function useAppActions(dialogs: ShellDialogs): AppAction[] {
         pressed: layout.isPanelOpen('inspection'),
         disabledReason: null,
         perform: () => layout.togglePanel('inspection'),
+      },
+      {
+        id: 'view.toggleMessages',
+        label: 'Messages',
+        group: 'View',
+        menuPath: ['Panels'],
+        icon: Bell,
+        shortcut: 'Ctrl+Alt+M',
+        pressed: layout.isPanelOpen('messages'),
+        disabledReason: null,
+        perform: () => layout.togglePanel('messages'),
+      },
+      {
+        id: 'view.focusNotifications',
+        label: 'Go to notifications',
+        group: 'View',
+        icon: BellDot,
+        shortcut: 'Ctrl+Alt+N',
+        disabledReason:
+          toastsShown > 0
+            ? null
+            : 'No notifications are showing. Earlier ones are in the Messages panel.',
+        // Toasts never take focus themselves; this reaches the newest one.
+        perform: () => {
+          const toasts = document.querySelectorAll<HTMLElement>(
+            '[aria-label="Notifications"] [data-tone]',
+          )
+          // The newest sits nearest the status bar, last in the stack.
+          ;[...toasts].at(-1)?.querySelector<HTMLElement>('button')?.focus()
+        },
       },
       {
         id: 'view.toggleLeftSide',
@@ -602,6 +643,7 @@ export function useAppActions(dialogs: ShellDialogs): AppAction[] {
     transitioning,
     view,
     jobsView,
+    toastsShown,
   ])
 }
 

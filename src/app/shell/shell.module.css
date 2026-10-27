@@ -461,34 +461,52 @@
   margin-top: var(--space-3);
 }
 
-/* Job notices (jobs rollout plan, D6): a strip above the status bar that
-   never covers content and is never focused automatically. */
-.jobNotice {
+/* Toasts (decision 0027): the one place popups appear, bottom right above
+   the status bar. They float over the workspace without taking focus; the
+   pointer passes through the gaps between them. */
+.toasts {
+  position: fixed;
+  right: var(--space-3);
+  bottom: calc(1.75rem + var(--space-2));
+  z-index: 900;
   display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: var(--space-1) var(--space-2);
-  padding: var(--space-1) var(--space-3);
-  border-top: var(--rule);
-  border-left: 2px solid var(--tone-info-text);
-  background: var(--color-surface);
+  flex-direction: column;
+  gap: var(--space-2);
+  width: min(24rem, calc(100vw - 2 * var(--space-3)));
+  pointer-events: none;
 }
 
-.jobNoticeWarning {
-  border-left-color: var(--tone-warning-text);
+.toast {
+  margin: 0;
+  box-shadow: var(--shadow-popover);
+  pointer-events: auto;
+  animation: toast-in var(--transition);
 }
 
-.jobNoticeDanger {
-  border-left-color: var(--tone-danger-text);
+@keyframes toast-in {
+  from {
+    transform: translateY(0.5rem);
+    opacity: 0;
+  }
 }
 
-.jobNoticeText {
-  flex: 1;
-  min-width: 12rem;
+@media (prefers-reduced-motion: reduce) {
+  .toast {
+    animation: none;
+  }
 }
 
-.jobNoticeActions {
-  display: flex;
-  align-items: center;
-  gap: var(--space-1);
+/* The unread counter takes the tone of the worst unread message. */
+.unreadSuccess {
+  color: var(--tone-success-text);
+}
+
+.unreadWarning {
+  border-color: var(--tone-warning-text);
+  color: var(--tone-warning-text);
+}
+
+.unreadDanger {
+  border-color: var(--tone-danger-text);
+  color: var(--tone-danger-text);
 }

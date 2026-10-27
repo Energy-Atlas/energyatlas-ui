@@ -1,5 +1,5 @@
 import { AxeBuilder } from '@axe-core/playwright'
-import { expect, test, type Page } from './test.ts'
+import { expect, test, type Page, notifications } from './test.ts'
 
 // Archetypes and schedules (jobs rollout plan, slice 5): library, compact
 // editors with per-field validation, coverage, and assignment as a job.
@@ -56,7 +56,7 @@ test('adds a library archetype, shows coverage, and reassigns as a job', async (
   await archetypes
     .getByRole('button', { name: 'Run Archetype modeling to assign buildings' })
     .click()
-  await expect(page.getByRole('region', { name: 'Job notices' })).toContainText(
+  await expect(notifications(page)).toContainText(
     'Archetype modeling completed',
     { timeout: 15_000 },
   )

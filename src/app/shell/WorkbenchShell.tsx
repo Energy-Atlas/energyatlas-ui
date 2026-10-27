@@ -1,6 +1,7 @@
 import { Layout, type ITabRenderValues, type TabNode } from 'flexlayout-react'
 import 'flexlayout-react/style/light.css'
 import {
+  Bell,
   DatabaseZap,
   FileSpreadsheet,
   Gauge,
@@ -44,9 +45,9 @@ import { IntakePage } from '../pages/intake/IntakePage.tsx'
 import { ArchetypesPage } from '../pages/archetypes/ArchetypesPage.tsx'
 import { CalibrationPage } from '../pages/calibration/CalibrationPage.tsx'
 import { ResultsPage } from '../pages/results/ResultsPage.tsx'
-import { JobNoticeTray } from './JobNoticeTray.tsx'
 import { AssetsPanel } from '../panels/AssetsPanel.tsx'
 import { InspectionPanel } from '../panels/InspectionPanel.tsx'
+import { MessagesPanel } from '../panels/MessagesPanel.tsx'
 import { ReasoningPanel } from '../panels/ReasoningPanel.tsx'
 import { WorkflowPanel } from '../panels/WorkflowPanel.tsx'
 import { useShortcuts } from '../useShortcuts.ts'
@@ -54,6 +55,7 @@ import { CommandPalette } from './CommandPalette.tsx'
 import { CapabilitiesDialog, ShortcutsDialog } from './HelpDialogs.tsx'
 import { Ribbon } from './Ribbon.tsx'
 import { StatusBar } from './StatusBar.tsx'
+import { ToastHost } from './ToastHost.tsx'
 import styles from './shell.module.css'
 
 type OpenDialog =
@@ -69,6 +71,7 @@ const TAB_ICONS: Record<string, LucideIcon> = {
   'panel.workflow': Workflow,
   'panel.reasoning': MessageSquare,
   'panel.inspection': ScanSearch,
+  'panel.messages': Bell,
   'page.map': MapIcon,
   'page.table': Table2,
   'page.dashboard': LayoutDashboard,
@@ -125,6 +128,8 @@ function renderTabContent(node: TabNode) {
       return <ReasoningPanel />
     case 'panel.inspection':
       return <InspectionPanel />
+    case 'panel.messages':
+      return <MessagesPanel />
     case 'page.map':
       return <MapPage />
     case 'page.table':
@@ -188,10 +193,13 @@ export function WorkbenchShell() {
           keyMap={KEY_MAP}
         />
       </main>
-      <JobNoticeTray />
+      <ToastHost />
       <StatusBar
         onOpenPage={(page) => layout.openPage(page)}
         onOpenDemoConditions={() => setOpenDialog('demoConditions')}
+        onOpenMessages={() => {
+          if (!layout.isPanelOpen('messages')) layout.togglePanel('messages')
+        }}
       />
       <CommandPalette
         isOpen={openDialog === 'palette'}

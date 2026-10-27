@@ -41,6 +41,8 @@ export const PANELS = {
   // (Reasoning, Context, Reasoning again) so saved layouts still restore.
   reasoning: { name: 'Reasoning', component: 'panel.reasoning' },
   inspection: { name: 'Inspection', component: 'panel.inspection' },
+  // The history of every message and toast (decision 0027).
+  messages: { name: 'Messages', component: 'panel.messages' },
 } as const
 
 export type PageId = keyof typeof PAGES
@@ -109,6 +111,7 @@ const PANEL_HOME: Record<PanelId, 'left' | 'right'> = {
   workflow: 'left',
   reasoning: 'right',
   inspection: 'right',
+  messages: 'right',
 }
 
 export function createDefaultLayout(): IJsonModel {
@@ -141,7 +144,11 @@ export function createDefaultLayout(): IJsonModel {
         location: 'right',
         size: 320,
         selected: 0,
-        children: [panelTab('reasoning'), panelTab('inspection')],
+        children: [
+          panelTab('reasoning'),
+          panelTab('inspection'),
+          panelTab('messages'),
+        ],
       },
     ],
     layout: {

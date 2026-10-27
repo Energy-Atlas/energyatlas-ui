@@ -1,4 +1,4 @@
-import { expect, test, type Page } from './test.ts'
+import { expect, test, type Page, notifications } from './test.ts'
 
 // Roadmap slices 3–8 under a slow server, a failing request, and a project
 // switch: controls explain why they wait, failures are shown and recoverable,
@@ -48,7 +48,7 @@ test('a slow server shows pending requests and explains waiting controls', async
     'title',
     'Waiting for the server to answer: the dataset is being queued.',
   )
-  await expect(page.getByRole('region', { name: 'Job notices' })).toContainText(
+  await expect(notifications(page)).toContainText(
     'Data fusion: Assessor attributes completed.',
     { timeout: 30_000 },
   )
