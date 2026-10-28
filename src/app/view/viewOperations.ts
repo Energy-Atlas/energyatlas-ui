@@ -46,6 +46,7 @@ import {
   MIN_EXAGGERATION,
 } from '../pages/terrain.ts'
 import { applyViewSnapshot } from '../layouts/savedLayout.ts'
+import { TABLE_VIEWS, type TableView } from './tableViews.ts'
 import { describeTableChange, tableChangeIssue } from '../tables/tableChange.ts'
 import { registeredTable, registeredTableIds } from '../tables/tableRegistry.ts'
 import {
@@ -68,7 +69,14 @@ import {
 // not undoable; only table arrangements and the map's layers are saved with
 // the project.
 
-export type TableView = 'buildings' | 'grid'
+export type { TableView } from './tableViews.ts'
+
+const TABLE_VIEW_NAMES: Record<TableView, string> = {
+  buildings: 'buildings',
+  floors: 'the floors of every building',
+  zones: 'the zones of every building',
+  grid: 'grid elements',
+}
 
 /** Which jobs the Jobs list shows. */
 export type JobFilter = 'all' | 'active' | 'attention' | 'finished'
@@ -361,7 +369,7 @@ export const viewOperationDefinitions = {
 
   'map.setLayerStyle': defineViewOperation({
     title: 'Style a map layer',
-    description: `Rename a Map layer or set its opacity (0 to 100). Building layers also take colorBy (${BUILDING_COLORS.join(', ')}; a metric without data is rejected) and extrude (shown at their heights in the 3D view).`,
+    description: `Rename a Map layer or set its opacity (0 to 100). Building layers also take colorBy (${BUILDING_COLORS.join(', ')}; a metric without data is rejected), extrude (shown at their heights in the 3D view), and floorSlabs (an extruded building drawn as a stack of floor slabs, one per storey).`,
     input: z.object({
       layerId: z.string(),
       name: z.string().trim().min(1, 'Enter a name.').optional(),
@@ -373,16 +381,23 @@ export const viewOperationDefinitions = {
         .optional(),
       colorBy: z.enum(BUILDING_COLORS).optional(),
       extrude: z.boolean().optional(),
+      floorSlabs: z.boolean().optional(),
     }),
     run(view, input, project) {
       const layer = view.map.layers.find((each) => each.id === input.layerId)
       if (!layer) return rejected(unknownLayer(input.layerId), 'layerId')
       const buildingOnly =
-        input.colorBy !== undefined || input.extrude !== undefined
+        input.colorBy !== undefined ||
+        input.extrude !== undefined ||
+        input.floorSlabs !== undefined
       if (buildingOnly && layer.kind !== 'buildings') {
         return rejected(
           `"${layer.name}" shows ${LAYER_KINDS[layer.kind].label.toLowerCase()}; only building layers are colored by a metric or extruded.`,
-          input.colorBy !== undefined ? 'colorBy' : 'extrude',
+          input.colorBy !== undefined
+            ? 'colorBy'
+            : input.extrude !== undefined
+              ? 'extrude'
+              : 'floorSlabs',
         )
       }
       if (input.colorBy !== undefined && input.colorBy !== 'single') {
@@ -405,6 +420,14 @@ export const viewOperationDefinitions = {
       if (input.extrude !== undefined) {
         layer.extrude = input.extrude
         changes.push(input.extrude ? 'extruded in 3D' : 'flat in 3D')
+      }
+      if (input.floorSlabs !== undefined) {
+        layer.floorSlabs = input.floorSlabs
+        changes.push(
+          input.floorSlabs
+            ? 'extruded buildings drawn floor by floor'
+            : 'extruded buildings drawn whole',
+        )
       }
       if (changes.length === 0) return rejected('Nothing to change.')
       return applied(`Map layer "${layer.name}": ${changes.join(', ')}.`)
@@ -565,15 +588,12 @@ export const viewOperationDefinitions = {
 
   'table.setView': defineViewOperation({
     title: 'Switch table view',
-    description: 'Show buildings or grid elements on the Table page.',
-    input: z.object({ view: z.enum(['buildings', 'grid']) }),
+    description:
+      'Show buildings, floors, zones (of the published zoning, decision 0032), or grid elements on the Table page.',
+    input: z.object({ view: z.enum(TABLE_VIEWS) }),
     run(view, input) {
       view.table.view = input.view
-      return applied(
-        input.view === 'grid'
-          ? 'The table shows grid elements.'
-          : 'The table shows buildings.',
-      )
+      return applied(`The table shows ${TABLE_VIEW_NAMES[input.view]}.`)
     },
   }),
 

@@ -257,6 +257,19 @@ function LayerSettings({
               ? ''
               : ' Extrusion shows in the 3D view, a Basemap setting.'}
           </p>
+          <Checkbox
+            className={formStyles.checkbox}
+            isSelected={layer.floorSlabs}
+            isDisabled={!layer.extrude}
+            onChange={(floorSlabs) => style({ floorSlabs })}
+          >
+            Draw floors as slabs
+          </Checkbox>
+          <p className={formStyles.description}>
+            {layer.extrude
+              ? 'One slab per storey, each the building height over its floors. Selected buildings show their zones instead.'
+              : 'Slabs need Extrude to height.'}
+          </p>
         </>
       ) : null}
       <ViewSlider
@@ -281,4 +294,5 @@ type StyleInput = {
   opacityPercent?: number
   colorBy?: MapLayer['colorBy']
   extrude?: boolean
+  floorSlabs?: boolean
 }

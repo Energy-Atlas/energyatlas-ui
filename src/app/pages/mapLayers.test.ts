@@ -20,6 +20,19 @@ describe('map layers', () => {
     expect(parseStoredLayers([])).toEqual([])
   })
 
+  it('gives building layers saved before floor slabs the slabs (decision 0032, stage 6)', () => {
+    const saved = newLayer('buildings', 'buildings') as Partial<
+      ReturnType<typeof newLayer>
+    >
+    delete saved.floorSlabs
+    expect(parseStoredLayers([saved])[0]?.floorSlabs).toBe(true)
+    // Such a stack is not an unsaved change once read.
+    expect(layersDiffer(parseStoredLayers([saved]), [saved])).toBe(false)
+    expect(
+      layerSummary({ ...newLayer('b', 'buildings'), floorSlabs: false }),
+    ).toBe('Floors · extruded whole · 90%')
+  })
+
   it('counts a stack as unchanged only when it matches what was saved', () => {
     expect(layersDiffer(defaultLayers(), undefined)).toBe(false)
     const changed = defaultLayers()

@@ -224,6 +224,49 @@ describe('scripted agent', () => {
     )
   })
 
+  it('zones by perimeter and core after approval and shows the largest zoned building (decision 0032, stage 6)', async () => {
+    const { workbench, manual, agent, lastApproval, agentEntries, transcript } =
+      setup()
+    expect(matchSession('Show me the floors and zones')?.id).toBe('zoning')
+    agent.startPreset('zoning')
+    await manual.settle(50)
+    expect(lastApproval().title).toMatch(/^Run \d+ missing stages$/)
+    agent.approve(lastApproval().id)
+    await manual.settle(20000)
+    expect(lastApproval().title).toBe('Zone by perimeter and core')
+    agent.approve(lastApproval().id)
+    await manual.settle(500)
+    expect(workbench.getState().zoning).toMatchObject({
+      mode: 'perimeterCore',
+      perimeterDepthM: 4.5,
+    })
+    // Applying the zoning is a second approved run.
+    expect(lastApproval().title).toMatch(/^Run \d+/)
+    agent.approve(lastApproval().id)
+    await manual.settle(20000)
+    expect(agent.store.getState().status).toBe('idle')
+    const state = workbench.getState()
+    expect(state.zoning.published?.mode).toBe('perimeterCore')
+    expect(state.selection).toEqual({
+      entityType: 'building',
+      ids: ['B0464'],
+    })
+    expect(
+      agentEntries()
+        .map((entry) => entry.type)
+        .filter((type) => type !== 'workflow.runStage'),
+    ).toEqual([
+      'zoning.set',
+      'selection.set',
+      'layout.openPage',
+      'map.set3d',
+      'map.focusSelection',
+    ])
+    const text = JSON.stringify(transcript())
+    expect(text).toContain('has 5 floors of 3.2 m')
+    expect(text).toContain('perimeter_inset_failed')
+  })
+
   it('reviews the schema mapping after approval and applies it as a run', async () => {
     const { workbench, manual, agent, lastApproval, agentEntries, transcript } =
       setup()

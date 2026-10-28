@@ -21,6 +21,11 @@ export type MapLayer = {
   colorBy: BuildingColor
   /** Buildings only: extruded to their heights in the 3D view. */
   extrude: boolean
+  /**
+   * Buildings only: an extruded building is drawn as a stack of floor slabs
+   * (decision 0032, stage 6). Stacks saved before it get slabs.
+   */
+  floorSlabs: boolean
 }
 
 export const LAYER_KINDS: Record<
@@ -70,6 +75,7 @@ export function newLayer(
     opacityPercent: kind === 'buildings' ? 90 : 100,
     colorBy: 'floors',
     extrude: true,
+    floorSlabs: true,
   }
 }
 
@@ -99,6 +105,7 @@ const layerSchema = z.object({
   opacityPercent: z.number().int().min(0).max(100),
   colorBy: z.enum(BUILDING_COLORS),
   extrude: z.boolean(),
+  floorSlabs: z.boolean().default(true),
 })
 
 /**
@@ -131,7 +138,9 @@ export function layerSummary(layer: MapLayer): string {
   const parts = layer.name === kind ? [] : [kind]
   if (layer.kind === 'buildings') {
     parts.push(colorLabel(layer.colorBy))
-    if (layer.extrude) parts.push('extruded')
+    if (layer.extrude) {
+      parts.push(layer.floorSlabs ? 'extruded' : 'extruded whole')
+    }
   }
   if (layer.opacityPercent !== 100) parts.push(`${layer.opacityPercent}%`)
   if (!layer.visible) parts.push('hidden')

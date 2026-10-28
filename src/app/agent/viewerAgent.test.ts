@@ -124,6 +124,7 @@ describe("the viewer's agent tools", () => {
     expect(agent.store.getState().presets.map((preset) => preset.id)).toEqual([
       'viewerResults',
       'layout',
+      'viewerZones',
       'viewerRestore',
     ])
     agent.send('Please add a heat pump measure and rerun the scenarios')
@@ -160,6 +161,30 @@ describe("the viewer's agent tools", () => {
       kind: 'agent',
       markdown: VIEWER_UNMATCHED_ANSWER,
     })
+  })
+
+  it('shows floors and zones without approvals and refuses a zoning change (decision 0032, stage 6)', async () => {
+    expect(asksForModelChange('set the zoning to perimeter and core')).toBe(
+      true,
+    )
+    const { agent, manual, workbench } = viewerSetup()
+    agent.startPreset('viewerZones')
+    await manual.settle(200)
+    const transcript = agent.store.getState().transcript
+    expect(transcript.some((item) => item.kind === 'approval')).toBe(false)
+    expect(workbench.getState().selection).toEqual({
+      entityType: 'building',
+      ids: ['B0464'],
+    })
+    expect(JSON.stringify(transcript)).toContain(
+      'zoned one zone per building when the project was handed over',
+    )
+    const { agent: empty, manual: emptyManual } = viewerSetup('new')
+    empty.startPreset('viewerZones')
+    await emptyManual.settle(200)
+    expect(JSON.stringify(empty.store.getState().transcript)).toContain(
+      'This package has no zones to show',
+    )
   })
 
   it('explains missing data instead of offering to run stages', async () => {

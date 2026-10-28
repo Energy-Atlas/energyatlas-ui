@@ -1,5 +1,5 @@
 import { Layer } from '@vis.gl/react-maplibre'
-import type { ExpressionSpecification } from 'maplibre-gl'
+import type { ExpressionSpecification, FilterSpecification } from 'maplibre-gl'
 import type { DataPalette } from '../appearance/appearances.ts'
 import type { MapLayer } from './mapLayers.ts'
 import {
@@ -22,6 +22,8 @@ export type ResolvedLayer = {
   values: MetricValues | null
   /** Whether a building layer stands at its heights now (3D view on). */
   extruded: boolean
+  /** Whether an extruded building layer is drawn as floor slabs (decision 0032, stage 6). */
+  slabs: boolean
   /** Every MapLibre layer id it draws, bottom to top. */
   mapIds: string[]
   /** The MapLibre layer that picks its features. */
@@ -42,6 +44,7 @@ export function resolveLayers(
         metric: null,
         values: null,
         extruded: false,
+        slabs: false,
         mapIds: [id],
         pickId: id,
       }
@@ -53,6 +56,7 @@ export function resolveLayers(
         metric: null,
         values: null,
         extruded: false,
+        slabs: false,
         mapIds: [id],
         pickId: id,
       }
@@ -76,6 +80,7 @@ export function resolveLayers(
       metric,
       values: metricId ? metrics[metricId] : null,
       extruded,
+      slabs: extruded && layer.floorSlabs,
       mapIds,
       pickId: mapIds[0] ?? prefix,
     }
@@ -117,12 +122,24 @@ function whenSelected<T>(yes: T, no: T): ExpressionSpecification {
   return [...selected, yes, no] as unknown as ExpressionSpecification
 }
 
+/** Leaves out buildings whose zones are drawn in their place. */
+function without(ids: string[]): FilterSpecification | undefined {
+  if (ids.length === 0) return undefined
+  return [
+    '!',
+    ['in', ['get', 'id'], ['literal', ids]],
+  ] as unknown as FilterSpecification
+}
+
 export function StackLayer({
   resolved,
   palette,
+  zonedIds = [],
 }: {
   resolved: ResolvedLayer
   palette: DataPalette
+  /** Buildings drawn as zones instead, in 3D. */
+  zonedIds?: string[]
 }) {
   const { layer, mapIds, extruded } = resolved
   const visibility = layer.visible ? 'visible' : 'none'
@@ -167,14 +184,32 @@ export function StackLayer({
   const color = fillColor(resolved, palette)
   if (extruded) {
     // Selection never changes a building's color; in 3D it is outlined by
-    // SelectionSilhouette.
-    return (
+    // SelectionSilhouette. Slabs stack one per floor (decision 0032, stage 6).
+    // The source changes with slabs, so the layer is keyed by it.
+    const filter = without(zonedIds)
+    return resolved.slabs ? (
+      <Layer
+        key={`${mapIds[0]}:slabs`}
+        id={mapIds[0]}
+        type="fill-extrusion"
+        source="floor-slabs"
+        layout={{ visibility }}
+        {...(filter ? { filter } : {})}
+        paint={{
+          'fill-extrusion-color': color,
+          'fill-extrusion-base': ['get', 'base'],
+          'fill-extrusion-height': ['get', 'top'],
+          'fill-extrusion-opacity': opacity,
+        }}
+      />
+    ) : (
       <Layer
         key={mapIds[0]}
         id={mapIds[0]}
         type="fill-extrusion"
         source="buildings"
         layout={{ visibility }}
+        {...(filter ? { filter } : {})}
         paint={{
           'fill-extrusion-color': color,
           'fill-extrusion-height': ['get', 'height'],

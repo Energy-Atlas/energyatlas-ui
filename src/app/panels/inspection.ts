@@ -13,6 +13,7 @@ import {
   preprocessingUsedPublished,
 } from '../../domain/schema/matching.ts'
 import { customTargetId } from '../../domain/schema/registry.ts'
+import { selectedBuildingIds } from '../../domain/zoning/zoning.ts'
 import { MEASURE_KINDS, PART_KINDS } from '../../domain/types.ts'
 import type {
   Building,
@@ -600,6 +601,23 @@ export function buildInspection(state: WorkbenchState): Inspection {
     return buildings.length === 1
       ? inspectBuilding(state, first)
       : inspectBuildings(state, buildings)
+  }
+  // A floor or zone is shown with its building, which lists them
+  // (decision 0032, stage 6).
+  if (entityType === 'floor' || entityType === 'zone') {
+    const owners = selectedBuildingIds(state.selection).flatMap((id) => {
+      const building = state.buildings[id]
+      return building ? [building] : []
+    })
+    const [first] = owners
+    if (!first) return { kind: 'empty' }
+    if (owners.length > 1) return inspectBuildings(state, owners)
+    const inspection = inspectBuilding(state, first)
+    const noun = entityType === 'floor' ? 'Floor' : 'Zone'
+    return {
+      ...inspection,
+      eyebrow: `${noun} ${ids.length === 1 ? ids[0] : `${ids.length} selected`} of building ${first.id}`,
+    }
   }
   if (entityType === 'gridElement') {
     const elements = ids.flatMap((id) => {

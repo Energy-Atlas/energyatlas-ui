@@ -1,9 +1,4 @@
-import type {
-  CellEditRequestEvent,
-  ColDef,
-  GridApi,
-  SelectionChangedEvent,
-} from 'ag-grid-community'
+import type { CellEditRequestEvent, ColDef, GridApi } from 'ag-grid-community'
 import { useEffect, useId, useMemo, useRef, useState } from 'react'
 import {
   Input,
@@ -13,12 +8,7 @@ import {
   TabPanel,
   Tabs,
 } from 'react-aria-components'
-import type {
-  Building,
-  GridElement,
-  SelectableEntity,
-  Selection,
-} from '../../domain/types.ts'
+import type { Building, GridElement } from '../../domain/types.ts'
 import { STAGE_IDS } from '../../domain/workflow.ts'
 import {
   PART_LABELS,
@@ -41,6 +31,13 @@ import { InlineAlert } from '../components/InlineAlert.tsx'
 import { PanelHeader } from '../components/PanelHeader.tsx'
 import { useWorkbenchTable } from '../components/useWorkbenchTable.ts'
 import { usePendingReason } from '../service/usePendingReason.ts'
+import { TABLE_VIEWS } from '../view/tableViews.ts'
+import { FloorsTable, ZonesTable } from './FloorZoneTables.tsx'
+import {
+  ROW_SELECTION,
+  useSelectionHandler,
+  useSelectionSync,
+} from './tableSelection.ts'
 import type { DataColumn } from '../tables/tableModel.ts'
 import styles from './table.module.css'
 
@@ -69,62 +66,6 @@ const PENDING_CELL_CLASS = 'eaui-pending-cell'
 // every render.
 const rowId = (row: { id: string }) => row.id
 
-// Rows are selected by clicking them; the selection is the workbench's.
-const ROW_SELECTION = {
-  mode: 'multiRow',
-  checkboxes: false,
-  headerCheckbox: false,
-  enableClickSelection: true,
-} as const
-
-// Grid selection events caused by our own syncing must not echo back as commands.
-const PROGRAMMATIC_SOURCES = new Set([
-  'api',
-  'apiSelectAll',
-  'rowDataChanged',
-  'gridInitializing',
-])
-
-function useSelectionSync<Row extends { id: string }>(
-  apiRef: React.RefObject<GridApi<Row> | null>,
-  selection: Selection,
-  entityType: SelectableEntity,
-  rows: Row[],
-) {
-  useEffect(() => {
-    const api = apiRef.current
-    if (!api) return
-    const wanted = new Set(
-      selection.entityType === entityType ? selection.ids : [],
-    )
-    api.forEachNode((node) => {
-      const shouldSelect = Boolean(node.data && wanted.has(node.data.id))
-      if (node.isSelected() !== shouldSelect) {
-        node.setSelected(shouldSelect, false, 'api')
-      }
-    })
-    const first =
-      selection.entityType === entityType ? selection.ids[0] : undefined
-    const node = first ? api.getRowNode(first) : undefined
-    if (node) api.ensureNodeVisible(node)
-  }, [apiRef, selection, entityType, rows])
-}
-
-function useSelectionHandler<Row extends { id: string }>(
-  entityType: SelectableEntity,
-) {
-  const { workbench } = useServices()
-  return (event: SelectionChangedEvent<Row>) => {
-    if (PROGRAMMATIC_SOURCES.has(event.source)) return
-    const ids = event.api.getSelectedRows().map((row) => row.id)
-    workbench.execute(
-      ids.length > 0
-        ? { type: 'selection.set', input: { entityType, ids } }
-        : { type: 'selection.clear', input: {} },
-    )
-  }
-}
-
 export function TablePage() {
   const headingId = useId()
   const hasBuildings = useWorkbenchSnapshot(
@@ -146,7 +87,7 @@ export function TablePage() {
           className={styles.tabs}
           selectedKey={view}
           onSelectionChange={(key) => {
-            const next = key === 'grid' ? 'grid' : 'buildings'
+            const next = TABLE_VIEWS.find((each) => each === key) ?? 'buildings'
             if (next !== view) {
               viewStore.execute({
                 type: 'table.setView',
@@ -159,12 +100,24 @@ export function TablePage() {
             <Tab id="buildings" className={styles.tab}>
               Buildings
             </Tab>
+            <Tab id="floors" className={styles.tab}>
+              Floors
+            </Tab>
+            <Tab id="zones" className={styles.tab}>
+              Zones
+            </Tab>
             <Tab id="grid" className={styles.tab}>
               Grid elements
             </Tab>
           </TabList>
           <TabPanel id="buildings" className={styles.panel}>
             <BuildingsTable />
+          </TabPanel>
+          <TabPanel id="floors" className={styles.panel}>
+            <FloorsTable />
+          </TabPanel>
+          <TabPanel id="zones" className={styles.panel}>
+            <ZonesTable />
           </TabPanel>
           <TabPanel id="grid" className={styles.panel}>
             <GridElementsTable />

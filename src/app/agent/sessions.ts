@@ -14,6 +14,12 @@ import {
 } from '../pages/dashboardData.ts'
 import { formatEnergy } from '../format.ts'
 import {
+  DEFAULT_PERIMETER_DEPTH_M,
+  buildingZoning,
+  describeZoning,
+  type BuildingZoning,
+} from '../../domain/zoning/zoning.ts'
+import {
   command,
   layoutCall,
   layoutsCall,
@@ -957,6 +963,139 @@ const calibrationSession: ScriptedSession = {
   ],
 }
 
+/**
+ * The building whose zones show the zoning best: the largest footprint that
+ * kept its zoning (no fallback), else the largest with zones at all.
+ */
+function showcaseZoning(state: WorkbenchState): BuildingZoning | null {
+  let best: BuildingZoning | null = null
+  let bestArea = -1
+  let bestKept = false
+  for (const id of state.buildingIds) {
+    const zoning = buildingZoning(state, id)
+    const area = state.buildings[id]?.footprintAreaM2 ?? 0
+    if (!zoning) continue
+    const kept = zoning.fallback === null
+    if ((kept && !bestKept) || (kept === bestKept && area > bestArea)) {
+      best = zoning
+      bestArea = area
+      bestKept = kept
+    }
+  }
+  return best
+}
+
+/** What a building's floors and zones are, for the agent's answers. */
+function describeBuildingZones(
+  state: WorkbenchState,
+  zoning: BuildingZoning,
+): string {
+  const name = state.buildings[zoning.buildingId]?.name ?? zoning.buildingId
+  const cores = zoning.zones.filter((zone) => zone.kind === 'core').length
+  const perimeters = zoning.zones.filter(
+    (zone) => zone.kind === 'perimeter',
+  ).length
+  const parts =
+    cores > 0
+      ? `${cores} cores and ${perimeters} perimeter zones, ${perimeters / Math.max(1, cores)} a floor`
+      : `${zoning.zones.length} zone${zoning.zones.length === 1 ? '' : 's'}`
+  return `**${name}** (${zoning.buildingId}) has ${zoning.floors.length} floors of ${zoning.floorHeightM} m (its height over its storeys) and ${zoning.zones.length} zones: ${parts}.${zoning.fallback ? ` ${zoning.fallback.message}` : ''}`
+}
+
+/** Fallback warnings of the last Geospatial preprocessing run, in a sentence. */
+function fallbackSentence(state: WorkbenchState): string {
+  const warnings = state.issues.filter(
+    (issue) =>
+      issue.stageId === STAGE_IDS.preprocessing &&
+      /^(footprint_not_simple|perimeter_inset_failed|core_too_small):/.test(
+        issue.message,
+      ),
+  )
+  return warnings.length === 0
+    ? 'No building fell back to one zone per floor.'
+    : `Some buildings fell back to one zone per floor, as the preprocessing warnings say: ${warnings.map((issue) => issue.message.split(' (')[0]).join('; ')}.`
+}
+
+const zoningSession: ScriptedSession = {
+  id: 'zoning',
+  label: 'Zone by perimeter and core',
+  prompt:
+    'Zone the buildings by perimeter and core, then show me the floors and zones of the largest building.',
+  description:
+    "Proposes RC's perimeter-and-core zoning with a 4.5 m perimeter (it waits for approval), reruns Geospatial preprocessing (approval), then selects the largest zoned building and shows its floor slabs and zones on the 3D map.",
+  keywords: [
+    /\bzon(e|es|ed|ing)\b/,
+    /\bperimeter\b/,
+    /\bfloors? and zones?\b/,
+    /\bslabs?\b/,
+  ],
+  steps: [
+    reason(
+      "Zoning is an input of Geospatial preprocessing: changing it outdates that stage and every later one until it runs again. Floors are each building's height over its storeys; zones are display only.",
+    ),
+    ensure([STAGE_IDS.enrichment], 'Finding floor counts to zone'),
+    (context) => {
+      const zoning = context.state().zoning
+      if (zoning.mode === 'perimeterCore') {
+        return reason(
+          `The zoning is already ${describeZoning(zoning).toLowerCase()}.`,
+        )
+      }
+      return propose(
+        'Zone by perimeter and core',
+        `Set the zoning to ${describeZoning({ mode: 'perimeterCore', perimeterDepthM: DEFAULT_PERIMETER_DEPTH_M }).toLowerCase()} (RC's PerimeterCore). Geospatial preprocessing and every later stage become outdated until preprocessing runs again.`,
+        [
+          {
+            title: 'Set the zoning to perimeter and core, 4.5 m deep',
+            call: command({
+              type: 'zoning.set',
+              input: {
+                mode: 'perimeterCore',
+                perimeterDepthM: DEFAULT_PERIMETER_DEPTH_M,
+              },
+            }),
+          },
+        ],
+      )
+    },
+    ensure([STAGE_IDS.preprocessing], 'Zoning the buildings', 'current'),
+    (context) => {
+      const state = context.state()
+      const zoning = showcaseZoning(state)
+      if (!zoning) {
+        return say(
+          'No building has zones yet: Geospatial preprocessing has not zoned them by the setting.',
+        )
+      }
+      return [
+        tool(
+          `Select ${zoning.buildingId}, the largest zoned building`,
+          command({
+            type: 'selection.set',
+            input: { entityType: 'building', ids: [zoning.buildingId] },
+          }),
+        ),
+        tool(
+          'Open the Map',
+          layoutCall({ type: 'layout.openPage', input: { page: 'map' } }),
+        ),
+        tool(
+          'Show the map in 3D',
+          viewCall({ type: 'map.set3d', input: { enabled: true } }),
+        ),
+        tool(
+          'Zoom the map to it',
+          viewCall({ type: 'map.focusSelection', input: {} }),
+        ),
+        say(
+          `${describeBuildingZones(state, zoning)} The map draws its zones, one colour per zone with the core in grey, and every other building as floor slabs. ${fallbackSentence(state)} Choose a floor or zone in Properties, or on the Table page's Floors and Zones views, to highlight it.`,
+        ),
+        reference('Show its floors and zones', { type: 'inspection' }),
+      ]
+    },
+  ],
+}
+
 export const SESSIONS: ScriptedSession[] = [
   layoutSession,
   representationSession,
@@ -965,6 +1104,7 @@ export const SESSIONS: ScriptedSession[] = [
   rulesSession,
   scenarioRulesSession,
   schemaSession,
+  zoningSession,
   restoreSession,
 ]
 
@@ -972,6 +1112,7 @@ export const SESSIONS: ScriptedSession[] = [
 const MATCH_ORDER = [
   restoreSession,
   calibrationSession,
+  zoningSession,
   layoutSession,
   representationSession,
   scenarioRulesSession,
@@ -1103,16 +1244,67 @@ const viewerRestoreSession: ScriptedSession = {
   ],
 }
 
+const viewerZonesSession: ScriptedSession = {
+  id: 'viewerZones',
+  label: 'Floors and zones of a building',
+  prompt: 'Show me the floors and zones of the largest building.',
+  description:
+    'Reads the handed-over zoning, selects the largest zoned building, and shows its floor slabs and zones on the 3D map through view operations.',
+  keywords: [/\bzones?\b/, /\bfloors and zones\b/, /\bslabs?\b/],
+  steps: [
+    reason(
+      "The package holds the zoning the last Geospatial preprocessing run applied; floors and zones are derived from it and every building's height and storeys. Nothing in the package changes.",
+    ),
+    (context) => {
+      const state = context.state()
+      const zoning = showcaseZoning(state)
+      if (!zoning) {
+        return say(
+          'This package has no zones to show: Geospatial preprocessing had not zoned the buildings by a zoning setting when it was handed over. Ask the modeller for a new handover.',
+        )
+      }
+      const published = state.zoning.published
+      return [
+        tool(
+          `Select ${zoning.buildingId}, the largest zoned building`,
+          command({
+            type: 'selection.set',
+            input: { entityType: 'building', ids: [zoning.buildingId] },
+          }),
+        ),
+        tool(
+          'Open the Map',
+          layoutCall({ type: 'layout.openPage', input: { page: 'map' } }),
+        ),
+        tool(
+          'Show the map in 3D',
+          viewCall({ type: 'map.set3d', input: { enabled: true } }),
+        ),
+        tool(
+          'Zoom the map to it',
+          viewCall({ type: 'map.focusSelection', input: {} }),
+        ),
+        say(
+          `The buildings were zoned ${published ? describeZoning(published).toLowerCase() : 'by a setting'} when the project was handed over. ${describeBuildingZones(state, zoning)} ${fallbackSentence(state)} Zones are display only, and per-zone results are a synthetic split of the building's demand by floor area.`,
+        ),
+        reference('Show its floors and zones', { type: 'inspection' }),
+      ]
+    },
+  ],
+}
+
 /** The viewer's sessions: questions, interpretation, and view changes only. */
 export const VIEWER_SESSIONS: ScriptedSession[] = [
   viewerResultsSession,
   layoutSession,
+  viewerZonesSession,
   viewerRestoreSession,
 ]
 
 const VIEWER_MATCH_ORDER = [
   viewerRestoreSession,
   layoutSession,
+  viewerZonesSession,
   viewerResultsSession,
 ]
 
@@ -1132,7 +1324,7 @@ const CHANGE_VERBS =
   /\b(run|change|edit|modify|add|create|delete|remove|set|save|apply|assign|update|fit|cancel)\b/
 /** What the model is made of, as people name it. */
 const MODEL_OBJECTS =
-  /\b(stages?|baseline|measures?|scenarios?|archetypes?|parts?|rules?|schedules?|adoption|floors?|buildings?|datasets?|mapping|model|project|calibration|jobs?)\b/
+  /\b(stages?|baseline|measures?|scenarios?|archetypes?|parts?|rules?|schedules?|adoption|floors?|buildings?|datasets?|mapping|model|project|calibration|jobs?|zoning)\b/
 /** What a viewer may change: how things are shown. */
 const VIEW_WORDS =
   /\b(layers?|map|colou?rs?|styles?|layouts?|table|columns?|filters?|sort|season|camera|zoom|charts?|view|panels?|light|lighting|terrain|3d|basemap|search)\b/

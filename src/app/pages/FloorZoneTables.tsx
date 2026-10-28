@@ -1,0 +1,296 @@
+import type { GridApi } from 'ag-grid-community'
+import { useMemo, useRef, useState } from 'react'
+import type { Building } from '../../domain/types.ts'
+import { STAGE_IDS } from '../../domain/workflow.ts'
+import {
+  ZONE_KIND_LABELS,
+  buildingFloors,
+  buildingZoning,
+  describeZoning,
+  type Floor,
+  type Zone,
+} from '../../domain/zoning/zoning.ts'
+import { useWorkbenchSnapshot } from '../WorkbenchContext.tsx'
+import { EmptyState } from '../components/EmptyState.tsx'
+import { GridTable } from '../components/GridTable.tsx'
+import { useWorkbenchTable } from '../components/useWorkbenchTable.ts'
+import type { DataColumn } from '../tables/tableModel.ts'
+import styles from './table.module.css'
+import {
+  ROW_SELECTION,
+  useSelectionHandler,
+  useSelectionSync,
+} from './tableSelection.ts'
+
+// The Table page's Floors and Zones views (decision 0032, stage 6): every
+// building's floors, and every zone of the published zoning, sharing the
+// selection with Properties and the Map. Zones are display only.
+
+type FloorRow = Floor & { buildingName: string }
+type ZoneRow = Zone & { buildingName: string }
+
+const rowId = (row: { id: string }) => row.id
+
+function useBuildings(): Building[] {
+  const buildings = useWorkbenchSnapshot((snapshot) => snapshot.state.buildings)
+  const ids = useWorkbenchSnapshot((snapshot) => snapshot.state.buildingIds)
+  return useMemo(
+    () =>
+      ids.flatMap((id) => {
+        const building = buildings[id]
+        return building ? [building] : []
+      }),
+    [ids, buildings],
+  )
+}
+
+const FLOOR_COLUMNS: DataColumn<FloorRow>[] = [
+  {
+    id: 'id',
+    header: 'ID',
+    value: (row) => row.id,
+    type: 'identifier',
+    rowHeader: true,
+    width: 130,
+  },
+  {
+    id: 'buildingId',
+    header: 'Building',
+    value: (row) => row.buildingId,
+    type: 'identifier',
+    width: 110,
+  },
+  { id: 'buildingName', header: 'Name', value: (row) => row.buildingName },
+  {
+    id: 'number',
+    header: 'Floor',
+    value: (row) => row.number,
+    type: 'number',
+    width: 90,
+  },
+  {
+    id: 'bottomM',
+    header: 'From',
+    unit: 'm',
+    value: (row) => row.bottomM,
+    type: 'number',
+    decimals: 1,
+    width: 100,
+  },
+  {
+    id: 'topM',
+    header: 'To',
+    unit: 'm',
+    value: (row) => row.topM,
+    type: 'number',
+    decimals: 1,
+    width: 100,
+  },
+  {
+    id: 'areaM2',
+    header: 'Area',
+    unit: 'm²',
+    value: (row) => row.areaM2,
+    type: 'number',
+    width: 120,
+  },
+  {
+    id: 'zones',
+    header: 'Zones',
+    value: (row) => row.zoneIds.length,
+    type: 'number',
+    width: 100,
+  },
+]
+
+const ZONE_COLUMNS: DataColumn<ZoneRow>[] = [
+  {
+    id: 'id',
+    header: 'ID',
+    value: (row) => row.id,
+    type: 'identifier',
+    rowHeader: true,
+    width: 140,
+  },
+  {
+    id: 'buildingId',
+    header: 'Building',
+    value: (row) => row.buildingId,
+    type: 'identifier',
+    width: 110,
+  },
+  { id: 'name', header: 'Zone', value: (row) => row.name, width: 220 },
+  {
+    id: 'kind',
+    header: 'Type',
+    value: (row) => ZONE_KIND_LABELS[row.kind],
+    type: 'enum',
+    width: 140,
+  },
+  {
+    id: 'floor',
+    header: 'Floor',
+    value: (row) => row.floor,
+    type: 'number',
+    empty: 'All',
+    width: 90,
+  },
+  {
+    id: 'areaM2',
+    header: 'Area',
+    unit: 'm²',
+    value: (row) => row.areaM2,
+    type: 'number',
+    width: 120,
+  },
+  {
+    id: 'bottomM',
+    header: 'From',
+    unit: 'm',
+    value: (row) => row.bottomM,
+    type: 'number',
+    decimals: 1,
+    width: 100,
+  },
+  {
+    id: 'topM',
+    header: 'To',
+    unit: 'm',
+    value: (row) => row.topM,
+    type: 'number',
+    decimals: 1,
+    width: 100,
+  },
+]
+
+export function FloorsTable() {
+  const buildings = useBuildings()
+  const zoning = useWorkbenchSnapshot((snapshot) => snapshot.state.zoning)
+  const selection = useWorkbenchSnapshot((snapshot) => snapshot.state.selection)
+  const apiRef = useRef<GridApi<FloorRow> | null>(null)
+  const handleSelection = useSelectionHandler<FloorRow>('floor')
+  const rows = useMemo(
+    () =>
+      buildings.flatMap((building) =>
+        buildingFloors(
+          { zoning, buildings: { [building.id]: building } },
+          building.id,
+        ).map((floor) => ({ ...floor, buildingName: building.name })),
+      ),
+    [buildings, zoning],
+  )
+  const table = useWorkbenchTable({
+    id: 'table.floors',
+    label: 'Floors',
+    columns: FLOOR_COLUMNS,
+  })
+  const [ready, setReady] = useState(false)
+  useSelectionSync(apiRef, selection, 'floor', rows, ready)
+
+  if (rows.length === 0) {
+    return (
+      <EmptyState
+        title="No floors yet"
+        message="Floors appear once Geospatial preprocessing has computed building heights; each floor is the height over the storeys."
+        stageId={STAGE_IDS.preprocessing}
+      />
+    )
+  }
+  return (
+    <div className={styles.tableView}>
+      <p className={styles.hint}>
+        Every building&rsquo;s floors: uniform, the height over the storeys.
+        Choose one to see its building&rsquo;s floors and zones in Properties
+        and the floor on the Map.
+      </p>
+      <GridTable<FloorRow>
+        id="table.floors"
+        aria-label="Floors"
+        className={styles.gridTable}
+        barClassName={styles.gridBar}
+        columns={FLOOR_COLUMNS}
+        rows={rows}
+        rowKey={rowId}
+        {...table}
+        gridOptions={{
+          rowSelection: ROW_SELECTION,
+          onSelectionChanged: handleSelection,
+          onGridReady: (event) => {
+            apiRef.current = event.api
+            setReady(true)
+          },
+        }}
+      />
+    </div>
+  )
+}
+
+export function ZonesTable() {
+  const buildings = useBuildings()
+  const zoning = useWorkbenchSnapshot((snapshot) => snapshot.state.zoning)
+  const selection = useWorkbenchSnapshot((snapshot) => snapshot.state.selection)
+  const apiRef = useRef<GridApi<ZoneRow> | null>(null)
+  const handleSelection = useSelectionHandler<ZoneRow>('zone')
+  const rows = useMemo(
+    () =>
+      buildings.flatMap((building) =>
+        (
+          buildingZoning(
+            { zoning, buildings: { [building.id]: building } },
+            building.id,
+          )?.zones ?? []
+        ).map((zone) => ({ ...zone, buildingName: building.name })),
+      ),
+    [buildings, zoning],
+  )
+  const table = useWorkbenchTable({
+    id: 'table.zones',
+    label: 'Zones',
+    columns: ZONE_COLUMNS,
+  })
+  const [ready, setReady] = useState(false)
+  useSelectionSync(apiRef, selection, 'zone', rows, ready)
+
+  if (rows.length === 0) {
+    return (
+      <EmptyState
+        title="No zones yet"
+        message={
+          zoning.published === null && buildings.some((b) => b.heightM !== null)
+            ? 'These buildings were zoned before the zoning setting existed. Run Geospatial preprocessing again to zone them by the setting.'
+            : 'Zones appear once Geospatial preprocessing has zoned the buildings by the zoning setting.'
+        }
+        stageId={STAGE_IDS.preprocessing}
+      />
+    )
+  }
+  const published = zoning.published
+  return (
+    <div className={styles.tableView}>
+      <p className={styles.hint}>
+        Every zone the last Geospatial preprocessing run made
+        {published ? ` (${describeZoning(published).toLowerCase()})` : ''}.
+        Zones are display only; choose one to see it in Properties and on the
+        Map.
+      </p>
+      <GridTable<ZoneRow>
+        id="table.zones"
+        aria-label="Zones"
+        className={styles.gridTable}
+        barClassName={styles.gridBar}
+        columns={ZONE_COLUMNS}
+        rows={rows}
+        rowKey={rowId}
+        {...table}
+        gridOptions={{
+          rowSelection: ROW_SELECTION,
+          onSelectionChanged: handleSelection,
+          onGridReady: (event) => {
+            apiRef.current = event.api
+            setReady(true)
+          },
+        }}
+      />
+    </div>
+  )
+}

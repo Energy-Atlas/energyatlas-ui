@@ -9,6 +9,7 @@ import {
 } from 'react-aria-components'
 import { stageSubmitBlocker } from '../../domain/commands.ts'
 import {
+  STAGE_IDS,
   downstreamIds,
   hasActiveTask,
   upstreamIds,
@@ -28,6 +29,7 @@ import componentStyles from '../components/components.module.css'
 import formStyles from '../components/forms.module.css'
 import { forStage, waitingReason } from '../service/usePendingReason.ts'
 import styles from './properties.module.css'
+import { ZoningForm } from './ZoningForm.tsx'
 
 /**
  * A workflow stage in Properties (decision 0028), as chosen on the Roadmap:
@@ -149,6 +151,7 @@ export function StageProperties({ stageId }: { stageId: string }) {
           Next
         </ActionButton>
       </div>
+      {stageId === STAGE_IDS.preprocessing ? <ZoningForm /> : null}
       <InsertStageForm afterStageId={stageId} key={stageId} />
     </section>
   )

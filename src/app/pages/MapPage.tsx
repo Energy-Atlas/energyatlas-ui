@@ -58,6 +58,15 @@ import {
 } from './terrain.ts'
 import { useBasemap } from './useBasemap.ts'
 import { useTerrain } from './useTerrain.ts'
+import { selectedBuildingIds } from '../../domain/zoning/zoning.ts'
+import { slabFeatures, zoneOverlay, type ZoneOverlay } from './zoneFeatures.ts'
+import {
+  ZONE_LAYER_IDS,
+  ZONE_SOURCE,
+  ZoneLayers,
+  zoneLayerIds,
+  type ZoneDrawing,
+} from './ZoneLayers.tsx'
 
 const POINT_KINDS = new Set(['transformer', 'utilityPv', 'bus'])
 
@@ -202,6 +211,31 @@ export function MapPage() {
   )
   const shown = stack.filter((resolved) => resolved.layer.visible)
   const extrudedShown = shown.some((resolved) => resolved.extruded)
+  const buildingLayerShown = shown.some(
+    (resolved) => resolved.layer.kind === 'buildings',
+  )
+
+  // Floor slabs for every building, and the selected buildings' zones
+  // (decision 0032, stage 6).
+  const { buildingIds, buildings, zoning } = state
+  const slabs = useMemo(
+    () => slabFeatures({ buildingIds, buildings, zoning }, metrics),
+    [buildingIds, buildings, zoning, metrics],
+  )
+  const overlay = useMemo(() => zoneOverlay(state), [state])
+  const zoneDrawing: ZoneDrawing =
+    overlay.buildingIds.length === 0 || !buildingLayerShown
+      ? 'none'
+      : view3d && extrudedShown
+        ? 'extruded'
+        : 'plan'
+  const zonedIds = zoneDrawing === 'extruded' ? overlay.buildingIds : []
+  const zonePickId =
+    zoneDrawing === 'extruded'
+      ? ZONE_LAYER_IDS.extrusion
+      : zoneDrawing === 'plan'
+        ? ZONE_LAYER_IDS.fill
+        : null
 
   const buildingsGeoJson = useMemo(
     () => ({
@@ -317,11 +351,14 @@ export function MapPage() {
   useEffect(() => {
     const map = mapRef.current?.getMap()
     if (!map || !loaded || focusRequest === handledFocusRequest.current) return
-    const { entityType, ids } = workbench.getState().selection
+    const selection = workbench.getState().selection
+    const owners = selectedBuildingIds(selection)
     const points =
-      entityType === 'building'
-        ? ids.flatMap((id) => state.buildings[id]?.footprint ?? [])
-        : ids.flatMap((id) => state.gridElements[id]?.coordinates ?? [])
+      owners.length > 0
+        ? owners.flatMap((id) => state.buildings[id]?.footprint ?? [])
+        : selection.ids.flatMap(
+            (id) => state.gridElements[id]?.coordinates ?? [],
+          )
     const target = boundsOf(points)
     let frame = window.requestAnimationFrame(() => {
       frame = window.requestAnimationFrame(() => {
@@ -345,20 +382,22 @@ export function MapPage() {
   // instead of its footprint (decision 0013).
   const selectedPrisms = useMemo<SilhouettePrism[]>(
     () =>
-      selection.entityType === 'building'
-        ? selection.ids.flatMap((id) => {
-            const building = state.buildings[id]
-            return building
-              ? [
-                  {
-                    footprint: building.footprint,
-                    heightM: building.heightM ?? 0,
-                  },
-                ]
-              : []
-          })
-        : [],
-    [selection, state.buildings],
+      selectedBuildingIds(selection).flatMap((id) => {
+        const building = state.buildings[id]
+        // A building cut away above a selected floor is outlined to its cut.
+        const cut = overlay.cut
+        const cutTop =
+          zoneDrawing === 'extruded' && cut?.buildingId === id ? cut.topM : null
+        return building
+          ? [
+              {
+                footprint: building.footprint,
+                heightM: cutTop ?? building.heightM ?? 0,
+              },
+            ]
+          : []
+      }),
+    [selection, state.buildings, zoneDrawing, overlay.cut],
   )
 
   // Mirror the shared selection into feature state.
@@ -369,8 +408,9 @@ export function MapPage() {
       for (const source of ['buildings', 'grid-lines', 'grid-points']) {
         if (map.getSource(source)) map.removeFeatureState({ source })
       }
-      if (selection.entityType === 'building' && map.getSource('buildings')) {
-        for (const id of selection.ids) {
+      // A selected floor or zone marks its building too.
+      if (map.getSource('buildings')) {
+        for (const id of selectedBuildingIds(selection)) {
           map.setFeatureState({ source: 'buildings', id }, { selected: true })
         }
       }
@@ -404,10 +444,11 @@ export function MapPage() {
   // Draw the stack in its order: lift each layer to the top, bottom first.
   // Layers added later (a new layer, a style swap) land on top, so the order
   // is applied again once the map settles.
-  const order = stack
-    .flatMap((resolved) => [...resolved.mapIds].reverse())
-    .reverse()
-    .join('|')
+  // Zones draw above the whole stack.
+  const order = [
+    ...stack.flatMap((resolved) => [...resolved.mapIds].reverse()).reverse(),
+    ...zoneLayerIds(zoneDrawing),
+  ].join('|')
   useEffect(() => {
     const map = mapRef.current?.getMap()
     if (!map || !loaded) return
@@ -470,7 +511,10 @@ export function MapPage() {
           style={{ width: '100%', height: '100%' }}
           // 2D stays flat and north-up; 3D allows tilting.
           maxPitch={view3d ? 70 : 0}
-          interactiveLayerIds={shown.map((resolved) => resolved.pickId)}
+          interactiveLayerIds={[
+            ...(zonePickId ? [zonePickId] : []),
+            ...shown.map((resolved) => resolved.pickId),
+          ]}
           onLoad={() => setLoaded(true)}
           onError={(event) => {
             // Tile and TileJSON failures name their source. Fall back to the
@@ -493,9 +537,11 @@ export function MapPage() {
             }
             const layer = byPickId.get(feature?.layer.id ?? '')
             const label =
-              layer?.metric && layer.values
-                ? `${id}: ${formatValue(layer.values.values[id] ?? null, layer.metric.unit)}`
-                : `${String(feature?.properties?.name ?? id)}`
+              feature?.layer.id === zonePickId
+                ? `${String(feature?.properties?.name ?? id)}, ${String(feature?.properties?.buildingId ?? '')}`
+                : layer?.metric && layer.values
+                  ? `${id}: ${formatValue(layer.values.values[id] ?? null, layer.metric.unit)}`
+                  : `${String(feature?.properties?.name ?? id)}`
             setHover({ id, label, x: event.point.x, y: event.point.y })
           }}
           onMouseLeave={() => setHover(null)}
@@ -512,9 +558,12 @@ export function MapPage() {
               return
             }
             const entityType =
-              byPickId.get(feature?.layer.id ?? '')?.layer.kind === 'buildings'
-                ? 'building'
-                : 'gridElement'
+              feature?.layer.id === zonePickId
+                ? 'zone'
+                : byPickId.get(feature?.layer.id ?? '')?.layer.kind ===
+                    'buildings'
+                  ? 'building'
+                  : 'gridElement'
             const additive =
               event.originalEvent.shiftKey &&
               selection.entityType === entityType
@@ -595,6 +644,9 @@ export function MapPage() {
             attribution={FOOTPRINT_ATTRIBUTION}
             promoteId="id"
           />
+          {/* One slab per floor (decision 0032, stage 6). */}
+          <Source id="floor-slabs" type="geojson" data={slabs} />
+          <Source id={ZONE_SOURCE} type="geojson" data={overlay.cells} />
           <Source
             id="grid-lines"
             type="geojson"
@@ -613,8 +665,14 @@ export function MapPage() {
               key={resolved.layer.id}
               resolved={resolved}
               palette={palette}
+              zonedIds={zonedIds}
             />
           ))}
+          <ZoneLayers
+            drawing={zoneDrawing}
+            planFloor={overlay.planFloor}
+            palette={palette}
+          />
         </MapView>
 
         <SelectionSilhouette
@@ -649,6 +707,13 @@ export function MapPage() {
               view3d={view3d}
             />
           ))}
+          {zoneDrawing !== 'none' ? (
+            <ZoneLegend
+              overlay={overlay}
+              drawing={zoneDrawing}
+              palette={palette}
+            />
+          ) : null}
           {terrainEnabled ? (
             <p className={styles.legendRow}>
               Terrain: {exaggerationLabel(exaggeration)} (Mapterhorn, USGS 3DEP)
@@ -788,7 +853,77 @@ function LegendBlock({
         </p>
       )}
       {view3d && resolved.extruded ? (
-        <p className={styles.legendRow}>Height: floors × 3.2 m (synthetic)</p>
+        <p className={styles.legendRow}>
+          Height: floors × 3.2 m (synthetic)
+          {resolved.slabs ? ', one slab per floor' : ''}
+        </p>
+      ) : null}
+    </div>
+  )
+}
+
+/** The selected buildings' zones in the legend (decision 0032, stage 6). */
+function ZoneLegend({
+  overlay,
+  drawing,
+  palette,
+}: {
+  overlay: ZoneOverlay
+  drawing: ZoneDrawing
+  palette: DataPalette
+}) {
+  const many = overlay.buildingIds.length > 1
+  const kinds = new Set(overlay.kinds)
+  return (
+    <div className={styles.legendBlock} data-testid="zone-legend">
+      <p className={styles.legendTitle}>
+        <span>
+          Zones of{' '}
+          {many
+            ? `${overlay.buildingIds.length} selected buildings`
+            : overlay.buildingIds[0]}
+          {drawing === 'plan' ? `, floor ${overlay.planFloor}` : ''}
+        </span>
+      </p>
+      {drawing === 'extruded' && overlay.cutAbove !== null ? (
+        <p className={styles.legendRow}>
+          Floors above floor {overlay.cutAbove} are cut away.
+        </p>
+      ) : null}
+      <p className={styles.legendRow}>
+        {palette.categorical.map((color) => (
+          <span
+            key={color}
+            className={styles.swatch}
+            style={{ background: color }}
+          />
+        ))}{' '}
+        {kinds.has('perimeter')
+          ? 'Perimeter zones'
+          : kinds.has('floor')
+            ? 'Floors, one zone each'
+            : 'One zone per building'}
+      </p>
+      {kinds.has('core') ? (
+        <p className={styles.legendRow}>
+          <span
+            className={styles.swatch}
+            style={{ background: palette.deemphasis }}
+          />{' '}
+          Core
+        </p>
+      ) : null}
+      <p className={styles.legendRow}>
+        <span
+          className={styles.swatch}
+          style={{ background: palette.selection }}
+        />{' '}
+        Selected floor or zone
+      </p>
+      {overlay.omitted > 0 ? (
+        <p className={styles.legendRow}>
+          Zones of {overlay.omitted} more selected buildings are not drawn.
+        </p>
       ) : null}
     </div>
   )

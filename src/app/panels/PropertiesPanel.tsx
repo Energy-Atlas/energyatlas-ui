@@ -29,6 +29,7 @@ import { shownEdits } from '../properties/useEdits.ts'
 import { DialogFrame } from '../shell/HelpDialogs.tsx'
 import shellStyles from '../shell/shell.module.css'
 import { MapProperties } from './MapProperties.tsx'
+import { FloorsAndZones } from '../properties/FloorsAndZones.tsx'
 import styles from './inspection.module.css'
 import {
   buildInspection,
@@ -104,6 +105,11 @@ function SingleView({
       <Section title="Attributes">
         <Facts facts={inspection.properties} />
       </Section>
+      {inspection.entityType === 'building' ? (
+        <Section title="Floors and zones">
+          <FloorsAndZones buildingId={inspection.id} />
+        </Section>
+      ) : null}
       {inspection.attributeSources ? (
         <Section title="Attribute sources">
           <Facts facts={inspection.attributeSources} />
@@ -397,7 +403,9 @@ export function PropertiesPanel() {
     creating !== null ||
     (definition !== null &&
       definition !== 'building' &&
-      definition !== 'gridElement')
+      definition !== 'gridElement' &&
+      definition !== 'floor' &&
+      definition !== 'zone')
   ) {
     return (
       // The panel scrolls itself, so it takes focus for keyboard scrolling

@@ -16,7 +16,8 @@ import {
   validateChartSpec,
   type ChartSpec,
 } from '../view/chartSpec.ts'
-import type { JobFilter, TableView, ViewState } from '../view/viewOperations.ts'
+import { TABLE_VIEWS, type TableView } from '../view/tableViews.ts'
+import type { JobFilter, ViewState } from '../view/viewOperations.ts'
 
 // A saved layout (decision 0032): a named panel arrangement plus the view
 // settings shown with it. Project layouts are saved with the project and will
@@ -190,7 +191,7 @@ const SECTIONS = {
     }),
   }),
   table: z.object({
-    view: z.enum(['buildings', 'grid']),
+    view: z.enum(TABLE_VIEWS),
     quickFilter: z.string().max(100),
   }),
   dashboard: z.object({
