@@ -526,3 +526,16 @@ Built on `claude/ui-component-system` and fast-forwarded into local `master` at 
 **Verification (2026-10-27):** typecheck, lint, and format clean; 372 unit tests (adds the layer operations, saved
 stacks, and summaries); a new browser test for the layer stack, with the map tests updated for the 3D view and the
 Light and haze disclosure; 103 development browser tests and 3 production-preview tests passed.
+
+## Mapping review (decision 0032, stage 4, 2026-10-28)
+
+`MappingReview` (`src/app/components/MappingReview.tsx`), built on `claude/next-stages` and not merged, is the one
+component for mapping source attributes to target fields; Schema matching and Data intake both use it
+([status](schema-matching.md)). It is built from `SelectableList` (source attributes: name, inferred type, example,
+counts, and the targets they feed), `Toolbar` (Suggest matches, Accept all, Reject all, and host items), and
+`InlineAlert` (general issues, pending suggestions, a blocked state), with a form table of target fields grouped by
+RC's tiers and optional groups (one source select per target, Accept and Reject per suggestion, a values row with
+checks, unrecognised enumerated values and their "Read as" choice) and a bar table for the chosen attribute's
+distribution. Rows that need attention are fills. It needs no workbench services; changes go to the host's callbacks.
+Its states are in the gallery (`src/app/gallery/MappingSpecimen.tsx`): review with a pending suggestion, an unmapped
+compulsory field, and an unrecognised value; waiting for the server; and no source attributes.

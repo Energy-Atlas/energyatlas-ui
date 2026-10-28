@@ -239,7 +239,7 @@ export function reviewSchema(state: WorkbenchState): SchemaReview {
 export function schemaRunBlocker(state: WorkbenchState): string | null {
   const blocker = reviewSchema(state).blocker
   return blocker
-    ? `${blocker} Map them on the Schema matching page first.`
+    ? `${blocker} Map the compulsory fields on the Schema matching page first.`
     : null
 }
 

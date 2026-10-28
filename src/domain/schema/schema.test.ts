@@ -161,7 +161,7 @@ describe('review and validation', () => {
     })
     const state = workbench.getState()
     expect(schemaRunBlocker(state)).toBe(
-      '1 compulsory field is missing or invalid: Use. Map them on the Schema matching page first.',
+      '1 compulsory field is missing or invalid: Use. Map the compulsory fields on the Schema matching page first.',
     )
     expect(reviewSchema(state).issues).toEqual([
       {

@@ -5,6 +5,19 @@ Authority: [rollout plan](jobs-rollout-plan.md) slice 4 and D9, [decision 0026](
 Read-only RC observations and the one difference from the demo rule are in
 [RC observations for slices 4–8](roadmap-rc-observations.md#data-intake-slice-4).
 
+## Since stage 4 of decision 0032
+
+On `claude/next-stages` (not merged), the field mapping uses the shared mapping review of
+[Schema matching](schema-matching.md) (`MappingReview`): model fields in RC's tiers (Source ID compulsory; Name, Use,
+Year built, Floors, and Footprint optional) each take one dataset field; choosing a dataset leaves suggested matches
+to review (Accept all, or per field) instead of applying them; each mapped field shows how many records give a valid
+value, invalid examples, and unrecognised use codes with counts; and the chosen field's value distribution is shown.
+`intake.mapField` was replaced by `intake.mapTarget`, and `intake.reviewSuggestions` and `intake.inspectField` were
+added. The saved mapping (`AppliedDataset.mapping`) and `intake.applyDataset` keep their source-keyed shape, so no
+migration was needed. The precedence on reruns is now synthetic, then the published Schema matching mapping, then
+fused records, then manual overrides. The "Behavior notes" below still hold, except that a model field mapped twice can
+no longer be produced from the page (it is still rejected when sent to the command).
+
 ## Task plan
 
 1. Domain: synthetic dataset fixtures (`src/domain/intake/datasets.ts`); target fields, suggested mapping, schema-wide
