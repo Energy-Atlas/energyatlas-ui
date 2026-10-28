@@ -232,38 +232,52 @@ export function prepareArrangement(
       dropped.push(name ? `"${name}"` : 'an unnamed tab')
       return null
     }
-    if (seen.has(id)) return null
+    if (seen.has(id)) {
+      const name = typeof node.name === 'string' && node.name ? node.name : id
+      dropped.push(`a repeated "${name}" tab`)
+      return null
+    }
     seen.add(id)
     return { ...(node as IJsonTabNode), id, type: 'tab' }
   }
 
+  /**
+   * The children kept, and where the stored selection lands among them: the
+   * same tab as before, found again after others were dropped, or
+   * `missing` when the selected tab itself was dropped or out of range.
+   */
   const tabChildren = (
     children: unknown,
-  ): (IJsonTabNode | IJsonTabGroupNode)[] => {
-    if (!Array.isArray(children)) return []
+    selected: unknown,
+    missing: number,
+  ): { kept: (IJsonTabNode | IJsonTabGroupNode)[]; selected: number } => {
     const kept: (IJsonTabNode | IJsonTabGroupNode)[] = []
-    for (const child of children) {
+    let keptSelected = -1
+    for (const [index, child] of (Array.isArray(children)
+      ? children
+      : []
+    ).entries()) {
+      let keptChild: IJsonTabNode | IJsonTabGroupNode | null = null
       if (isObject(child) && child.type === 'tabgroup') {
         const tabs = (Array.isArray(child.children) ? child.children : [])
           .map(keepTab)
           .filter((tab): tab is IJsonTabNode => tab !== null)
         if (tabs.length > 0) {
-          kept.push({ ...(child as IJsonTabGroupNode), children: tabs })
+          keptChild = { ...(child as IJsonTabGroupNode), children: tabs }
         }
       } else {
-        const tab = keepTab(child)
-        if (tab) kept.push(tab)
+        keptChild = keepTab(child)
       }
+      if (!keptChild) continue
+      if (index === selected) keptSelected = kept.length
+      kept.push(keptChild)
     }
-    return kept
+    return {
+      kept,
+      selected:
+        keptSelected >= 0 ? keptSelected : kept.length > 0 ? missing : -1,
+    }
   }
-
-  const inRange = (selected: unknown, length: number): number =>
-    typeof selected === 'number' && selected >= 0 && selected < length
-      ? selected
-      : length > 0
-        ? 0
-        : -1
 
   const visit = (node: unknown): IJsonRowNode | IJsonTabSetNode | null => {
     if (!isObject(node)) {
@@ -281,16 +295,13 @@ export function prepareArrangement(
         : null
     }
     if (node.type === 'tabset') {
-      const children = tabChildren(node.children)
-      if (children.length === 0 && node.id !== MAIN_TABSET_ID) return null
+      // A tab set always shows a tab: the first when its own was dropped.
+      const { kept, selected } = tabChildren(node.children, node.selected, 0)
+      if (kept.length === 0 && node.id !== MAIN_TABSET_ID) return null
       tabsets += 1
       const rest: JsonObject = { ...node }
       delete rest.active
-      return {
-        ...(rest as IJsonTabSetNode),
-        children,
-        selected: inRange(node.selected, children.length),
-      }
+      return { ...(rest as IJsonTabSetNode), children: kept, selected }
     }
     dropped.push('an unreadable tab group')
     return null
@@ -319,11 +330,12 @@ export function prepareArrangement(
       continue
     }
     locations.add(location)
-    const children = tabChildren(border.children)
-    const selected =
-      typeof border.selected === 'number' && border.selected < children.length
-        ? border.selected
-        : -1
+    // A side container whose shown panel was dropped stays collapsed.
+    const { kept: children, selected } = tabChildren(
+      border.children,
+      border.selected,
+      -1,
+    )
     borders.push({
       ...(border as unknown as IJsonBorderNode),
       children,

@@ -72,7 +72,8 @@ All go through `services.layouts` and record one operation-log entry each (type 
 
 Entry points: View > Layouts (Layouts… with Ctrl+Alt+L, Save current layout…, Reset to layout, and one Apply entry per
 saved layout, ticked when applied), the same entries in the command palette, the ribbon's Layouts quick button, and the
-project's layouts under View > Layouts in the Assets tree, which open the dialog on that layout.
+project's layouts under View > Layouts in the Assets tree, where Enter or a double-click opens the dialog on that
+layout (arrowing onto the row opens nothing).
 
 ## Real, mocked, deferred
 
@@ -84,7 +85,7 @@ project's layouts under View > Layouts in the Assets tree, which open the dialog
   the browser catalog; there is no shared or server-side store, as in RC.
 - **Deferred**: the map camera (centre, zoom, pitch, bearing) is not view state, so layouts do not keep it; the stage 5
   viewer and handover package (the service is ready: `projectWritable: false` keeps project layouts read-only and still
-  copies them to personal); synchronising personal layouts between open tabs; undo for layout operations (layout and
+  copies them to personal); undo for layout operations (layout and
   view changes are not undoable anywhere); scripted agent sessions that use the new tools (they are offered to a future
   model provider through `describeAgentTools`).
 
@@ -126,28 +127,57 @@ project's layouts under View > Layouts in the Assets tree, which open the dialog
 6. **Names** are unique per scope ignoring case, up to 60 characters; at most 50 layouts per scope.
 7. **Unreadable storage is never overwritten silently**, as with the project catalog: an unreadable personal value
    blocks personal writes until removed on request; single unreadable entries (personal or project, including later
-   formats) are kept as stored and written back unchanged.
+   formats) are kept as stored and written back unchanged, as are fields a later version adds to a readable layout
+   and a default naming a layout this version cannot read.
 8. **Project layout changes count as unsaved project changes**, including the default choice.
-9. **Agent parity** through `layouts.*` tools; only `layouts.delete` waits for approval, because it cannot be undone.
+9. **Agent parity** through `layouts.*` tools; `layouts.update` and `layouts.delete` wait for approval, because
+   they lose a layout's content and cannot be undone.
 10. **Asset tree**: project layouts are view state saved beside the model, not model assets, so the tree adds them
     under View > Layouts for display (`withLayoutAssets`) and choosing one opens the Layouts dialog rather than
     selecting it; Properties does not describe them. The `layout.saveAsView` capability is now working.
 11. **A dialog, not a panel**, hosts layout management, built from `SelectableList`, `PropertyList`, `Toolbar`,
-    `InlineAlert`, and `ActionButton`; the default is a checkbox, and Delete is confirmed inline.
+    `InlineAlert`, and `ActionButton`; the default is a checkbox, and Delete is confirmed inline with Keep it
+    focused.
 12. **Ctrl+Alt+L** opens the dialog; the ribbon gains a Layouts quick button beside Reset layout.
 
 ## Known issues and limits
 
 - "Changed since applied" compares the whole arrangement, so resizing a splitter, opening a side panel, or a narrow
   window closing the overlays counts as a change.
-- Personal layouts changed in another tab are seen only after a reload; the last writer wins.
+- Two tabs: each change re-reads the stored personal layouts and applies only itself, and the `storage` event
+  refreshes the list in other tabs; two tabs changing the same layout at once still keep the later change.
 - A layout applied in another project keeps table settings for tables that project may never show; they are harmless
   and saved with it.
 - Port 5173 on the build machine was taken by another program (an `EnergyAtlasWeb` build of RC), so the dev-server
   specs ran through a throwaway Playwright config on port 5180 under the ignored `tmp/` folder; the specs and the
   committed config are unchanged.
 
+## Review (2026-10-28)
+
+An independent review found nothing high-severity. Fixed on `claude/next-stages`:
+
+- Arrowing through the Assets tree onto a project layout no longer opens the Layouts dialog (the tree selects on
+  focus); Enter or a double-click does, and the e2e spec arrows past the row before pressing Enter.
+- `layouts.update` now waits for approval like `layouts.delete`.
+- `prepareArrangement` keeps the selected tab selected after other tabs are dropped (the first tab when the selected
+  one is dropped; a side container stays collapsed), and names repeated tabs it drops.
+- Readable layouts keep fields a later version added, and a default naming an unreadable layout is saved back.
+- Personal layout changes re-read storage first and other tabs follow the `storage` event, so a layout another tab
+  added is not overwritten.
+- The delete confirmation focuses Keep it.
+- Save current layout… names both reasons when neither scope can take a layout.
+- New unit tests: the selected tab after dropped and repeated tabs, kept fields and defaults, two tabs, and storage
+  failing during rename, update, and delete.
+
 ## Verification (2026-10-28)
+
+After the review fixes: typecheck, lint, format check, `git diff --check`: clean. `npm test`: 395 passed in 43
+files (23 in `layoutLibrary.test.ts`). `npm run test:e2e` on port 5180: 106 tests, 105 passed with 4 workers; the same
+`project-lifecycle.spec.ts` appearance test hit its 120 s timeout under load again and passed alone (1.6 min).
+`npm run test:e2e:preview`: 3 passed.
+
+Before the review:
+
 
 - `npm run typecheck`, `npm run lint`, `npm run format:check`: clean.
 - `npm test`: 391 Vitest tests in 43 files passed (19 new in `src/app/layouts/layoutLibrary.test.ts`: the shape,

@@ -94,7 +94,8 @@ const arrangementSchema = z.looseObject({
   layout: z.looseObject({ type: z.literal('row') }),
 })
 
-export const savedLayoutSchema = z.object({
+// Loose, so fields a later version adds within format 1 survive a save here.
+export const savedLayoutSchema = z.looseObject({
   format: z.literal(LAYOUT_FORMAT),
   id: z.string().min(1).max(100),
   name: layoutNameSchema,
@@ -129,7 +130,8 @@ export function parseLayoutList(
       !ids.has(parsed.data.id)
     ) {
       ids.add(parsed.data.id)
-      list.layouts.push(parsed.data)
+      // The stored entry as written, so nothing in it is lost on saving.
+      list.layouts.push(entry as SavedLayout)
     } else {
       list.unreadable.push(entry)
     }

@@ -105,7 +105,68 @@ describe('saved layout shape', () => {
   })
 })
 
+/** Memory storage whose writes can be made to fail, as a full quota does. */
+function failingStorage() {
+  const storage = memoryStorage()
+  const control = { fail: false }
+  const setItem = storage.setItem.bind(storage)
+  storage.setItem = (key, value) => {
+    if (control.fail) throw new Error('Quota exceeded')
+    setItem(key, value)
+  }
+  return { storage, control }
+}
+
 describe('preparing a saved arrangement', () => {
+  it('keeps the selected tab selected after others are dropped, and names repeated tabs', () => {
+    const tab = (component: string, name: string) => ({
+      type: 'tab',
+      component,
+      name,
+    })
+    const prepared = prepareArrangement({
+      layout: {
+        type: 'row',
+        children: [
+          {
+            type: 'tabset',
+            id: MAIN_TABSET_ID,
+            selected: 3,
+            children: [
+              tab('page.gone', 'Gone'),
+              tab('page.map', 'Map'),
+              tab('page.map', 'Map'),
+              tab('page.table', 'Table'),
+            ],
+          },
+          {
+            type: 'tabset',
+            id: 'second',
+            selected: 0,
+            children: [
+              tab('page.gone', 'Gone'),
+              tab('page.roadmap', 'Roadmap'),
+              tab('page.results', 'Results'),
+            ],
+          },
+        ],
+      },
+    })
+    if (!prepared.ok) throw new Error(prepared.message)
+    const [main, second] = (prepared.json.layout.children ?? []) as {
+      selected: number
+      children: { id: string }[]
+    }[]
+    // Table stays selected; the dropped selected tab falls back to the first.
+    expect(main?.children[main.selected]?.id).toBe(pageTabId('table'))
+    expect(second?.selected).toBe(0)
+    expect(prepared.dropped).toEqual([
+      '"Gone"',
+      'a repeated "Map" tab',
+      '"Gone"',
+    ])
+  })
+
   it('drops tabs this version does not have and names them', () => {
     const json = structuredClone(createDefaultLayout()) as unknown as {
       layout: { children: { children: unknown[] }[] }
@@ -462,6 +523,76 @@ describe('layout library', () => {
   })
 })
 
+describe('keeping what others wrote', () => {
+  it('keeps fields a later version added, and a default naming an unreadable layout', () => {
+    const { library } = setup()
+    library.save({ name: 'A', scope: 'project' })
+    const stored = library.forSave().layouts[0] as SavedLayout
+    const future = { ...stored, futureField: { kept: true } }
+    const unreadable = { ...stored, id: 'from-later', format: 2 }
+    const saved = {
+      tables: {},
+      layouts: [future, unreadable],
+      defaultLayoutId: 'from-later',
+    }
+    library.resetForProject(saved, 'k')
+    // Not applied here, but kept and saved back unchanged.
+    expect(library.store.getState().applied).toBeNull()
+    expect(library.forSave()).toEqual({
+      layouts: [future, unreadable],
+      defaultLayoutId: 'from-later',
+    })
+    expect(library.projectDiffers(saved)).toBe(false)
+    // Choosing a default replaces the kept one.
+    library.setDefault(stored.id)
+    expect(library.forSave().defaultLayoutId).toBe(stored.id)
+  })
+
+  it('keeps a personal layout another tab saved meanwhile', () => {
+    const storage = memoryStorage()
+    const first = setup(storage)
+    const second = setup(storage)
+    first.library.save({ name: 'From the first tab', scope: 'personal' })
+    // The second tab has not seen it yet, and saves its own.
+    expect(saved(second.library, 'personal')).toHaveLength(0)
+    second.library.save({ name: 'From the second tab', scope: 'personal' })
+    expect(
+      saved(second.library, 'personal').map((layout) => layout.name),
+    ).toEqual(['From the first tab', 'From the second tab'])
+    expect(storage.getItem(PERSONAL_LAYOUTS_KEY)).toContain(
+      'From the first tab',
+    )
+  })
+
+  it('leaves personal layouts as they were when storing fails', () => {
+    const { storage, control } = failingStorage()
+    const { library, workbench } = setup(storage)
+    const save = library.save({ name: 'Kept', scope: 'personal' })
+    if (save.status !== 'applied' || !save.ref) throw new Error('not saved')
+    const before = storage.getItem(PERSONAL_LAYOUTS_KEY)
+    control.fail = true
+    for (const outcome of [
+      library.rename(save.ref, 'Other'),
+      library.update(save.ref),
+      library.remove(save.ref),
+    ]) {
+      expect(outcome).toMatchObject({
+        status: 'rejected',
+        issues: [
+          {
+            message: 'Personal layouts could not be stored: Quota exceeded',
+          },
+        ],
+      })
+    }
+    expect(lastLog(workbench)?.status).toBe('rejected')
+    expect(storage.getItem(PERSONAL_LAYOUTS_KEY)).toBe(before)
+    expect(saved(library, 'personal').map((layout) => layout.name)).toEqual([
+      'Kept',
+    ])
+  })
+})
+
 describe('saved layouts with the project and for the agent', () => {
   it('keeps layouts and the default with the saved view, dropping only an unreadable optional field', () => {
     expect(
@@ -473,7 +604,7 @@ describe('saved layouts with the project and for the agent', () => {
     expect(parseSavedView({ tables: [] })).toBeNull()
   })
 
-  it('offers every layout operation as an agent tool, asking approval only to delete', async () => {
+  it('offers every layout operation as an agent tool, asking approval only to overwrite or delete', async () => {
     const tools = describeAgentTools().filter((tool) => tool.kind === 'layouts')
     expect(tools.map((tool) => tool.name)).toEqual([
       'layouts.list',
@@ -488,7 +619,7 @@ describe('saved layouts with the project and for the agent', () => {
     ])
     expect(
       tools.filter((tool) => tool.requiresApproval).map((tool) => tool.name),
-    ).toEqual(['layouts.delete'])
+    ).toEqual(['layouts.update', 'layouts.delete'])
     expect(
       requiresApproval(
         layoutsCall({

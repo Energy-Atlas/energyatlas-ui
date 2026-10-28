@@ -8,6 +8,7 @@ import type { MapLayer } from '../pages/mapLayers.ts'
 import type { TableSettings } from '../tables/tableSettings.ts'
 import type { ViewStore } from '../view/viewStore.ts'
 import {
+  PERSONAL_LAYOUTS_KEY,
   readPersonalLayouts,
   removePersonalLayouts,
   writePersonalLayouts,
@@ -49,6 +50,8 @@ export type LayoutLibrarySnapshot = {
   project: LayoutList
   /** The project layout the project opens with. */
   defaultId: string | null
+  /** A stored default naming a layout this version cannot read, kept as stored. */
+  keptDefaultId: string | null
   personal: LayoutList
   personalStatus: PersonalStatus
   /** The layout last applied in this project session; Reset returns to it. */
@@ -118,9 +121,30 @@ export type LayoutLibrary = {
 const PROJECT_READ_ONLY =
   'Project layouts are read-only here. Copy one to your personal layouts to change it.'
 
+/** The stored default when it names a readable project layout, or null. */
 function defaultFrom(saved: SavedView | null, list: LayoutList): string | null {
   const id = saved?.defaultLayoutId ?? null
   return id && list.layouts.some((layout) => layout.id === id) ? id : null
+}
+
+/**
+ * The stored default when it names a layout this version cannot read: kept
+ * and saved back unchanged, though it is not applied here.
+ */
+function keptDefaultFrom(
+  saved: SavedView | null,
+  list: LayoutList,
+): string | null {
+  const id = saved?.defaultLayoutId ?? null
+  return id &&
+    list.unreadable.some(
+      (entry) =>
+        typeof entry === 'object' &&
+        entry !== null &&
+        (entry as { id?: unknown }).id === id,
+    )
+    ? id
+    : null
 }
 
 export function createLayoutLibrary(options: {
@@ -140,6 +164,7 @@ export function createLayoutLibrary(options: {
   const store = createStore<LayoutLibrarySnapshot>()(() => ({
     project: { layouts: [], unreadable: [] },
     defaultId: null,
+    keptDefaultId: null,
     personal: personal.list,
     personalStatus: personal.status,
     applied: null,
@@ -221,20 +246,40 @@ export function createLayoutLibrary(options: {
     return null
   }
 
-  /** Stores a scope's new list: personal layouts in the browser, project ones in memory until saved. */
+  /**
+   * Applies a change to a scope's list and stores it: personal layouts in the
+   * browser, project ones in memory until the project is saved. Personal
+   * layouts are read again first, so a layout another tab added since is kept
+   * rather than overwritten.
+   */
   const commit = (
     scope: LayoutScope,
-    list: LayoutList,
+    change: (list: LayoutList) => LayoutList,
     extra: Partial<LayoutLibrarySnapshot> = {},
   ): string | null => {
-    if (scope === 'personal') {
-      const written = writePersonalLayouts(storage, list)
-      if (!written.ok) return written.message
-      store.setState({ personal: list, ...extra })
-    } else {
-      store.setState({ project: list, ...extra })
+    if (scope === 'project') {
+      store.setState({ project: change(store.getState().project), ...extra })
+      return null
     }
+    const fresh = readPersonalLayouts(storage)
+    if (fresh.status.kind !== 'ready') {
+      store.setState({ personal: fresh.list, personalStatus: fresh.status })
+      return fresh.status.message
+    }
+    const list = change(fresh.list)
+    const written = writePersonalLayouts(storage, list)
+    if (!written.ok) return written.message
+    store.setState({ personal: list, ...extra })
     return null
+  }
+
+  // Another tab changed the personal layouts: show them as stored now.
+  if (typeof window !== 'undefined' && storage) {
+    window.addEventListener('storage', (event) => {
+      if (event.key !== null && event.key !== PERSONAL_LAYOUTS_KEY) return
+      const fresh = readPersonalLayouts(storage)
+      store.setState({ personal: fresh.list, personalStatus: fresh.status })
+    })
   }
 
   const nameIssue = (
@@ -353,11 +398,10 @@ export function createLayoutLibrary(options: {
         arrangement: layout.getArrangement(),
         view: captureViewSnapshot(view.getState()),
       }
-      const list = listOf(scope)
-      const failure = commit(scope, {
+      const failure = commit(scope, (list) => ({
         ...list,
         layouts: [...list.layouts, created],
-      })
+      }))
       if (failure) return rejectWith(type, title, input, source, failure)
       const ref = { scope, id: created.id }
       // The saved layout is now what Reset returns to.
@@ -400,13 +444,12 @@ export function createLayoutLibrary(options: {
         arrangement: layout.getArrangement(),
         view: captureViewSnapshot(view.getState()),
       }
-      const list = listOf(ref.scope)
-      const failure = commit(ref.scope, {
+      const failure = commit(ref.scope, (list) => ({
         ...list,
         layouts: list.layouts.map((each) =>
           each.id === ref.id ? updated : each,
         ),
-      })
+      }))
       if (failure) return rejectWith(type, title, input, source, failure)
       store.setState({
         applied: { ref, name: updated.name, fingerprint: fingerprint() },
@@ -450,18 +493,17 @@ export function createLayoutLibrary(options: {
       }
       const taken = nameIssue(ref.scope, parsed.data, ref.id)
       if (taken) return rejectWith(type, title, input, source, taken, 'name')
-      const list = listOf(ref.scope)
       const applied = store.getState().applied
       const failure = commit(
         ref.scope,
-        {
+        (list) => ({
           ...list,
           layouts: list.layouts.map((each) =>
             each.id === ref.id
               ? { ...each, name: parsed.data, updatedAt: now().toISOString() }
               : each,
           ),
-        },
+        }),
         applied && applied.ref.scope === ref.scope && applied.ref.id === ref.id
           ? { applied: { ...applied, name: parsed.data } }
           : {},
@@ -500,10 +542,10 @@ export function createLayoutLibrary(options: {
         updatedAt: at,
         createdBy: source,
       }
-      const failure = commit(toScope, {
-        ...list,
-        layouts: [...list.layouts, copy],
-      })
+      const failure = commit(toScope, (current) => ({
+        ...current,
+        layouts: [...current.layouts, copy],
+      }))
       if (failure) return rejectWith(type, title, input, source, failure)
       const summary =
         toScope === ref.scope
@@ -532,13 +574,12 @@ export function createLayoutLibrary(options: {
       const saved = find(ref)!
       const { applied, defaultId } = store.getState()
       const wasDefault = ref.scope === 'project' && defaultId === ref.id
-      const list = listOf(ref.scope)
       const failure = commit(
         ref.scope,
-        {
+        (list) => ({
           ...list,
           layouts: list.layouts.filter((each) => each.id !== ref.id),
-        },
+        }),
         {
           ...(wasDefault ? { defaultId: null } : {}),
           ...(applied?.ref.scope === ref.scope && applied.ref.id === ref.id
@@ -563,7 +604,10 @@ export function createLayoutLibrary(options: {
         return rejectWith(type, title, input, source, PROJECT_READ_ONLY)
       }
       if (id === null) {
-        if (store.getState().defaultId === null) {
+        if (
+          store.getState().defaultId === null &&
+          store.getState().keptDefaultId === null
+        ) {
           return rejectWith(
             type,
             title,
@@ -572,7 +616,7 @@ export function createLayoutLibrary(options: {
             'The project has no default layout.',
           )
         }
-        store.setState({ defaultId: null })
+        store.setState({ defaultId: null, keptDefaultId: null })
         const summary =
           'The project no longer opens with a default layout. Save the project to keep this.'
         return {
@@ -602,7 +646,7 @@ export function createLayoutLibrary(options: {
           'layoutId',
         )
       }
-      store.setState({ defaultId: id })
+      store.setState({ defaultId: id, keptDefaultId: null })
       const summary = `The project opens with the layout "${saved.name}". Save the project to keep this.`
       return {
         status: 'applied',
@@ -674,7 +718,13 @@ export function createLayoutLibrary(options: {
     resetForProject: (saved, key) => {
       const project = parseLayoutList(saved?.layouts, 'project')
       const defaultId = defaultFrom(saved, project)
-      store.setState({ project, defaultId, applied: null, openedView: null })
+      store.setState({
+        project,
+        defaultId,
+        keptDefaultId: keptDefaultFrom(saved, project),
+        applied: null,
+        openedView: null,
+      })
       if (!defaultId) return
       const outcome = applyLayout(
         { scope: 'project', id: defaultId },
@@ -695,15 +745,17 @@ export function createLayoutLibrary(options: {
 
     forSave: () => ({
       layouts: storedLayouts(store.getState().project),
-      defaultLayoutId: store.getState().defaultId,
+      defaultLayoutId:
+        store.getState().defaultId ?? store.getState().keptDefaultId,
     }),
 
     projectDiffers: (saved) => {
       const stored = parseLayoutList(saved?.layouts, 'project')
-      const { project, defaultId } = store.getState()
+      const { project, defaultId, keptDefaultId } = store.getState()
       return (
         layoutListsDiffer(project, stored) ||
-        defaultId !== defaultFrom(saved, stored)
+        (defaultId ?? keptDefaultId) !==
+          (defaultFrom(saved, stored) ?? keptDefaultFrom(saved, stored))
       )
     },
 

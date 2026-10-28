@@ -404,8 +404,14 @@ export function useAppActions(dialogs: ShellDialogs): AppAction[] {
         group: 'View',
         menuPath: ['Layouts'],
         icon: BookmarkPlus,
-        disabledReason:
-          layouts.saveBlocker('project') && layouts.saveBlocker('personal'),
+        disabledReason: (() => {
+          const project = layouts.saveBlocker('project')
+          const personal = layouts.saveBlocker('personal')
+          // Unavailable only when neither scope can take a layout.
+          return project && personal
+            ? `Project layouts: ${project} Personal layouts: ${personal}`
+            : null
+        })(),
         perform: () => openLayoutsDialog({ saving: true }),
       },
       {

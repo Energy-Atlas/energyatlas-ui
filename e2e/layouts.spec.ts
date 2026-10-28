@@ -139,6 +139,8 @@ test('saves a personal layout, applies it after changes, resets to it, and delet
   await dialog
     .getByRole('button', { name: 'Delete the layout Side by side' })
     .click()
+  // The safe choice has focus, so Enter twice keeps the layout.
+  await expect(dialog.getByRole('button', { name: 'Keep it' })).toBeFocused()
   await dialog.getByRole('button', { name: 'Delete layout' }).click()
   await expect(dialog).toContainText('No personal layouts yet.')
   await expect(page.getByTestId('status-notice')).toContainText(
@@ -186,7 +188,24 @@ test('keeps project layouts and the default with the project across save and reo
     await assetsTab.click()
   }
   const tree = page.getByRole('treegrid', { name: 'Project assets' })
-  await tree.getByRole('row', { name: 'Team view (default)' }).click()
+  // Arrowing through the layout rows selects nothing and opens nothing.
+  await tree.getByRole('row', { name: /^Reports/ }).click()
+  await page.keyboard.press('ArrowDown')
+  await page.keyboard.press('ArrowDown')
+  await expect(
+    tree.getByRole('row', { name: 'Team view (default)' }),
+  ).toBeFocused()
+  await page.keyboard.press('ArrowDown')
+  await page.keyboard.press('ArrowUp')
+  await page.keyboard.press('ArrowUp')
+  await expect(layoutsDialog(page)).toBeHidden()
+  // Enter opens the Layouts dialog on the layout.
+  await page.keyboard.press('ArrowDown')
+  await page.keyboard.press('ArrowDown')
+  await expect(
+    tree.getByRole('row', { name: 'Team view (default)' }),
+  ).toBeFocused()
+  await page.keyboard.press('Enter')
   await expect(layoutsDialog(page)).toBeVisible()
   await expect(
     layoutsDialog(page).getByRole('option', { name: /Team view/ }),

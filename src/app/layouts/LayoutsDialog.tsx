@@ -534,13 +534,14 @@ function LayoutDetail({
             <>
               <Button
                 className={componentStyles.button}
+                // The safe choice takes focus, so Enter twice never deletes.
+                autoFocus
                 onPress={() => setMode('idle')}
               >
                 Keep it
               </Button>
               <Button
                 className={cx(componentStyles.button, componentStyles.primary)}
-                autoFocus
                 onPress={() => {
                   const outcome = library.remove(ref)
                   if (outcome.status === 'applied') onSelect(null)

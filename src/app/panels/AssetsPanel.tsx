@@ -91,9 +91,10 @@ export function AssetsPanel() {
       ),
     [assets, rootIds, projectLayouts, defaultLayoutId],
   )
-  /** A project layout in the tree opens the Layouts dialog on it. */
+  const isLayoutKey = (key: string) => key.startsWith(LAYOUT_ASSET_PREFIX)
+  /** Enter or a double-click on a project layout opens the Layouts dialog on it. */
   const openLayout = (key: string): boolean => {
-    if (!key.startsWith(LAYOUT_ASSET_PREFIX)) return false
+    if (!isLayoutKey(key)) return false
     openLayoutsDialog({
       focus: { scope: 'project', id: key.slice(LAYOUT_ASSET_PREFIX.length) },
     })
@@ -134,7 +135,8 @@ export function AssetsPanel() {
         onSelectionChange={(keys) => {
           if (keys === 'all') return
           const [first] = [...keys]
-          if (first !== undefined && openLayout(String(first))) return
+          // Focus selects in this tree, so a layout row opens only on its action.
+          if (first !== undefined && isLayoutKey(String(first))) return
           if (first === undefined) {
             if (selectedId) {
               workbench.execute({ type: 'selection.clear', input: {} })

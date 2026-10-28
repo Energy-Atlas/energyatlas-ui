@@ -133,11 +133,18 @@ function isRunnerCommand(type: string): boolean {
   return type.startsWith('task.') && type !== 'task.cancel'
 }
 
+/** Layout tools that lose a saved layout's content; they wait for approval. */
+const IRREVERSIBLE_LAYOUT_TOOLS: ReadonlySet<string> = new Set([
+  'layouts.update',
+  'layouts.delete',
+])
+
 /** Tool calls that run, retry, or cancel jobs or change the project model wait for approval. */
 export function requiresApproval(call: ToolCall): boolean {
   if (call.kind === 'project') return call.intent.type !== 'list'
-  // Deleting a saved layout cannot be undone.
-  if (call.kind === 'layouts') return call.operation.type === 'layouts.delete'
+  // Deleting or overwriting a saved layout cannot be undone.
+  if (call.kind === 'layouts')
+    return IRREVERSIBLE_LAYOUT_TOOLS.has(call.operation.type)
   if (call.kind !== 'command') return false
   return (
     JOB_COMMANDS.has(call.command.type) ||
@@ -363,7 +370,7 @@ const LAYOUTS_TOOLS = [
     name: 'layouts.update',
     title: 'Update layout',
     description:
-      'Replace a saved layout with the current panel arrangement and view settings.',
+      'Replace a saved layout with the current panel arrangement and view settings. Its previous content is lost, so this waits for approval.',
     input: z.object(layoutRef),
   },
   {
@@ -471,7 +478,7 @@ export function describeAgentTools(): AgentToolDescription[] {
       kind: 'layouts' as const,
       title: tool.title,
       description: tool.description,
-      requiresApproval: tool.name === 'layouts.delete',
+      requiresApproval: IRREVERSIBLE_LAYOUT_TOOLS.has(tool.name),
       inputSchema: z.toJSONSchema(tool.input, { io: 'input' }),
     })),
   ]
