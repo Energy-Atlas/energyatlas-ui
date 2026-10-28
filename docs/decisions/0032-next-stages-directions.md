@@ -56,7 +56,7 @@ questions.
    `claude/next-stages`, not merged ([status](../schema-matching.md)).
 5. The viewer page and handover package. Built on `claude/next-stages`, not merged
    ([status](../viewer-handover.md)).
-6. Floors and zones.
+6. Floors and zones. Built on `claude/next-stages`, not merged ([status](../floors-zones.md)).
 
 Each stage states what is real, mocked, and deferred before it is built, as `AGENTS.md` requires.
 
