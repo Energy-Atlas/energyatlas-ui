@@ -572,6 +572,9 @@ export function DashboardPage() {
               ) : (
                 <p className={styles.delta}>No reduction vs baseline</p>
               )}
+              {item.baselineNote ? (
+                <p className={styles.delta}>{item.baselineNote}</p>
+              ) : null}
             </StatTile>
           ) : null,
         )}

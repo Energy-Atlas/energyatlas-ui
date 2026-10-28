@@ -2589,7 +2589,12 @@ export const commandDefinitions = {
       existing.adoptionSeed = input.adoptionSeed
       const reaggregated = sampling && reaggregateScenario(state, existing)
       upsertScenarioAsset(state, existing, context)
-      if (definitions || (sampling && !reaggregated)) {
+      // A result saved before versions cannot be re-aggregated; it is
+      // outdated instead. Without a result, nothing depends on adoption.
+      if (
+        definitions ||
+        (sampling && !reaggregated && state.results.scenarios[id] !== undefined)
+      ) {
         touchScenarioInputs(state)
       }
       return applied(

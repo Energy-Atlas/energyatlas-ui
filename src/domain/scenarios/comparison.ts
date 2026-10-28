@@ -1,5 +1,9 @@
 import type { StageState, WorkbenchState } from '../types.ts'
-import { describeAggregation, publishedAggregation } from './rules.ts'
+import {
+  describeAggregation,
+  publishedAggregation,
+  scenarioBaseline,
+} from './rules.ts'
 
 export { KIND_LABELS } from './rules.ts'
 
@@ -47,14 +51,16 @@ export function compareScenarios(
     const result = state.results.scenarios[scenario.id]
     if (!result) continue
     const aggregation = publishedAggregation(state, scenario.id)
+    // Against the baseline the versions were modeled against.
+    const compared = scenarioBaseline(state, scenario.id)?.result ?? baseline
     rows.push({
       id: scenario.id,
       name: scenario.name,
       totalKwh: result.totalKwh,
       peakKw: result.peakKw,
       reductionPercent:
-        baseline.totalKwh > 0
-          ? Math.round((1 - result.totalKwh / baseline.totalKwh) * 1000) / 10
+        compared.totalKwh > 0
+          ? Math.round((1 - result.totalKwh / compared.totalKwh) * 1000) / 10
           : 0,
       current: modelingCurrent,
       runId: result.runId,

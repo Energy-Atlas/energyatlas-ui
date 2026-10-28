@@ -12,8 +12,10 @@ import type {
   WorkbenchState,
 } from '../../../domain/types.ts'
 import {
+  baselineChangeNote,
   describeAggregation,
   publishedAggregation,
+  scenarioBaseline,
   type Aggregation,
 } from '../../../domain/scenarios/rules.ts'
 import { STAGE_IDS } from '../../../domain/workflow.ts'
@@ -62,6 +64,11 @@ export type ResultEntry = {
    * (decision 0032, stage 3); null otherwise.
    */
   aggregation: Aggregation | null
+  /**
+   * For a scenario modeled against an earlier baseline than the working one,
+   * which run its savings compare with; null otherwise.
+   */
+  baselineNote: string | null
 }
 
 /** When the run that produced a result finished: its succeeded job's last update. */
@@ -118,6 +125,7 @@ export function listResults(
         ? `Calibrated variant adopted as the working baseline (factor ${adopted.factor}).`
         : 'Modeled baseline.',
       aggregation: null,
+      baselineNote: null,
     },
   ]
   for (const scenario of Object.values(state.scenarios)) {
@@ -133,11 +141,13 @@ export function listResults(
       current: states[STAGE_IDS.scenarioModeling] === 'executed',
       currentness: describeCurrentness(states[STAGE_IDS.scenarioModeling]),
       publishedAt: finishedAt(state, result.runId),
-      compareTo: baseline,
+      // Savings compare with the baseline the versions were modeled against.
+      compareTo: scenarioBaseline(state, scenario.id)?.result ?? baseline,
       note: aggregation
         ? `Aggregated at ${describeAggregation(aggregation)}; alternative versions from run ${result.runId}.`
         : 'Saved before scenario rules: adoption scaled savings. Run Scenario modeling again.',
       aggregation,
+      baselineNote: baselineChangeNote(state, scenario.id),
     })
   }
   return entries
@@ -286,6 +296,7 @@ export function resultCsv(
     ...(entry.compareTo
       ? [line(`# compared to baseline run: ${entry.compareTo.runId}`)]
       : []),
+    ...(entry.baselineNote ? [line(`# baseline: ${entry.baselineNote}`)] : []),
     ...(entry.aggregation
       ? [line(`# aggregated at: ${describeAggregation(entry.aggregation)}`)]
       : entry.compareTo

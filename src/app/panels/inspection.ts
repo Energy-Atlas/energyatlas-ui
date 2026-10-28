@@ -182,12 +182,13 @@ function inspectBuilding(
   for (const scenario of Object.values(state.scenarios)) {
     const kwh = state.results.scenarios[scenario.id]?.byBuildingKwh[building.id]
     if (kwh === undefined) continue
+    // Versions compare with the baseline they were modeled against.
+    const versions = state.results.scenarioVersions[scenario.id]
     results.push({
       label: `${scenario.name} demand`,
-      value: `${formatDemand(kwh)}${compareWithBaseline(kwh, baselineKwh)}`,
+      value: `${formatDemand(kwh)}${compareWithBaseline(kwh, versions ? versions.baseKwh[building.id] : baselineKwh)}`,
     })
     // Which measures the scenario's rules gave it, and whether it adopts them.
-    const versions = state.results.scenarioVersions[scenario.id]
     if (!versions) continue
     const taken = versions.measures[building.id]
     const names = taken

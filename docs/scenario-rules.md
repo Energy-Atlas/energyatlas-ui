@@ -147,7 +147,10 @@ Recorded in the [next stages discussion](next-stages-discussion.md#scenario-assi
    but do not read scenario values. Adoption commands stay model commands: undoable, saved, and refused while a run
    holds the project.
 9. **Versions keep the baseline they were modeled against**, so re-aggregating after the working baseline changes
-   (calibration Adopt) never mixes a new baseline with old alternatives; Scenario modeling is outdated then anyway.
+   (calibration Adopt) never mixes a new baseline with old alternatives, and every saving or reduction of a scenario
+   with versions (the modeled comparison, Results rows and CSV, the Dashboard, building Properties, the map's
+   reduction metric) compares with that baseline (`scenarioBaseline`); Results, the CSV, and the Dashboard say so when
+   the working baseline has moved on. Scenario modeling is outdated then anyway.
 10. **Adoption no longer scales savings.** The old formula blended every building's savings by the adoption share and
     scaled PV yield by it; now a building either adopts its full alternative or keeps its baseline. Saves from before
     keep their results readable but outdated (Scenario definitions' edit revision is bumped, with a warning issue), a
@@ -167,6 +170,37 @@ Recorded in the [next stages discussion](next-stages-discussion.md#scenario-assi
     rule as before). A new session, "Add a scenario rule", adds the library heat pumps, proposes "Older homes: heat
     pumps" (residential and built before 1980, heating only) at the top of an included scenario, previews it with the
     view operation, and models it after a second approval.
+16. **Adoption of a scenario without a result changes nothing else.** A scenario left out of the comparison, or not
+    modeled yet, has nothing to re-aggregate; saving its adoption or seed outdates no stage. Only a result saved before
+    versions is outdated by a new adoption.
+
+## Review
+
+An independent review on 2026-10-28 found nothing serious. Fixed:
+
+1. **Adoption of a scenario without versions outdated the others** through `scenario.update` (left out of the
+   comparison, for example). It now outdates only when a result saved before versions exists, as
+   `scenario.setAdoption` did (decision 16); test in `src/domain/scenarios/scenarios.test.ts`.
+2. **Scenario savings compared with the current baseline.** After a calibration Adopt, buildings that did not adopt
+   showed a saving, the CSV named the wrong baseline run, and the Dashboard mixed baselines. `scenarioBaseline` and
+   `baselineChangeNote` in `src/domain/scenarios/rules.ts` now give the baseline the versions were modeled against to
+   the comparison, Results (a "Compared with" line), the CSV (`# compared to baseline run:` and `# baseline:`), the
+   Dashboard (a note on the stat), building Properties, and the map's reduction metric (decision 9); tests in
+   `scenarios.test.ts`, `resultsView.test.ts`, and `dashboardData.test.ts` (helper `src/testing/movedBaseline.ts`).
+3. **The agent said no stage became outdated for a result saved before versions.** "Propose a scenario change" now
+   says such a result is outdated instead, and reports "No stage became outdated" only when the scenario had versions
+   and no stage became newly outdated; `src/app/agent/sessions.test.ts`.
+4. **Saving a rule sent its switch from the last render**, which could undo a switch still in flight. Scenario rule
+   Properties leaves `enabled` out for an existing rule, so the server keeps the switch; the archetype rule form had the
+   same pattern and was changed too. Test: saving without `enabled` keeps a rule off.
+5. **The run summary's "largest reduction at the saved adoption"** went stale after re-aggregation. It now names the
+   scenario, adoption, and seed it was computed at, "as published".
+6. **The PV warning counted rules of scenarios left out of the comparison.** `usesPvWithoutYield` now reads included
+   scenarios only; test.
+
+Not changed: charts the agent adds from specifications (`src/app/view/chartSpec.ts`) plot the working baseline beside
+scenario series without a computed reduction, so they show no mixed saving; they still draw the current baseline line
+after a calibration Adopt, while Scenario modeling is outdated.
 
 ## Known issues and limits
 
@@ -189,3 +223,8 @@ The reorder test failed once in a run of the new spec alone (not reproduced in n
 3 workers and six with 4); it now has a 60 s timeout. Screenshots of the Measures and scenarios page with a scenario
 rule in Properties at 1280 px (`tmp/scenario-rules-1280.png`) and in six appearances and at 900 px
 (`tmp/creator-*.png`) were reviewed.
+
+After the review fixes (2026-10-28, same setup): typecheck, lint, and format clean; `npm test` 442 passed (adds 8:
+four in `scenarios.test.ts`, one each in `resultsView.test.ts` and `dashboardData.test.ts`, and two in the new
+`src/app/agent/sessions.test.ts`); `npm run test:e2e` 117 passed; `npm run test:e2e:preview` 3 passed;
+`git diff --check` clean.

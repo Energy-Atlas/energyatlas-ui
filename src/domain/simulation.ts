@@ -641,10 +641,14 @@ function setUpBaseline(
   }
 }
 
-/** Whether a scenario rule assigns a PV measure while no building has a PV yield. */
+/**
+ * Whether a scenario in the comparison set has a rule that assigns a PV
+ * measure while no building has a PV yield.
+ */
 export function usesPvWithoutYield(state: WorkbenchState): boolean {
   const scenariosUsePv = Object.values(state.scenarioRules).some(
     (rule) =>
+      state.scenarios[rule.scenarioId]?.included === true &&
       rule.enabled &&
       rule.measures.pv !== null &&
       state.measures[rule.measures.pv]?.kind === 'pv',

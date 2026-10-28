@@ -102,6 +102,7 @@ export function publishScenarioResults(
   state.results.scenarios = {}
   state.results.scenarioVersions = {}
   let bestReduction = 0
+  let bestAt = ''
   for (const id of membership) {
     const scenario = state.scenarios[id]
     const output = held[id]
@@ -110,10 +111,11 @@ export function publishScenarioResults(
     state.results.scenarioVersions[id] = versions
     const aggregation = aggregateScenario(scenario, versions)
     state.results.scenarios[id] = aggregation.result
-    bestReduction = Math.max(
-      bestReduction,
-      1 - aggregation.result.totalKwh / baseline.totalKwh,
-    )
+    const reduction = 1 - aggregation.result.totalKwh / baseline.totalKwh
+    if (bestAt === '' || reduction > bestReduction) {
+      bestReduction = reduction
+      bestAt = `"${scenario.name}" at ${scenario.adoptionPercent}% adoption, seed ${scenario.adoptionSeed}`
+    }
     upsertAsset(state, {
       id: `asset:result-${id}`,
       kind: 'energyResult',
@@ -127,7 +129,7 @@ export function publishScenarioResults(
   }
   return {
     ok: true,
-    summary: `Modeled ${membership.length} scenario(s) as one comparison set; largest reduction ${round(bestReduction * 100, 1)}% at the saved adoption.`,
+    summary: `Modeled ${membership.length} scenario(s) as one comparison set; largest reduction ${round(bestReduction * 100, 1)}%${bestAt ? ` (${bestAt}, as published; later adoption changes re-aggregate)` : ''}.`,
     warnings: usesPvWithoutYield(state)
       ? ['PV measures had no effect because PV yield was not estimated.']
       : [],

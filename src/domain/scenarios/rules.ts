@@ -300,6 +300,44 @@ export function publishedAggregation(
   return scenario && versions ? aggregateScenario(scenario, versions) : null
 }
 
+/**
+ * The baseline a published scenario is compared with: the one its versions
+ * were modeled against when it has versions (a later working baseline, such
+ * as an adopted calibration, is not mixed in), else the current baseline.
+ * `changed` says the working baseline has moved on since.
+ */
+export function scenarioBaseline(
+  state: Pick<WorkbenchState, 'results'>,
+  scenarioId: string,
+): { result: ResultSet; changed: boolean } | null {
+  const current = state.results.baseline
+  const versions = state.results.scenarioVersions[scenarioId]
+  if (!versions) return current ? { result: current, changed: false } : null
+  if (current && current.runId === versions.baselineRunId) {
+    return { result: current, changed: false }
+  }
+  return {
+    result: makeResultSet(
+      'baseline',
+      'Baseline',
+      versions.baselineRunId,
+      versions.baseKwh,
+    ),
+    changed: current !== null,
+  }
+}
+
+/** Why a scenario's comparison baseline is not the working one, in words, or null. */
+export function baselineChangeNote(
+  state: Pick<WorkbenchState, 'results'>,
+  scenarioId: string,
+): string | null {
+  const compared = scenarioBaseline(state, scenarioId)
+  const current = state.results.baseline
+  if (!compared?.changed || !current) return null
+  return `Modeled against baseline run ${compared.result.runId}; the working baseline is now run ${current.runId}. Savings compare with run ${compared.result.runId} until Scenario modeling runs again.`
+}
+
 export type ScenarioRulePreview = {
   ruleId: string
   /** Buildings whose attributes the rule matches. */

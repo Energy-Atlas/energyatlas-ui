@@ -339,6 +339,13 @@ const modelChangeSession: ScriptedSession = {
       context.memory.scenarioName = scenario.name
       context.memory.reductionBefore = publishedReduction(state, scenario.id)
       const modeled = Boolean(state.results.scenarioVersions[scenario.id])
+      // A result saved before scenario rules has no versions to re-aggregate.
+      const legacy = !modeled && Boolean(state.results.scenarios[scenario.id])
+      const states = context.stageStates()
+      context.memory.modeled = modeled
+      context.memory.staleBefore = state.workflow.stageIds.filter(
+        (id) => states[id] === 'stale',
+      )
       const title = `Set "${scenario.name}" adoption to ${next}%`
       return [
         reason(
@@ -346,7 +353,7 @@ const modelChangeSession: ScriptedSession = {
         ),
         propose(
           title,
-          `Change adoption from ${scenario.adoptionPercent}% to ${next}%. ${modeled ? 'Its published result is re-aggregated at once from the modeled alternative versions; no stage becomes outdated.' : 'It has no modeled versions yet, so the new adoption applies when Scenario modeling publishes.'}`,
+          `Change adoption from ${scenario.adoptionPercent}% to ${next}%. ${modeled ? 'Its published result is re-aggregated at once from the modeled alternative versions; no stage becomes outdated.' : legacy ? 'Its result was saved before scenario rules and has no versions to re-aggregate, so "Scenario definitions" and the stages after it become outdated until they run again.' : 'It has no modeled versions yet, so the new adoption applies when Scenario modeling publishes.'}`,
           [
             {
               title,
@@ -370,7 +377,16 @@ const modelChangeSession: ScriptedSession = {
       )
       const after = scenario ? publishedReduction(state, scenario.id) : null
       const before = context.memory.reductionBefore
-      if (!context.memory.created && scenario && after !== null) {
+      const staleBefore = Array.isArray(context.memory.staleBefore)
+        ? (context.memory.staleBefore as string[])
+        : []
+      const newlyOutdated = outdated.filter((id) => !staleBefore.includes(id))
+      if (
+        context.memory.modeled === true &&
+        newlyOutdated.length === 0 &&
+        scenario &&
+        after !== null
+      ) {
         return say(
           `No stage became outdated: adoption is applied when results are aggregated. **${scenario.name}** now reduces annual demand by ${after}% against the baseline${typeof before === 'number' ? ` (${before}% before)` : ''}, from the same modeled versions (synthetic numbers).`,
         )

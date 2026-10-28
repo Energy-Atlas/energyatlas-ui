@@ -129,7 +129,8 @@ export function ScenarioRuleProperties({
         input: {
           name: draft.name,
           scenarioId: scenario.id,
-          ...(rule ? { id: rule.id, enabled: rule.enabled } : {}),
+          // Left out, the rule keeps its switch, even one still being changed.
+          ...(rule ? { id: rule.id } : {}),
           logic: draft.logic,
           conditions: draft.conditions,
           measures: Object.fromEntries(

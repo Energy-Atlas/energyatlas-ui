@@ -4,6 +4,7 @@ import { createWorkbench, type Workbench } from '../../domain/workbench.ts'
 import { STAGE_IDS } from '../../domain/workflow.ts'
 import { APPEARANCES } from '../appearance/appearances.ts'
 import { compileChartSpec } from '../view/chartSpec.ts'
+import { withMovedBaseline } from '../../testing/movedBaseline.ts'
 import { buildDashboardData } from './dashboardData.ts'
 
 function runStage(workbench: Workbench, stageId: string) {
@@ -130,5 +131,16 @@ describe('buildDashboardData', () => {
     expect(compiled.leftOut).toEqual([first.name])
     expect(compiled.missing).toEqual([])
     expect(compiled.table.columns).toContain(`${second.name} (MWh)`)
+  })
+})
+
+describe('a scenario modeled against an earlier baseline', () => {
+  test('reports its reduction against that baseline, with a note', () => {
+    const state = modeledProject(1).getState()
+    const before = buildDashboardData(state, {}).scenarios[0]!
+    expect(before.baselineNote).toBeNull()
+    const moved = buildDashboardData(withMovedBaseline(state), {}).scenarios[0]!
+    expect(moved.reductionPercent).toBe(before.reductionPercent)
+    expect(moved.baselineNote).toMatch(/Savings compare with run/)
   })
 })

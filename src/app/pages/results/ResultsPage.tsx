@@ -355,6 +355,9 @@ export function ResultsPage() {
                 : `${entry.currentness.charAt(0).toUpperCase()}${entry.currentness.slice(1)}.`,
             },
             { label: 'Source', value: entry.note },
+            ...(entry.baselineNote
+              ? [{ label: 'Compared with', value: entry.baselineNote }]
+              : []),
           ]}
         />
         <div className={styles.actions}>

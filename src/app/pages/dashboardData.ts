@@ -1,4 +1,8 @@
-import { aggregateScenario } from '../../domain/scenarios/rules.ts'
+import {
+  aggregateScenario,
+  baselineChangeNote,
+  scenarioBaseline,
+} from '../../domain/scenarios/rules.ts'
 import type { ResultSet, Scenario, WorkbenchState } from '../../domain/types.ts'
 
 /** Charts compare at most three scenarios: the palette is validated for three slots. */
@@ -37,8 +41,13 @@ export type ChartedScenario = {
    * alternative versions to sample from (decision 0032, stage 3).
    */
   canPreview: boolean
-  /** Reduction of annual demand against the baseline, in percent. */
+  /**
+   * Reduction of annual demand against the baseline the scenario was modeled
+   * against (decision 0032, stage 3), in percent.
+   */
   reductionPercent: number | null
+  /** Which baseline run the reduction compares with, when the working baseline has moved on. */
+  baselineNote: string | null
 }
 
 export type DashboardData = {
@@ -87,9 +96,10 @@ export function buildDashboardData(
         previewAdoption !== null && versions
           ? aggregateScenario(scenario, versions, previewAdoption).result
           : modeled
+      const compared = scenarioBaseline(state, scenario.id)?.result ?? null
       const reductionPercent =
-        baseline && shown && baseline.totalKwh > 0
-          ? round((1 - shown.totalKwh / baseline.totalKwh) * 100, 1)
+        compared && shown && compared.totalKwh > 0
+          ? round((1 - shown.totalKwh / compared.totalKwh) * 100, 1)
           : null
       return {
         scenario,
@@ -99,6 +109,7 @@ export function buildDashboardData(
         previewAdoption,
         canPreview: Boolean(versions),
         reductionPercent,
+        baselineNote: modeled ? baselineChangeNote(state, scenario.id) : null,
       }
     })
 

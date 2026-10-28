@@ -7,9 +7,12 @@ import { STAGE_IDS, deriveStageStates } from '../workflow.ts'
 import type { Building, Measure, ScenarioRule } from '../types.ts'
 import { compareScenarios } from './comparison.ts'
 import { MEASURE_LIBRARY } from './library.ts'
+import { usesPvWithoutYield } from '../simulation.ts'
 import {
   adoptionUnit,
   aggregateScenario,
+  baselineChangeNote,
+  scenarioBaseline,
   alternativeKwh,
   assignMeasures,
   isAdopted,
@@ -596,5 +599,149 @@ describe('scenario modeling as a comparison set', () => {
       /inputs owned by "Scenario definitions" changed/,
     )
     expect(state.results.scenarios).toEqual(before)
+  })
+})
+
+describe('review fixes', () => {
+  test('adoption of a scenario without a result outdates nothing', () => {
+    const workbench = complete()
+    const envelope = Object.keys(workbench.getState().measures)[0] ?? ''
+    workbench.execute({
+      type: 'scenario.create',
+      input: {
+        name: 'Left out',
+        measureIds: [envelope],
+        adoptionPercent: 30,
+        included: false,
+      },
+    })
+    runStageNow(workbench, S.scenarioDefinitions)
+    runStageNow(workbench, S.scenarioModeling)
+    const leftOut = Object.values(workbench.getState().scenarios).find(
+      (scenario) => scenario.name === 'Left out',
+    )!
+    expect(workbench.getState().results.scenarios[leftOut.id]).toBeUndefined()
+    expect(states(workbench)[S.scenarioModeling]).toBe('executed')
+    workbench.execute({
+      type: 'scenario.update',
+      input: {
+        id: leftOut.id,
+        name: 'Left out',
+        adoptionPercent: 70,
+        adoptionSeed: 9,
+        included: false,
+      },
+    })
+    workbench.execute({
+      type: 'scenario.setAdoption',
+      input: { scenarioId: leftOut.id, adoptionPercent: 80 },
+    })
+    expect(states(workbench)).toMatchObject({
+      [S.scenarioDefinitions]: 'executed',
+      [S.scenarioModeling]: 'executed',
+    })
+  })
+
+  test('PV rules of scenarios left out of the comparison raise no PV warning', () => {
+    const workbench = createWorkbench({
+      initialState: buildFixture('partway', () => new Date()),
+    })
+    const pv = addLibrary(workbench, 'measure:rooftop-pv')
+    workbench.execute({
+      type: 'scenario.create',
+      input: {
+        name: 'Solar',
+        measureIds: [pv],
+        adoptionPercent: 50,
+        included: false,
+      },
+    })
+    expect(usesPvWithoutYield(workbench.getState())).toBe(false)
+    const solar = firstScenario(workbench)
+    workbench.execute({
+      type: 'scenario.update',
+      input: {
+        id: solar.id,
+        name: 'Solar',
+        adoptionPercent: 50,
+        adoptionSeed: 42,
+        included: true,
+      },
+    })
+    expect(usesPvWithoutYield(workbench.getState())).toBe(true)
+  })
+
+  test('a scenario compares with the baseline its versions were modeled against', () => {
+    const workbench = complete()
+    const scenario = firstScenario(workbench)
+    const state = workbench.getState()
+    const versions = state.results.scenarioVersions[scenario.id]!
+    const old = state.results.baseline!
+    expect(scenarioBaseline(state, scenario.id)).toEqual({
+      result: old,
+      changed: false,
+    })
+    // A later working baseline, as after a calibration Adopt.
+    const moved = {
+      ...state,
+      results: {
+        ...state.results,
+        baseline: {
+          ...old,
+          runId: 'run-calibrated',
+          totalKwh: old.totalKwh * 1.1,
+          byBuildingKwh: Object.fromEntries(
+            Object.entries(old.byBuildingKwh).map(([id, kwh]) => [
+              id,
+              kwh * 1.1,
+            ]),
+          ),
+        },
+      },
+    }
+    const compared = scenarioBaseline(moved, scenario.id)!
+    expect(compared.changed).toBe(true)
+    expect(compared.result.runId).toBe(versions.baselineRunId)
+    expect(compared.result.byBuildingKwh).toEqual(versions.baseKwh)
+    expect(baselineChangeNote(moved, scenario.id)).toMatch(
+      new RegExp(
+        `Modeled against baseline run ${old.runId}; the working baseline is now run run-calibrated`,
+      ),
+    )
+    const row = compareScenarios(
+      moved,
+      deriveStageStates(moved.workflow, moved.tasks),
+      S.scenarioModeling,
+      S.baseline,
+    ).find((item) => item.id === scenario.id)
+    const result = state.results.scenarios[scenario.id]!
+    expect(row?.reductionPercent).toBe(
+      Math.round((1 - result.totalKwh / old.totalKwh) * 1000) / 10,
+    )
+  })
+
+  test('saving a rule without enabled keeps its switch', () => {
+    const workbench = complete()
+    const scenario = firstScenario(workbench)
+    const rule = scenarioRules(workbench.getState(), scenario)[0]!
+    workbench.execute({
+      type: 'scenarioRule.setEnabled',
+      input: { ruleId: rule.id, enabled: false },
+    })
+    workbench.execute({
+      type: 'scenarioRule.save',
+      input: {
+        scenarioId: scenario.id,
+        id: rule.id,
+        name: 'Renamed',
+        logic: rule.logic,
+        conditions: rule.conditions,
+        measures: rule.measures,
+      },
+    })
+    expect(workbench.getState().scenarioRules[rule.id]).toMatchObject({
+      name: 'Renamed',
+      enabled: false,
+    })
   })
 })

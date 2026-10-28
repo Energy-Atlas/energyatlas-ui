@@ -1,3 +1,4 @@
+import { scenarioBaseline } from '../../domain/scenarios/rules.ts'
 import type { WorkbenchState } from '../../domain/types.ts'
 
 export type MetricId =
@@ -68,6 +69,10 @@ export function computeMetric(
   const scenarioResult = firstScenario
     ? state.results.scenarios[firstScenario.id]
     : undefined
+  // A scenario's reduction compares with the baseline it was modeled against.
+  const scenarioBase = firstScenario
+    ? (scenarioBaseline(state, firstScenario.id)?.result ?? baseline)
+    : baseline
   if (metric === 'scenarioReduction' && firstScenario) {
     scenarioName = firstScenario.name
   }
@@ -91,7 +96,7 @@ export function computeMetric(
         break
       }
       case 'scenarioReduction': {
-        const before = baseline?.byBuildingKwh[id]
+        const before = scenarioBase?.byBuildingKwh[id]
         const after = scenarioResult?.byBuildingKwh[id]
         values[id] =
           before === undefined || after === undefined || before <= 0

@@ -109,7 +109,8 @@ export function RuleProperties({
         type: 'rule.save',
         input: {
           name: draft.name,
-          ...(rule ? { id: rule.id, enabled: rule.enabled } : {}),
+          // Left out, the rule keeps its switch, even one still being changed.
+          ...(rule ? { id: rule.id } : {}),
           logic: draft.logic,
           conditions: draft.conditions,
           parts: Object.fromEntries(

@@ -3,6 +3,7 @@ import { finishJobNow, runStageNow } from '../../../domain/jobs/runNow.ts'
 import { createWorkbench } from '../../../domain/workbench.ts'
 import { STAGE_IDS, deriveStageStates } from '../../../domain/workflow.ts'
 import { buildFixture } from '../../../server/fixtures.ts'
+import { withMovedBaseline } from '../../../testing/movedBaseline.ts'
 import { createViewStore } from '../../view/viewStore.ts'
 import {
   buildingRows,
@@ -222,5 +223,30 @@ describe('results view', () => {
     )
     expect(sum).toBe(baseline.result.totalKwh)
     expect(baseline.stageName).toMatch(/adopted/)
+  })
+})
+
+describe('a scenario modeled against an earlier baseline', () => {
+  test('compares with that baseline in rows and the CSV, and says so', () => {
+    const state = buildFixture('complete', () => new Date())
+    const old = state.results.baseline!
+    const moved = withMovedBaseline(state)
+    const entry = listResults(
+      moved,
+      deriveStageStates(moved.workflow, moved.tasks),
+    )[1]!
+    expect(entry.compareTo?.runId).toBe(old.runId)
+    expect(entry.baselineNote).toMatch(
+      /the working baseline is now run run-calibrated/,
+    )
+    // Buildings that do not adopt save nothing against their own baseline.
+    for (const row of buildingRows(moved, entry)) {
+      if (row.adoption === 'not adopted') expect(row.savingKwh).toBe(0)
+    }
+    const csv = resultCsv(moved, entry, 'now')
+    expect(csv).toContain(`# compared to baseline run: ${old.runId}`)
+    expect(csv).toContain(
+      `# baseline: Modeled against baseline run ${old.runId}`,
+    )
   })
 })
