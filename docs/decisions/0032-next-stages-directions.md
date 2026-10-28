@@ -56,6 +56,23 @@ questions.
 
 Each stage states what is real, mocked, and deferred before it is built, as `AGENTS.md` requires.
 
+## Execution (2026-10-28)
+
+The owner asked for all six stages to be built unsupervised and reported back with decisions, issues, and review
+items, and answered four execution questions:
+
+- **One branch, no merges.** All stages are built in order on ; local  stays at
+   until the owner reviews. Nothing is pushed or deployed.
+- **Handover by catalog and file.** "Hand over" saves a frozen package in the browser catalog, which the viewer page
+  lists, and can download it as a file that the viewer page opens with a browser file input.
+- **Left out, not disabled.** Features a viewer cannot use are absent from the viewer page; its shell shows a View only
+  badge.
+- **Decide and report.** Choices these decisions do not cover get a grounded default (from RC where it has one),
+  recorded in the stage's document and listed in the final report for review.
+
+Each stage passes the full check list in  and an independent review, whose findings are fixed or
+recorded, before the next stage starts.
+
 ## Consequences
 
 - The viewer's handover includes the current published results only, because result versions are deferred.
