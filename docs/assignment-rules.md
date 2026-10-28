@@ -131,7 +131,8 @@ residential before 1980 165 → 180, residential 1980 on 115 → 123, office 210
 3. **Generated rules.** One per project archetype: use equals the archetype's use, plus "year built larger than
    from − 1" and "smaller than to + 1" (RC's at-least conversion), narrowest year range first within a use, then a
    fallback without conditions that sets the Mixed use library archetype's parts (copied into the project if missing).
-   Editing a generated rule makes it the project's own (`origin: project`), so regenerating keeps it.
+   Editing a generated rule makes it the project's own (`origin: project`), so regenerating keeps it, and the default
+   of the same name is left out (the summary names the rules kept) so rule names stay unique.
 4. **First run.** As before, a first Archetype modeling run adds the default library archetypes the project lacks;
    with no rules it also generates the default rules. Mixed-use buildings now get the fallback's parts instead of none,
    so the Complete fixture models all 464 buildings (446 before); its baseline is 105,155 MWh (105,173 MWh before).
@@ -150,6 +151,10 @@ residential before 1980 165 → 180, residential 1980 on 115 → 123, office 210
     archetype of the same use with the nearest old intensity, plus a space-loads copy when their schedule differs.
     Buildings keep their old archetype's parts, attributed to a migrated rule `rule:migrated:<archetype id>`; default
     rules are generated where Archetype modeling had run. Open assignment runs saved before parts are invalidated.
+    A library id whose saved intensity, schedule, or provenance differs from the old library entry is an edited copy
+    and migrates like a project archetype, keeping its schedule. Where Archetype modeling had run, its output
+    revision is bumped, so the baseline and everything after it show as outdated, with a warning issue on Baseline
+    model setup explaining that results came from the old single intensities.
 11. **Map colouring by rule or part is deferred.** The layer stack's `colorBy` is a sequential ramp over numeric
     metrics; colouring by rule would need a categorical palette and legend for any number of rules, beyond the three
     validated categorical slots. The rule's Properties offers "Select matched buildings" instead, which the map shows.
@@ -158,6 +163,36 @@ residential before 1980 165 → 180, residential 1980 on 115 → 123, office 210
 13. **The Table draws all its columns** (`suppressColumnVirtualisation`) so the four part columns are reachable without
     scrolling first; the table has 16 columns.
 14. **Parts in use outdate assignment when saved**; a new or unused part, or an unused schedule, does not.
+
+## Review
+
+An independent review on 2026-10-28 found nothing high-severity. Fixed:
+
+1. **Edited library archetypes in old saves** lost their saved schedule (they took the library branch). They now
+   migrate like project archetypes, with a space-loads copy for their schedule; `legacySave` includes one.
+2. **Generate default rules after editing a generated rule** added a second rule of the same name. Defaults whose
+   name is taken are now left out and named in the summary; the rule editor finds a created rule by its new id, not
+   its name.
+3. **`rule.save` re-enabled a rule** when `enabled` was left out, and ignored `position` on an update. Left out, a
+   changed rule keeps its switch; a position moves it. The agent session switches an existing rule on explicitly and
+   says so, and "move it to the top" is now true.
+4. **Migrated projects showed old results as current.** Migration bumps Archetype modeling's output revision and adds
+   a warning issue (see decision 10).
+5. **The rule engine was tied to building fields and parts.** `conditions.ts` and `ConditionBuilder` now take a field
+   registry for every lookup (`FieldRegistry`, `Condition<Field>`, `ConditionSubject<Field>`), and `prepareRules`
+   takes the slot noun for its warnings ("part", "measure"); an unknown field is refused on save and never matches.
+   A test runs the engine over a measure-like registry for stage 3.
+6. **The Manual parts and Unassigned preview rows** were selectable but did nothing. Choosing one selects those
+   buildings for the parts shown (or says why there are none), and a note under the table explains it.
+7. **Condition errors.** The logic error is now shown under its field; the value field is a React Aria `TextField`
+   with `isInvalid`. Not changed: the field, operator, enumerated value, and logic choices stay native selects with
+   `aria-invalid`, as `SelectProperty` in `src/app/properties/PropertyForm.tsx` does for every select in Properties;
+   React Aria `Select` would bring a popover list unlike every other select in the panel.
+8. **Tests** for each: migration of an edited library archetype and the outdated downstream stages
+   (`src/server/projectSchema.test.ts`), regenerating after editing a generated rule and the fallback and saving a
+   rule without `enabled` or with a position (`src/domain/archetypes/archetypes.test.ts`), another field registry
+   (`src/domain/rules/conditions.test.ts`), and Generate default rules and the preview rows through the UI
+   (`e2e/assignment-rules.spec.ts`).
 
 ## Known issues and limits
 
@@ -170,9 +205,12 @@ residential before 1980 165 → 180, residential 1980 on 115 → 123, office 210
 
 ## Verification
 
-On the stage's final commit (2026-10-28, Edge, 4 workers, development specs on port 5180 with the ignored
-`tmp/playwright.5180.config.ts`): `npm run typecheck`, `npm run lint`, `npm run format:check` clean; `npm test` 414
-passed (395 before this stage); `npm run test:e2e` 111 passed (106 before: adds `e2e/assignment-rules.spec.ts` with 5
+On the stage's final commit, after the review fixes (2026-10-28, Edge, 4 workers, development specs on port 5180 with the ignored
+`tmp/playwright.5180.config.ts`): `npm run typecheck`, `npm run lint`, `npm run format:check` clean; `npm test` 419
+passed (395 before this stage); `npm run test:e2e` 112 passed (106 before: adds `e2e/assignment-rules.spec.ts` with 6
 tests; `e2e/archetypes.spec.ts` rewritten for parts and default rules); `npm run test:e2e:preview` 3 passed;
+the gallery's six-appearance axe test now has a 90 s timeout (it took 22 s alone and timed out at 30 s under 4
+workers once the rule components joined the gallery); `project-lifecycle.spec.ts` "start and creation render in every
+appearance" timed out under 4 workers in two full runs and passed alone (1.5 min of its 120 s), unrelated to this stage;
 `git diff --check` clean. Screenshots of the Archetypes page in six appearances at 1280 px and at 900 px were reviewed
 from ignored `tmp/archetypes-*.png`.

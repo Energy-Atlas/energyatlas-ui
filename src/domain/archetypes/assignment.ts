@@ -1,5 +1,6 @@
 import { STAGE_IDS } from '../workflow.ts'
 import {
+  CONDITION_FIELDS,
   buildingSubject,
   firstMatches,
   prepareRules,
@@ -17,6 +18,7 @@ import type {
   AssignmentRule,
   Building,
   BuildingParts,
+  ConditionField,
   PartKind,
   RuleCondition,
   WorkbenchState,
@@ -130,20 +132,25 @@ export function orderedRules(
 /** The enabled rules ready to evaluate, with RC's coded warnings. */
 export function prepareAssignmentRules(
   state: Pick<WorkbenchState, 'rules' | 'ruleIds' | 'parts'>,
-): { prepared: PreparedRule<PartKind>[]; warnings: RuleWarning[] } {
+): {
+  prepared: PreparedRule<PartKind, ConditionField>[]
+  warnings: RuleWarning[]
+} {
   return prepareRules(
     orderedRules(state).map((rule) => ({ ...rule, slots: rule.parts })),
     PART_KINDS,
     (kind, partId) => state.parts[partId]?.kind === kind,
+    'part',
   )
 }
 
 /** The parts the rules give one building, by the rule that set each. */
 export function assignBuilding(
-  prepared: PreparedRule<PartKind>[],
+  prepared: PreparedRule<PartKind, ConditionField>[],
   building: Building,
 ): { parts: BuildingParts; matched: string[] } {
   const { winners, matched } = firstMatches(
+    CONDITION_FIELDS,
     prepared,
     PART_KINDS,
     buildingSubject(building),
@@ -179,6 +186,10 @@ export type AssignmentPreview = {
   unassigned: Record<PartKind, number>
   /** Manual overrides of each kind, which win over the rules. */
   manual: Record<PartKind, number>
+  /** Buildings left without each part, in building order. */
+  unassignedIds: Record<PartKind, string[]>
+  /** Buildings with a manual part of each kind, in building order. */
+  manualIds: Record<PartKind, string[]>
   /** Buildings with all four parts. */
   complete: number
   buildings: number
@@ -188,6 +199,13 @@ export type AssignmentPreview = {
   /** Rule results by building, before manual overrides. */
   byBuilding: Record<string, BuildingParts>
 }
+
+const noIds = (): Record<PartKind, string[]> => ({
+  construction: [],
+  systems: [],
+  spaceLoads: [],
+  externalLoads: [],
+})
 
 const zeroCounts = (): Record<PartKind, number> => ({
   construction: 0,
@@ -217,6 +235,8 @@ export function previewAssignment(
   )
   const unassigned = zeroCounts()
   const manual = zeroCounts()
+  const unassignedIds = noIds()
+  const manualIds = noIds()
   const byBuilding: Record<string, BuildingParts> = {}
   let complete = 0
   let changes = 0
@@ -240,13 +260,16 @@ export function previewAssignment(
         override && typeof override.value === 'string'
           ? override.value
           : (parts[kind]?.partId ?? null)
-      if (override) manual[kind] += 1
-      else if (parts[kind]) {
+      if (override) {
+        manual[kind] += 1
+        manualIds[kind].push(id)
+      } else if (parts[kind]) {
         const preview = previews.get(parts[kind].ruleId)
         if (preview) preview.takes[kind] += 1
       }
       if (next === null) {
         unassigned[kind] += 1
+        unassignedIds[kind].push(id)
         full = false
       }
       if (next !== current[kind]) changed = true
@@ -258,6 +281,8 @@ export function previewAssignment(
     rules: [...previews.values()],
     unassigned,
     manual,
+    unassignedIds,
+    manualIds,
     complete,
     buildings: state.buildingIds.length,
     changes,

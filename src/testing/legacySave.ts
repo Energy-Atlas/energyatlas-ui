@@ -19,6 +19,8 @@ export type LegacySave = Record<string, unknown> & {
 /**
  * Archetypes with one intensity and a schedule, one archetype per building,
  * manual archetype overrides (one of them "none"), and no parts or rules.
+ * Retail is an edited library copy: the old schema merged the saved values
+ * over the library entry, so it kept the library id with its own schedule.
  */
 export function legacySave(state: WorkbenchState): LegacySave {
   const archetypeOf = (parts: BuildingParts): string | null => {
@@ -47,6 +49,19 @@ export function legacySave(state: WorkbenchState): LegacySave {
       euiKwhPerM2: OLD_EUI[id] ?? 150,
       scheduleId: loads?.kind === 'spaceLoads' ? loads.scheduleId : null,
       source: archetype.source,
+    }
+  }
+  const retail = archetypes['archetype:retail']
+  if (retail) {
+    archetypes['archetype:retail'] = {
+      ...retail,
+      euiKwhPerM2: 225,
+      scheduleId: 'schedule:office',
+      source: {
+        kind: 'project',
+        operationId: 'op-89',
+        libraryId: 'archetype:retail',
+      },
     }
   }
   archetypes['archetype-90'] = {

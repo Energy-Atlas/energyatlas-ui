@@ -1,29 +1,27 @@
 import { Plus, X } from 'lucide-react'
 import { useId } from 'react'
+import { Input, TextField } from 'react-aria-components'
 import {
   LOGIC_LABELS,
   OPERATORS_BY_TYPE,
   OPERATOR_LABELS,
   fieldDefinition,
-  type ConditionFieldDefinition,
+  type Condition,
+  type FieldRegistry,
 } from '../../domain/rules/conditions.ts'
-import type {
-  ConditionField,
-  ConditionOperator,
-  RuleCondition,
-  RuleLogic,
-} from '../../domain/types.ts'
+import type { ConditionOperator, RuleLogic } from '../../domain/types.ts'
 import { cx } from '../cx.ts'
 import componentStyles from './components.module.css'
 import formStyles from './forms.module.css'
 import styles from './ruleList.module.css'
 
-type ConditionBuilderProps = {
-  fields: readonly ConditionFieldDefinition[]
+type ConditionBuilderProps<Field extends string> = {
+  /** The fields conditions may test; every lookup uses this registry. */
+  fields: FieldRegistry<Field>
   logic: RuleLogic
   onLogicChange: (logic: RuleLogic) => void
-  conditions: RuleCondition[]
-  onChange: (conditions: RuleCondition[]) => void
+  conditions: Condition<Field>[]
+  onChange: (conditions: Condition<Field>[]) => void
   /** Messages by path: "logic", "conditions", or "conditions.0.value". */
   errors?: Record<string, string | undefined>
   /** What the conditions select, for the wording, such as "building". */
@@ -40,9 +38,11 @@ type ConditionBuilderProps = {
  * larger, smaller, equals; a use: equals, does not contain; text: contains,
  * does not contain, equals), and an enumerated field offers its values. A
  * row without a field is blank: it is kept, and skipped when rules are
- * evaluated, as RC does.
+ * evaluated, as RC does. Selects are native, as in `SelectProperty`, and
+ * mark issues with aria-invalid; the value field is a React Aria TextField
+ * with `isInvalid`.
  */
-export function ConditionBuilder({
+export function ConditionBuilder<Field extends string>({
   fields,
   logic,
   onLogicChange,
@@ -52,9 +52,9 @@ export function ConditionBuilder({
   subject = 'building',
   readOnly = false,
   edited = false,
-}: ConditionBuilderProps) {
+}: ConditionBuilderProps<Field>) {
   const id = useId()
-  const update = (index: number, patch: Partial<RuleCondition>) =>
+  const update = (index: number, patch: Partial<Condition<Field>>) =>
     onChange(
       conditions.map((condition, position) =>
         position === index ? { ...condition, ...patch } : condition,
@@ -65,8 +65,13 @@ export function ConditionBuilder({
       update(index, { field: null })
       return
     }
-    const definition = fieldDefinition(value as ConditionField)
+    const definition = fields.find((field) => field.id === value)
+    if (!definition) return
     const current = conditions[index]
+    const previous =
+      current && current.field !== null
+        ? fieldDefinition(fields, current.field)
+        : undefined
     const operators = OPERATORS_BY_TYPE[definition.type]
     update(index, {
       field: definition.id,
@@ -77,10 +82,8 @@ export function ConditionBuilder({
       value:
         definition.type === 'enum'
           ? (definition.options?.[0]?.value ?? '')
-          : current && current.field !== null
-            ? fieldDefinition(current.field).type === definition.type
-              ? current.value
-              : ''
+          : current && previous?.type === definition.type
+            ? current.value
             : '',
     })
   }
@@ -101,6 +104,8 @@ export function ConditionBuilder({
           className={formStyles.input}
           value={logic}
           disabled={readOnly}
+          aria-invalid={errors.logic ? true : undefined}
+          aria-describedby={errors.logic ? `${id}-logic-error` : undefined}
           onChange={(event) => onLogicChange(event.target.value as RuleLogic)}
         >
           {(Object.keys(LOGIC_LABELS) as RuleLogic[]).map((value) => (
@@ -109,11 +114,18 @@ export function ConditionBuilder({
             </option>
           ))}
         </select>
+        {errors.logic ? (
+          <span id={`${id}-logic-error`} className={formStyles.fieldError}>
+            {errors.logic}
+          </span>
+        ) : null}
       </div>
       {conditions.map((condition, index) => {
         const number = index + 1
         const definition =
-          condition.field === null ? null : fieldDefinition(condition.field)
+          condition.field === null
+            ? null
+            : (fieldDefinition(fields, condition.field) ?? null)
         const path = `conditions.${index}`
         const message =
           errors[`${path}.field`] ??
@@ -188,22 +200,23 @@ export function ConditionBuilder({
                 ))}
               </select>
             ) : (
-              <input
+              <TextField
                 aria-label={`Condition ${number} value`}
-                className={formStyles.input}
+                aria-describedby={message ? errorId : undefined}
                 value={condition.value}
-                readOnly={readOnly}
-                disabled={definition === null}
+                isReadOnly={readOnly}
+                isDisabled={definition === null}
+                isInvalid={Boolean(invalid('value'))}
                 inputMode={
                   definition?.type === 'number' ? 'decimal' : undefined
                 }
-                placeholder={definition?.unit ?? undefined}
-                aria-invalid={invalid('value')}
-                aria-describedby={message ? errorId : undefined}
-                onChange={(event) =>
-                  update(index, { value: event.target.value })
-                }
-              />
+                onChange={(value) => update(index, { value })}
+              >
+                <Input
+                  className={formStyles.input}
+                  placeholder={definition?.unit ?? undefined}
+                />
+              </TextField>
             )}
             {readOnly ? null : (
               <span className={styles.remove}>

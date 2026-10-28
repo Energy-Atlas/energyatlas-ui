@@ -368,11 +368,11 @@ describe('project catalog', () => {
       yearTo: 1979,
       parts: { spaceLoads: 'loads:residential' },
     })
-    // Library space loads bring their library schedules.
+    // Library space loads bring their library schedules; the edited retail
+    // copy follows the office schedule, so the retail schedule is not needed.
     expect(Object.keys(migrated?.schedules ?? {}).sort()).toEqual([
       'schedule:office',
       'schedule:residential',
-      'schedule:retail',
       'schedule:school',
     ])
   })

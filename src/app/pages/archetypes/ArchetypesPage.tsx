@@ -18,7 +18,10 @@ import {
   partSummary,
 } from '../../../domain/archetypes/parts.ts'
 import { stageSubmitBlocker } from '../../../domain/commands.ts'
-import { describeConditions } from '../../../domain/rules/conditions.ts'
+import {
+  CONDITION_FIELDS,
+  describeConditions,
+} from '../../../domain/rules/conditions.ts'
 import { isActiveStatus } from '../../../domain/jobs/runGroups.ts'
 import type {
   Archetype,
@@ -441,6 +444,30 @@ export function ArchetypesPage() {
   ]
 
   const selectedRule = selectedOf('assignmentRule')
+
+  /** Selects the buildings with manual parts, or without parts, of the kinds shown. */
+  const selectPreviewBuildings = (row: 'manual' | 'unassigned') => {
+    const byKind = row === 'manual' ? preview.manualIds : preview.unassignedIds
+    const ids = [...new Set(kinds.flatMap((kind) => byKind[kind]))]
+    const label =
+      row === 'manual'
+        ? 'Select buildings with manual parts'
+        : 'Select buildings without parts'
+    if (ids.length === 0) {
+      recordBlocked(
+        label,
+        row === 'manual'
+          ? 'No building has a manual part of the kinds shown.'
+          : 'Every building has the parts shown.',
+      )
+      return
+    }
+    workbench.execute({
+      type: 'selection.set',
+      input: { entityType: 'building', ids },
+    })
+    showInspection()
+  }
   const generateBlocker =
     archetypes.length === 0
       ? 'There are no archetypes to generate rules from. Add archetypes from the library first.'
@@ -505,7 +532,7 @@ export function ArchetypesPage() {
             id: rule.id,
             name: rule.name,
             enabled: rule.enabled,
-            summary: `${describeConditions(rule.logic, rule.conditions)}; ${setsLabel(rule.parts)}`,
+            summary: `${describeConditions(CONDITION_FIELDS, rule.logic, rule.conditions)}; ${setsLabel(rule.parts)}`,
             effect: effectOf(rule.id),
           }))}
           selectedId={selectedRule}
@@ -584,11 +611,24 @@ export function ArchetypesPage() {
               selection={{
                 selectedKey: selectedRule,
                 onSelect: (id) => {
-                  if (state.rules[id]) choose('assignmentRule')(id)
+                  if (state.rules[id]) {
+                    choose('assignmentRule')(id)
+                    return
+                  }
+                  if (id === 'manual' || id === 'unassigned') {
+                    selectPreviewBuildings(id)
+                  }
                 },
               }}
               exportable={false}
             />
+          ) : null}
+          {preview.buildings > 0 ? (
+            <p className={componentStyles.muted}>
+              Choose a rule to edit it in Properties. Choose Manual parts or
+              Unassigned to select those buildings, for the parts shown, on the
+              Map and Table.
+            </p>
           ) : null}
           <div className={styles.formActions}>
             <ActionButton

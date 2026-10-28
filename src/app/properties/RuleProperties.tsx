@@ -103,6 +103,7 @@ export function RuleProperties({
     Object.values(state.parts).filter((part) => part.kind === kind)
 
   const submit = () => {
+    const before = new Set(workbench.getState().ruleIds)
     void client
       .execute({
         type: 'rule.save',
@@ -122,10 +123,11 @@ export function RuleProperties({
           setError(null)
           edits.reset()
           if (creating) {
-            const created = Object.values(workbench.getState().rules).find(
-              (item) => item.name === draft.name.trim(),
-            )
-            if (created) onCreated(created.id)
+            // The new rule is the one id the list did not have before.
+            const created = workbench
+              .getState()
+              .ruleIds.find((ruleId) => !before.has(ruleId))
+            if (created) onCreated(created)
           }
           return
         }

@@ -3,10 +3,10 @@ import { ARCHETYPE_LIBRARY } from '../domain/archetypes/library.ts'
 import { effectiveParts } from '../domain/archetypes/parts.ts'
 import { runStageNow } from '../domain/jobs/runNow.ts'
 import { createWorkbench } from '../domain/workbench.ts'
-import { STAGE_IDS } from '../domain/workflow.ts'
+import { STAGE_IDS, deriveStageStates } from '../domain/workflow.ts'
 import { buildFixture } from './fixtures.ts'
 import { legacySave } from '../testing/legacySave.ts'
-import { migratedRuleId } from './migrateArchetypes.ts'
+import { MIGRATION_ISSUE_ID, migratedRuleId } from './migrateArchetypes.ts'
 import { projectStateSchema } from './projectSchema.ts'
 
 const flat = (value: number) => Array.from({ length: 24 }, () => value)
@@ -82,6 +82,44 @@ describe('saved project schema', () => {
     expect(runStageNow(workbench, STAGE_IDS.archetypes).outcome.status).toBe(
       'applied',
     )
+  })
+
+  test('an edited library archetype keeps its own schedule', () => {
+    const parsed = projectStateSchema.parse(
+      legacySave(buildFixture('complete', () => new Date())),
+    )
+    const retail = parsed.archetypes['archetype:retail']!
+    expect(retail.source).toEqual({
+      kind: 'project',
+      operationId: 'op-89',
+      libraryId: 'archetype:retail',
+    })
+    expect(parsed.parts[retail.parts.spaceLoads ?? '']).toMatchObject({
+      kind: 'spaceLoads',
+      scheduleId: 'schedule:office',
+    })
+    // An untouched library copy takes the library parts.
+    expect(parsed.archetypes['archetype:school']?.parts.spaceLoads).toBe(
+      'loads:school',
+    )
+  })
+
+  test('marks results from old single intensities outdated, with an issue', () => {
+    const state = buildFixture('complete', () => new Date())
+    const parsed = projectStateSchema.parse(legacySave(state))
+    const stages = deriveStageStates(parsed.workflow, parsed.tasks)
+    expect(stages[STAGE_IDS.archetypes]).toBe('executed')
+    expect(stages[STAGE_IDS.baseline]).toBe('stale')
+    expect(stages[STAGE_IDS.scenarioModeling]).toBe('stale')
+    expect(parsed.nextId).toBe(state.nextId + 1)
+    expect(
+      parsed.issues.find((issue) => issue.id === MIGRATION_ISSUE_ID),
+    ).toMatchObject({ severity: 'warning', stageId: STAGE_IDS.baseline })
+    // A save from after parts is left alone.
+    const current = projectStateSchema.parse(JSON.parse(JSON.stringify(state)))
+    expect(
+      deriveStageStates(current.workflow, current.tasks)[STAGE_IDS.baseline],
+    ).toBe('executed')
   })
 
   test('invalidates an open assignment run saved before parts', () => {

@@ -460,13 +460,16 @@ const rulesSession: ScriptedSession = {
         (rule) => rule.name === TALL_RULE,
       )
       calls.push({
-        title: `${existing ? 'Update' : 'Add'} the rule "${TALL_RULE}" at the top`,
+        title: existing
+          ? `Update the rule "${TALL_RULE}" and move it to the top`
+          : `Add the rule "${TALL_RULE}" at the top`,
         call: (current) =>
           command({
             type: 'rule.save',
             input: {
               name: TALL_RULE,
-              ...(existing ? { id: existing.id } : {}),
+              // An existing rule is switched on explicitly, as the proposal says.
+              ...(existing ? { id: existing.id, enabled: true } : {}),
               logic: 'all',
               conditions: [{ field: 'floors', operator: 'larger', value: '6' }],
               parts: {
@@ -488,7 +491,7 @@ const rulesSession: ScriptedSession = {
         ),
         propose(
           'Give tall buildings heat pumps',
-          `${heatPumpId(state) ? '' : `Create the systems part "${HEAT_PUMP}" (electric, COP 2.8 heating, 3.4 cooling), then `}add the rule "${TALL_RULE}" (floors larger than 6, sets systems) at the top. Archetype modeling becomes outdated until it runs again.`,
+          `${heatPumpId(state) ? '' : `Create the systems part "${HEAT_PUMP}" (electric, COP 2.8 heating, 3.4 cooling), then `}${existing ? `update the rule "${TALL_RULE}" (floors larger than 6, sets systems), move it to the top${existing.enabled ? '' : ', and switch it on'}` : `add the rule "${TALL_RULE}" (floors larger than 6, sets systems) at the top`}. Archetype modeling becomes outdated until it runs again.`,
           calls,
         ),
       ]

@@ -481,6 +481,82 @@ describe('assignment rules', () => {
     expect(workbench.getState().ruleIds).toHaveLength(6)
   })
 
+  test('generating defaults again keeps edited generated rules instead of adding twins', () => {
+    const workbench = assigned()
+    const state = workbench.getState()
+    const office = orderedRules(state).find((rule) => rule.name === 'Office')!
+    const fallback = orderedRules(state).at(-1)!
+    for (const rule of [office, fallback]) {
+      workbench.execute({
+        type: 'rule.save',
+        input: {
+          ...ruleInput(rule.name, rule.conditions, {
+            ...rule.parts,
+            systems: heatPump(workbench),
+          }),
+          id: rule.id,
+        },
+      })
+    }
+    const result = workbench.execute({
+      type: 'rule.generateDefaults',
+      input: {},
+    })
+    expect(result.outcome).toMatchObject({
+      status: 'applied',
+      summary: expect.stringContaining("kept the project's own") as unknown,
+    })
+    const after = orderedRules(workbench.getState())
+    const names = after.map((rule) => rule.name)
+    expect(new Set(names).size).toBe(names.length)
+    expect(names).toHaveLength(6)
+    expect(after.find((rule) => rule.name === 'Office')).toMatchObject({
+      id: office.id,
+      origin: 'project',
+    })
+    // The edited rules can still be saved under their names.
+    expect(
+      workbench.execute({
+        type: 'rule.save',
+        input: {
+          ...ruleInput('Office', office.conditions, office.parts),
+          id: office.id,
+        },
+      }).outcome.status,
+    ).toBe('applied')
+  })
+
+  test('saving a rule keeps its switch unless told, and moves it only to a given position', () => {
+    const workbench = assigned()
+    const [first, second] = workbench.getState().ruleIds
+    const rule = workbench.getState().rules[second!]!
+    workbench.execute({
+      type: 'rule.setEnabled',
+      input: { ruleId: rule.id, enabled: false },
+    })
+    workbench.execute({
+      type: 'rule.save',
+      input: {
+        ...ruleInput(rule.name, rule.conditions, rule.parts),
+        id: rule.id,
+      },
+    })
+    expect(workbench.getState().rules[rule.id]?.enabled).toBe(false)
+    expect(workbench.getState().ruleIds[1]).toBe(rule.id)
+    workbench.execute({
+      type: 'rule.save',
+      input: {
+        ...ruleInput(rule.name, rule.conditions, rule.parts),
+        id: rule.id,
+        enabled: true,
+        position: 0,
+      },
+    })
+    const state = workbench.getState()
+    expect(state.rules[rule.id]?.enabled).toBe(true)
+    expect(state.ruleIds.slice(0, 2)).toEqual([rule.id, first])
+  })
+
   test('generating defaults again keeps the project rules on top', () => {
     const workbench = assigned()
     workbench.execute({

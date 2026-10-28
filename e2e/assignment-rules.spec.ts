@@ -288,3 +288,61 @@ test('warns about blank conditions and shows a refusal from the server on its fi
   await expect(refused).toContainText('The server rejected this value')
   await expect(ruleList(page).getByRole('row')).toHaveCount(6)
 })
+
+test('generating defaults again keeps an edited rule, and preview rows select buildings', async ({
+  page,
+}) => {
+  test.setTimeout(60_000)
+  const archetypes = await openArchetypes(page)
+  const list = ruleList(page)
+  // Edit the generated Office rule: it becomes the project's own.
+  await list
+    .getByRole('row')
+    .filter({ hasText: /^\d+\.Office/ })
+    .click()
+  const office = properties(page).getByRole('region', { name: 'Office' })
+  await expect(office).toContainText('Generated from an archetype')
+  await office
+    .getByRole('combobox', { name: 'Systems part' })
+    .selectOption({ label: 'Condensing gas boiler' })
+  await office.getByRole('button', { name: 'Save rule' }).click()
+  await expect(office).toContainText('Written in this project')
+
+  // Generating the defaults again keeps it instead of adding a second Office.
+  const generate = archetypes.getByRole('button', {
+    name: 'Generate default rules',
+  })
+  if (await generate.isVisible()) {
+    await generate.click()
+  } else {
+    await archetypes
+      .getByRole('button', { name: 'More actions: Assignment rules actions' })
+      .click()
+    await page.getByRole('menuitem', { name: 'Generate default rules' }).click()
+  }
+  await expect(page.getByTestId('status-notice')).toContainText(
+    'kept the project\'s own "Office"',
+  )
+  await expect(list.getByRole('row')).toHaveCount(6)
+  await expect(
+    list.getByRole('row').filter({ hasText: /^\d+\.Office/ }),
+  ).toHaveCount(1)
+
+  // Every building has its parts, so Unassigned has nothing to select.
+  const preview = archetypes.getByRole('grid', { name: 'Assignment preview' })
+  await preview.getByRole('rowheader', { name: 'Unassigned' }).click()
+  await expect(page.getByTestId('status-notice')).toContainText(
+    'Every building has the parts shown.',
+  )
+  // Without the fallback, mixed-use buildings lack parts and can be selected.
+  await list
+    .getByRole('checkbox', { name: 'Use Fallback: any building' })
+    .focus()
+  await page.keyboard.press('Space')
+  await expect(preview.getByRole('row').last()).not.toContainText(
+    /Unassigned\s*0/,
+  )
+  await preview.getByRole('rowheader', { name: 'Unassigned' }).click()
+  await expect(properties(page)).toContainText(/\d+ buildings/)
+  expect(await seriousViolations(page)).toEqual([])
+})

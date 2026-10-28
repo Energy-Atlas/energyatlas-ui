@@ -35,6 +35,9 @@ const LIBRARY_SCHEDULES = Object.fromEntries(
   SCHEDULE_LIBRARY.map((schedule) => [schedule.id, schedule]),
 )
 
+/** The issue a migrated project shows about its outdated results. */
+export const MIGRATION_ISSUE_ID = 'issue:migrated-archetype-parts'
+
 /** The id the migrated default rule for an archetype has. */
 export function migratedRuleId(archetypeId: string): string {
   return `rule:migrated:${archetypeId}`
@@ -55,9 +58,44 @@ function nearestLibraryArchetype(
   return [...candidates].sort((a, b) => distance(a) - distance(b))[0]
 }
 
+/**
+ * The intensity and schedule each library archetype had before parts, to tell
+ * an untouched library copy from an edited one.
+ */
+const OLD_LIBRARY: Record<string, { eui: number; scheduleId: string }> = {
+  'archetype:residential-pre-1980': {
+    eui: 165,
+    scheduleId: 'schedule:residential',
+  },
+  'archetype:residential-1980-on': {
+    eui: 115,
+    scheduleId: 'schedule:residential',
+  },
+  'archetype:office': { eui: 210, scheduleId: 'schedule:office' },
+  'archetype:retail': { eui: 240, scheduleId: 'schedule:retail' },
+  'archetype:school': { eui: 140, scheduleId: 'schedule:school' },
+  'archetype:mixed': { eui: 185, scheduleId: 'schedule:office' },
+  'archetype:office-pre-1950': { eui: 255, scheduleId: 'schedule:office' },
+}
+
+/**
+ * Whether a saved archetype with a library id still has the library's values.
+ * An edited copy (project provenance, or another intensity or schedule) is
+ * migrated like a project archetype, so its own schedule is kept.
+ */
+function untouchedLibraryCopy(id: string, saved: Raw): boolean {
+  const old = OLD_LIBRARY[id]
+  if (!old) return false
+  const source = isObject(saved.source) ? saved.source : null
+  if (source && source.kind !== 'library') return false
+  if ('euiKwhPerM2' in saved && saved.euiKwhPerM2 !== old.eui) return false
+  if ('scheduleId' in saved && saved.scheduleId !== old.scheduleId) return false
+  return true
+}
+
 function migrateArchetype(id: string, saved: Raw, parts: Raw): Raw {
   const entry = ARCHETYPE_LIBRARY.find((candidate) => candidate.id === id)
-  if (entry) {
+  if (entry && untouchedLibraryCopy(id, saved)) {
     // Very old saves had neither ranges nor provenance; the library fills them.
     return {
       ...entry,
@@ -246,6 +284,24 @@ export function migrateArchetypeParts(value: unknown): unknown {
       group.statusReason =
         'Saved before archetype parts; start a fresh run of Archetype modeling.'
     }
+  }
+
+  // Results downstream came from the old single intensities: a new revision
+  // of Archetype modeling's outputs marks them outdated, and an issue says why.
+  if (hasRun && isObject(stage)) {
+    const next = typeof state.nextId === 'number' ? state.nextId : 1
+    stage.revision = next
+    state.nextId = next + 1
+    const issues = Array.isArray(state.issues) ? state.issues : []
+    issues.push({
+      id: MIGRATION_ISSUE_ID,
+      severity: 'warning',
+      message:
+        'This project was saved before archetype parts. Buildings keep their archetypes as four parts, but results computed from the old single intensities are outdated; run Baseline model setup and the stages after it again.',
+      stageId: STAGE_IDS.baseline,
+      createdAt: new Date().toISOString(),
+    })
+    state.issues = issues
   }
 
   return {

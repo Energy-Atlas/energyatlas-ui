@@ -1,6 +1,7 @@
 import { describe, expect, test } from 'vitest'
-import type { RuleCondition } from '../types.ts'
+import type { ConditionField, RuleCondition } from '../types.ts'
 import {
+  CONDITION_FIELDS,
   conditionIssue,
   conditionMatches,
   conditionsMatch,
@@ -11,7 +12,7 @@ import {
   type RuleLike,
 } from './conditions.ts'
 
-const subject: ConditionSubject = {
+const subject: ConditionSubject<ConditionField> = {
   use: 'office',
   yearBuilt: 1975,
   floors: 8,
@@ -34,8 +35,8 @@ function rule(
   id: string,
   conditions: RuleCondition[],
   slots: Partial<Record<Slot, string>>,
-  options: Partial<RuleLike<Slot>> = {},
-): RuleLike<Slot> {
+  options: Partial<RuleLike<Slot, ConditionField>> = {},
+): RuleLike<Slot, ConditionField> {
   return {
     id,
     name: id,
@@ -50,68 +51,126 @@ function rule(
 describe('conditions', () => {
   test('operators follow RC: strict numbers, case-free text, missing never matches', () => {
     expect(
-      conditionMatches(when('yearBuilt', 'smaller', '1980'), subject),
+      conditionMatches(
+        CONDITION_FIELDS,
+        when('yearBuilt', 'smaller', '1980'),
+        subject,
+      ),
     ).toBe(true)
     expect(
-      conditionMatches(when('yearBuilt', 'smaller', '1975'), subject),
+      conditionMatches(
+        CONDITION_FIELDS,
+        when('yearBuilt', 'smaller', '1975'),
+        subject,
+      ),
     ).toBe(false)
-    expect(conditionMatches(when('floors', 'larger', '7'), subject)).toBe(true)
-    expect(conditionMatches(when('floors', 'equals', '8'), subject)).toBe(true)
-    expect(conditionMatches(when('use', 'equals', 'OFFICE'), subject)).toBe(
-      true,
-    )
-    expect(conditionMatches(when('name', 'contains', 'ing 1'), subject)).toBe(
-      true,
-    )
     expect(
-      conditionMatches(when('use', 'notContains', 'residential'), subject),
+      conditionMatches(
+        CONDITION_FIELDS,
+        when('floors', 'larger', '7'),
+        subject,
+      ),
+    ).toBe(true)
+    expect(
+      conditionMatches(
+        CONDITION_FIELDS,
+        when('floors', 'equals', '8'),
+        subject,
+      ),
+    ).toBe(true)
+    expect(
+      conditionMatches(
+        CONDITION_FIELDS,
+        when('use', 'equals', 'OFFICE'),
+        subject,
+      ),
+    ).toBe(true)
+    expect(
+      conditionMatches(
+        CONDITION_FIELDS,
+        when('name', 'contains', 'ing 1'),
+        subject,
+      ),
+    ).toBe(true)
+    expect(
+      conditionMatches(
+        CONDITION_FIELDS,
+        when('use', 'notContains', 'residential'),
+        subject,
+      ),
     ).toBe(true)
     // A missing value fails every operator, does not contain included.
     const unknown = { ...subject, yearBuilt: null, use: null }
     expect(
-      conditionMatches(when('yearBuilt', 'smaller', '3000'), unknown),
+      conditionMatches(
+        CONDITION_FIELDS,
+        when('yearBuilt', 'smaller', '3000'),
+        unknown,
+      ),
     ).toBe(false)
     expect(
-      conditionMatches(when('use', 'notContains', 'office'), unknown),
+      conditionMatches(
+        CONDITION_FIELDS,
+        when('use', 'notContains', 'office'),
+        unknown,
+      ),
     ).toBe(false)
   })
 
   test('logic all, any, and none; no conditions match everything', () => {
     const yes = when('floors', 'larger', '2')
     const no = when('use', 'equals', 'school')
-    expect(conditionsMatch('all', [yes, no], subject)).toBe(false)
-    expect(conditionsMatch('any', [yes, no], subject)).toBe(true)
-    expect(conditionsMatch('none', [no], subject)).toBe(true)
-    expect(conditionsMatch('none', [yes, no], subject)).toBe(false)
-    expect(conditionsMatch('all', [], subject)).toBe(true)
-    expect(conditionsMatch('none', [], subject)).toBe(true)
+    expect(conditionsMatch(CONDITION_FIELDS, 'all', [yes, no], subject)).toBe(
+      false,
+    )
+    expect(conditionsMatch(CONDITION_FIELDS, 'any', [yes, no], subject)).toBe(
+      true,
+    )
+    expect(conditionsMatch(CONDITION_FIELDS, 'none', [no], subject)).toBe(true)
+    expect(conditionsMatch(CONDITION_FIELDS, 'none', [yes, no], subject)).toBe(
+      false,
+    )
+    expect(conditionsMatch(CONDITION_FIELDS, 'all', [], subject)).toBe(true)
+    expect(conditionsMatch(CONDITION_FIELDS, 'none', [], subject)).toBe(true)
   })
 
   test('validates a condition by its field type, and allows blank ones', () => {
-    expect(conditionIssue(when('floors', 'larger', 'six'))).toEqual({
+    expect(
+      conditionIssue(CONDITION_FIELDS, when('floors', 'larger', 'six')),
+    ).toEqual({
       path: 'value',
       message: 'Enter a number.',
     })
-    expect(conditionIssue(when('floors', 'contains', '6'))?.path).toBe(
-      'operator',
-    )
-    expect(conditionIssue(when('use', 'equals', 'castle'))?.path).toBe('value')
-    expect(conditionIssue(when('name', 'contains', ' '))?.path).toBe('value')
-    expect(conditionIssue(when(null, 'equals', ''))).toBeNull()
-    expect(conditionIssue(when('use', 'equals', 'retail'))).toBeNull()
+    expect(
+      conditionIssue(CONDITION_FIELDS, when('floors', 'contains', '6'))?.path,
+    ).toBe('operator')
+    expect(
+      conditionIssue(CONDITION_FIELDS, when('use', 'equals', 'castle'))?.path,
+    ).toBe('value')
+    expect(
+      conditionIssue(CONDITION_FIELDS, when('name', 'contains', ' '))?.path,
+    ).toBe('value')
+    expect(
+      conditionIssue(CONDITION_FIELDS, when(null, 'equals', '')),
+    ).toBeNull()
+    expect(
+      conditionIssue(CONDITION_FIELDS, when('use', 'equals', 'retail')),
+    ).toBeNull()
   })
 
   test('describes conditions in words', () => {
-    expect(describeConditions('all', [])).toBe('Every building')
+    expect(describeConditions(CONDITION_FIELDS, 'all', [])).toBe(
+      'Every building',
+    )
     expect(
-      describeConditions('all', [
+      describeConditions(CONDITION_FIELDS, 'all', [
         when('use', 'equals', 'residential'),
         when('yearBuilt', 'smaller', '1980'),
       ]),
     ).toBe('Use equals Residential and Year built is smaller than 1980')
-    expect(describeConditions('any', [when(null, 'equals', '')])).toBe(
-      'Only blank conditions',
-    )
+    expect(
+      describeConditions(CONDITION_FIELDS, 'any', [when(null, 'equals', '')]),
+    ).toBe('Only blank conditions')
   })
 })
 
@@ -129,8 +188,14 @@ describe('rule evaluation', () => {
       ],
       SLOTS,
       () => true,
+      'part',
     )
-    const { winners, matched } = firstMatches(prepared, SLOTS, subject)
+    const { winners, matched } = firstMatches(
+      CONDITION_FIELDS,
+      prepared,
+      SLOTS,
+      subject,
+    )
     expect(winners.a).toEqual({
       value: 'office-a',
       ruleId: 'office',
@@ -153,6 +218,7 @@ describe('rule evaluation', () => {
       ],
       SLOTS,
       (_, value) => value !== 'missing',
+      'part',
     )
     expect(warnings.map((warning) => warning.code)).toEqual([
       'blank_conditions_skipped',
@@ -161,13 +227,13 @@ describe('rule evaluation', () => {
     ])
     expect(prepared.map((each) => each.id)).toEqual(['partial', 'gone'])
     // The partial rule keeps its real condition, which this building fails.
-    const { winners } = firstMatches(prepared, SLOTS, subject)
+    const { winners } = firstMatches(CONDITION_FIELDS, prepared, SLOTS, subject)
     expect(winners.a).toBeNull()
     expect(winners.b?.value).toBe('kept')
   })
 
   test('says when no rule is on', () => {
-    expect(prepareRules([], SLOTS, () => true).warnings[0]?.code).toBe(
+    expect(prepareRules([], SLOTS, () => true, 'part').warnings[0]?.code).toBe(
       'no_enabled_rules',
     )
     expect(
@@ -175,7 +241,72 @@ describe('rule evaluation', () => {
         [rule('off', [], { a: 'x' }, { enabled: false })],
         SLOTS,
         () => true,
+        'part',
       ).warnings[0]?.message,
     ).toMatch(/No rule is on/)
+  })
+})
+
+describe('another field registry', () => {
+  test('conditions, warnings, and descriptions follow the registry and noun given', () => {
+    const fields = [
+      {
+        id: 'kind',
+        label: 'Kind',
+        type: 'enum' as const,
+        options: [{ value: 'pv', label: 'PV' }],
+      },
+      { id: 'savings', label: 'Savings', type: 'number' as const, unit: '%' },
+    ]
+    const item = { kind: 'pv', savings: 12 }
+    expect(
+      conditionMatches(
+        fields,
+        { field: 'savings', operator: 'larger', value: '10' },
+        item,
+      ),
+    ).toBe(true)
+    expect(
+      conditionIssue(fields, {
+        field: 'kind',
+        operator: 'equals',
+        value: 'wind',
+      })?.path,
+    ).toBe('value')
+    // A field the registry lacks is refused and never matches.
+    expect(
+      conditionIssue(fields, {
+        field: 'floors',
+        operator: 'equals',
+        value: '1',
+      } as never)?.path,
+    ).toBe('field')
+    expect(
+      describeConditions(
+        fields,
+        'all',
+        [{ field: 'kind', operator: 'equals', value: 'pv' }],
+        'Every measure',
+      ),
+    ).toBe('Kind equals PV')
+    expect(describeConditions(fields, 'all', [], 'Every measure')).toBe(
+      'Every measure',
+    )
+    const { warnings } = prepareRules(
+      [
+        {
+          id: 'r',
+          name: 'R',
+          enabled: true,
+          logic: 'all',
+          conditions: [],
+          slots: { heating: 'gone' },
+        },
+      ],
+      ['heating'],
+      () => false,
+      'measure',
+    )
+    expect(warnings[0]?.message).toMatch(/later rules decide that measure\.$/)
   })
 })

@@ -19,6 +19,7 @@ import {
   overrideKey,
 } from './archetypes/parts.ts'
 import {
+  CONDITION_FIELDS,
   CONDITION_FIELD_IDS,
   CONDITION_OPERATORS,
   conditionIssue,
@@ -431,7 +432,10 @@ function addLibraryArchetype(state: WorkbenchState, entry: Archetype) {
  * archetypes, below the project's own rules, with the fallback last. The
  * fallback's library parts come into the project when it lacks them.
  */
-function generateDefaultRules(state: WorkbenchState): number {
+function generateDefaultRules(state: WorkbenchState): {
+  added: number
+  kept: string[]
+} {
   for (const id of state.ruleIds) {
     if (state.rules[id]?.origin === 'default') delete state.rules[id]
   }
@@ -445,13 +449,21 @@ function generateDefaultRules(state: WorkbenchState): number {
       PART_KINDS.map((kind) => fallback.parts[kind]),
     )
   }
-  const drafts = defaultRuleDrafts(state.archetypes)
-  for (const draft of drafts) {
+  // A generated rule edited into the project's own keeps its name; the
+  // default of the same name is left out, so names stay unique.
+  const kept: string[] = []
+  let added = 0
+  for (const draft of defaultRuleDrafts(state.archetypes)) {
+    if (!uniqueName(Object.values(state.rules), draft.rule.name)) {
+      kept.push(draft.rule.name)
+      continue
+    }
     const id = allocateId(state, 'rule')
     state.rules[id] = { id, ...draft.rule }
     state.ruleIds.push(id)
+    added += 1
   }
-  return drafts.length
+  return { added, kept }
 }
 
 /** Whether rules, overrides, or published assignments use a part, so editing it changes results. */
@@ -1329,11 +1341,11 @@ export const commandDefinitions = {
   'rule.save': defineCommand({
     title: 'Save assignment rule',
     description:
-      'Create an archetype assignment rule, or change one by id: a name, enabled, logic (all, any, or none of the conditions), conditions of field (use, yearBuilt, floors, floorAreaM2, heightM, footprintAreaM2, name, or null for a blank one), operator (larger, smaller, equals, contains, notContains; numbers take larger, smaller, equals; use takes equals, notContains; text takes contains, notContains, equals), and value, and the part of each kind it sets (a part id or null). No conditions match every building. Rules are tried top first and each part takes the first enabled matching rule that sets it; a new rule goes to position (default 0, the top). Archetype modeling becomes outdated.',
+      'Create an archetype assignment rule, or change one by id: a name, enabled (left out: on for a new rule, unchanged for an existing one), logic (all, any, or none of the conditions), conditions of field (use, yearBuilt, floors, floorAreaM2, heightM, footprintAreaM2, name, or null for a blank one), operator (larger, smaller, equals, contains, notContains; numbers take larger, smaller, equals; use takes equals, notContains; text takes contains, notContains, equals), and value, and the part of each kind it sets (a part id or null). No conditions match every building. Rules are tried top first and each part takes the first enabled matching rule that sets it; a new rule goes to position (default 0, the top), and a changed rule moves only when position is given. Archetype modeling becomes outdated.',
     input: z.object({
       name: nameSchema,
       id: z.string().min(1).optional(),
-      enabled: z.boolean().default(true),
+      enabled: z.boolean().optional(),
       logic: z.enum(['all', 'any', 'none']),
       conditions: z
         .array(conditionSchema)
@@ -1355,7 +1367,7 @@ export const commandDefinitions = {
       }
       const issues: ValidationIssue[] = []
       input.conditions.forEach((condition, index) => {
-        const issue = conditionIssue(condition)
+        const issue = conditionIssue(CONDITION_FIELDS, condition)
         if (issue) {
           issues.push({
             path: `conditions.${index}.${issue.path}`,
@@ -1383,7 +1395,8 @@ export const commandDefinitions = {
       state.rules[id] = {
         id,
         name: input.name,
-        enabled: input.enabled,
+        // Left out, a new rule is on and a changed rule keeps its switch.
+        enabled: input.enabled ?? existing?.enabled ?? true,
         logic: input.logic,
         conditions: input.conditions.map((condition) => ({
           field: condition.field,
@@ -1397,11 +1410,16 @@ export const commandDefinitions = {
       if (!existing) {
         const position = Math.min(input.position ?? 0, state.ruleIds.length)
         state.ruleIds.splice(position, 0, id)
+      } else if (input.position !== undefined) {
+        // A changed rule moves only when a position is given.
+        const others = state.ruleIds.filter((ruleId) => ruleId !== id)
+        others.splice(Math.min(input.position, others.length), 0, id)
+        state.ruleIds = others
       }
       touchArchetypeInputs(state)
       return applied(
         existing
-          ? `Updated rule "${input.name}"; run Archetype modeling to reassign parts.`
+          ? `Updated rule "${input.name}" at position ${state.ruleIds.indexOf(id) + 1}; run Archetype modeling to reassign parts.`
           : `Created rule "${input.name}" at position ${state.ruleIds.indexOf(id) + 1}; run Archetype modeling to assign it.`,
       )
     },
@@ -1524,10 +1542,10 @@ export const commandDefinitions = {
           'There are no archetypes to generate rules from. Add archetypes from the library first.',
         )
       }
-      const count = generateDefaultRules(state)
+      const { added, kept } = generateDefaultRules(state)
       touchArchetypeInputs(state)
       return applied(
-        `Generated ${count} default rules from ${Object.keys(state.archetypes).length} archetypes, with the fallback last.`,
+        `Generated ${added} default rules from ${Object.keys(state.archetypes).length} archetypes, with the fallback last${kept.length > 0 ? `; kept the project's own ${kept.map((name) => `"${name}"`).join(', ')} instead of a default of the same name` : ''}.`,
       )
     },
   }),

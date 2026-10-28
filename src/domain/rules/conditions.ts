@@ -3,7 +3,6 @@ import type {
   BuildingUse,
   ConditionField,
   ConditionOperator,
-  RuleCondition,
   RuleLogic,
 } from '../types.ts'
 
@@ -13,18 +12,39 @@ import type {
 // any / none, conditions of field, operator, and value, and one value per
 // slot. Rules are tried in list order, top first; each slot takes the first
 // enabled matching rule that sets it (TemplateAssignment.cs:151-192), so one
-// building's slots can come from different rules.
+// subject's slots can come from different rules.
+//
+// Nothing here is tied to buildings or archetype parts: callers pass the
+// field registry the conditions use and the noun for a slot ("part",
+// "measure"). The building fields are one such registry.
 
 export type FieldType = 'number' | 'enum' | 'text'
 
-export type ConditionFieldDefinition = {
-  id: ConditionField
+export type ConditionFieldDefinition<Field extends string = string> = {
+  id: Field
   label: string
   type: FieldType
   /** Enumerated values with labels, for enum fields. */
   options?: { value: string; label: string }[]
   unit?: string
 }
+
+/** The fields a set of conditions may test, in the order a builder offers them. */
+export type FieldRegistry<Field extends string = string> =
+  readonly ConditionFieldDefinition<Field>[]
+
+/** One condition; a blank one (no field) is dropped when rules are evaluated. */
+export type Condition<Field extends string = string> = {
+  field: Field | null
+  operator: ConditionOperator
+  value: string
+}
+
+/** The attributes conditions read; a missing value never matches. */
+export type ConditionSubject<Field extends string = string> = Record<
+  Field,
+  string | number | null
+>
 
 const USE_OPTIONS: { value: BuildingUse; label: string }[] = [
   { value: 'residential', label: 'Residential' },
@@ -34,7 +54,8 @@ const USE_OPTIONS: { value: BuildingUse; label: string }[] = [
   { value: 'mixed', label: 'Mixed use' },
 ]
 
-export const CONDITION_FIELDS: readonly ConditionFieldDefinition[] = [
+/** Building attributes, the registry archetype (and scenario) rules use. */
+export const CONDITION_FIELDS: FieldRegistry<ConditionField> = [
   { id: 'use', label: 'Use', type: 'enum', options: USE_OPTIONS },
   { id: 'yearBuilt', label: 'Year built', type: 'number' },
   { id: 'floors', label: 'Floors', type: 'number' },
@@ -53,13 +74,12 @@ export const CONDITION_FIELD_IDS = CONDITION_FIELDS.map(
   (field) => field.id,
 ) as [ConditionField, ...ConditionField[]]
 
-export function fieldDefinition(
-  field: ConditionField,
-): ConditionFieldDefinition {
-  return (
-    CONDITION_FIELDS.find((definition) => definition.id === field) ??
-    CONDITION_FIELDS[0]!
-  )
+/** A field's definition in a registry, or undefined when it has none. */
+export function fieldDefinition<Field extends string>(
+  fields: FieldRegistry<Field>,
+  field: Field,
+): ConditionFieldDefinition<Field> | undefined {
+  return fields.find((definition) => definition.id === field)
 }
 
 export const OPERATOR_LABELS: Record<ConditionOperator, string> = {
@@ -88,10 +108,9 @@ export const LOGIC_LABELS: Record<RuleLogic, string> = {
   none: 'no condition matches',
 }
 
-/** The attributes conditions read; a missing value never matches. */
-export type ConditionSubject = Record<ConditionField, string | number | null>
-
-export function buildingSubject(building: Building): ConditionSubject {
+export function buildingSubject(
+  building: Building,
+): ConditionSubject<ConditionField> {
   return {
     use: building.use,
     yearBuilt: building.yearBuilt,
@@ -103,7 +122,7 @@ export function buildingSubject(building: Building): ConditionSubject {
   }
 }
 
-export function isBlank(condition: RuleCondition): boolean {
+export function isBlank(condition: Condition): boolean {
   return condition.field === null
 }
 
@@ -111,11 +130,15 @@ export function isBlank(condition: RuleCondition): boolean {
  * Why a condition with a field cannot be saved, or null. Blank conditions (no
  * field) are allowed and dropped when rules are evaluated, as in RC.
  */
-export function conditionIssue(
-  condition: RuleCondition,
-): { path: 'operator' | 'value'; message: string } | null {
+export function conditionIssue<Field extends string>(
+  fields: FieldRegistry<Field>,
+  condition: Condition<Field>,
+): { path: 'field' | 'operator' | 'value'; message: string } | null {
   if (condition.field === null) return null
-  const definition = fieldDefinition(condition.field)
+  const definition = fieldDefinition(fields, condition.field)
+  if (!definition) {
+    return { path: 'field', message: 'Choose a field from the list.' }
+  }
   if (!OPERATORS_BY_TYPE[definition.type].includes(condition.operator)) {
     return {
       path: 'operator',
@@ -142,18 +165,19 @@ export function conditionIssue(
 }
 
 /**
- * Whether a building attribute meets one complete condition. As in RC
+ * Whether a subject's attribute meets one complete condition. As in RC
  * (GISSelection.cs), a missing value never matches, text compares without
  * case, and larger and smaller are strict.
  */
-export function conditionMatches(
-  condition: RuleCondition,
-  subject: ConditionSubject,
+export function conditionMatches<Field extends string>(
+  fields: FieldRegistry<Field>,
+  condition: Condition<Field>,
+  subject: ConditionSubject<Field>,
 ): boolean {
   if (condition.field === null) return false
   const actual = subject[condition.field]
-  if (actual === null) return false
-  const definition = fieldDefinition(condition.field)
+  const definition = fieldDefinition(fields, condition.field)
+  if (actual === null || actual === undefined || !definition) return false
   const expected = condition.value.trim()
   if (definition.type === 'number') {
     const number = Number(expected)
@@ -185,14 +209,15 @@ export function conditionMatches(
 }
 
 /** Whether complete conditions match under a logic; none at all matches everything. */
-export function conditionsMatch(
+export function conditionsMatch<Field extends string>(
+  fields: FieldRegistry<Field>,
   logic: RuleLogic,
-  conditions: RuleCondition[],
-  subject: ConditionSubject,
+  conditions: Condition<Field>[],
+  subject: ConditionSubject<Field>,
 ): boolean {
   if (conditions.length === 0) return true
   const results = conditions.map((condition) =>
-    conditionMatches(condition, subject),
+    conditionMatches(fields, condition, subject),
   )
   if (logic === 'any') return results.some(Boolean)
   if (logic === 'none') return !results.some(Boolean)
@@ -200,25 +225,32 @@ export function conditionsMatch(
 }
 
 /** A condition in words, such as "Year built is smaller than 1980". */
-export function describeCondition(condition: RuleCondition): string {
+export function describeCondition<Field extends string>(
+  fields: FieldRegistry<Field>,
+  condition: Condition<Field>,
+): string {
   if (condition.field === null) return 'Blank condition'
-  const definition = fieldDefinition(condition.field)
+  const definition = fieldDefinition(fields, condition.field)
   const value =
-    definition.options?.find((option) => option.value === condition.value)
+    definition?.options?.find((option) => option.value === condition.value)
       ?.label ?? condition.value
-  return `${definition.label} ${OPERATOR_LABELS[condition.operator]} ${value}${definition.unit ? ` ${definition.unit}` : ''}`
+  return `${definition?.label ?? condition.field} ${OPERATOR_LABELS[condition.operator]} ${value}${definition?.unit ? ` ${definition.unit}` : ''}`
 }
 
-/** A rule's conditions in one line, for lists. */
-export function describeConditions(
+/** A rule's conditions in one line, for lists; `everything` names a rule without conditions. */
+export function describeConditions<Field extends string>(
+  fields: FieldRegistry<Field>,
   logic: RuleLogic,
-  conditions: RuleCondition[],
+  conditions: Condition<Field>[],
+  everything = 'Every building',
 ): string {
   const complete = conditions.filter((condition) => !isBlank(condition))
   if (complete.length === 0) {
-    return conditions.length === 0 ? 'Every building' : 'Only blank conditions'
+    return conditions.length === 0 ? everything : 'Only blank conditions'
   }
-  const joined = complete.map(describeCondition)
+  const joined = complete.map((condition) =>
+    describeCondition(fields, condition),
+  )
   if (complete.length === 1) {
     return logic === 'none' ? `Not: ${joined[0]}` : (joined[0] ?? '')
   }
@@ -240,21 +272,21 @@ export type RuleWarning = {
 }
 
 /** The fields of a rule that evaluation reads. */
-export type RuleLike<Slot extends string> = {
+export type RuleLike<Slot extends string, Field extends string = string> = {
   id: string
   name: string
   enabled: boolean
   logic: RuleLogic
-  conditions: RuleCondition[]
+  conditions: Condition<Field>[]
   /** The value each slot gets from the rule; null leaves it to later rules. */
   slots: Record<Slot, string | null>
 }
 
-export type PreparedRule<Slot extends string> = {
+export type PreparedRule<Slot extends string, Field extends string = string> = {
   id: string
   name: string
   logic: RuleLogic
-  conditions: RuleCondition[]
+  conditions: Condition<Field>[]
   slots: Partial<Record<Slot, string>>
 }
 
@@ -262,15 +294,17 @@ export type PreparedRule<Slot extends string> = {
  * The enabled rules evaluation tries, in order, with RC's warnings: a rule
  * whose conditions are all blank is skipped (a half-filled rule is not a
  * catch-all), a rule with some blank conditions applies without them, and a
- * slot whose value no longer exists is left to later rules.
+ * slot whose value no longer exists is left to later rules. `noun` names a
+ * slot in the warnings, such as "part" or "measure".
  */
-export function prepareRules<Slot extends string>(
-  rules: RuleLike<Slot>[],
+export function prepareRules<Slot extends string, Field extends string>(
+  rules: RuleLike<Slot, Field>[],
   slots: readonly Slot[],
   exists: (slot: Slot, value: string) => boolean,
-): { prepared: PreparedRule<Slot>[]; warnings: RuleWarning[] } {
+  noun: string,
+): { prepared: PreparedRule<Slot, Field>[]; warnings: RuleWarning[] } {
   const warnings: RuleWarning[] = []
-  const prepared: PreparedRule<Slot>[] = []
+  const prepared: PreparedRule<Slot, Field>[] = []
   for (const rule of rules) {
     if (!rule.enabled) continue
     const complete = rule.conditions.filter((condition) => !isBlank(condition))
@@ -298,7 +332,7 @@ export function prepareRules<Slot extends string>(
         warnings.push({
           code: 'missing_target_skipped',
           ruleId: rule.id,
-          message: `"${rule.name}" sets "${value}", which no longer exists; later rules decide that part.`,
+          message: `"${rule.name}" sets "${value}", which no longer exists; later rules decide that ${noun}.`,
         })
         continue
       }
@@ -331,17 +365,18 @@ export type SlotWinner = { value: string; ruleId: string; ruleName: string }
  * Per-slot first match: each slot takes the first rule, top first, that
  * matches and sets it. Also returns every rule that matched.
  */
-export function firstMatches<Slot extends string>(
-  prepared: PreparedRule<Slot>[],
+export function firstMatches<Slot extends string, Field extends string>(
+  fields: FieldRegistry<Field>,
+  prepared: PreparedRule<Slot, Field>[],
   slots: readonly Slot[],
-  subject: ConditionSubject,
+  subject: ConditionSubject<Field>,
 ): { winners: Record<Slot, SlotWinner | null>; matched: string[] } {
   const winners = Object.fromEntries(
     slots.map((slot) => [slot, null]),
   ) as Record<Slot, SlotWinner | null>
   const matched: string[] = []
   for (const rule of prepared) {
-    if (!conditionsMatch(rule.logic, rule.conditions, subject)) continue
+    if (!conditionsMatch(fields, rule.logic, rule.conditions, subject)) continue
     matched.push(rule.id)
     for (const slot of slots) {
       const value = rule.slots[slot]

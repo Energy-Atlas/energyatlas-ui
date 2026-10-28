@@ -33,6 +33,8 @@ async function openGallery(page: Page, appearance = 'light') {
 test('the gallery renders every appearance without serious axe violations', async ({
   page,
 }) => {
+  // Six axe passes over a gallery that grows with every shared component.
+  test.setTimeout(90_000)
   await openGallery(page)
   for (const id of APPEARANCE_IDS) {
     await page.goto(`/?gallery&appearance=${id}`)
