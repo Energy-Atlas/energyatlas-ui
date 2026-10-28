@@ -1,17 +1,38 @@
 import { STAGE_IDS } from '../workflow.ts'
-import { ARCHETYPE_LIBRARY, DEFAULT_ARCHETYPE_IDS } from './library.ts'
+import {
+  buildingSubject,
+  firstMatches,
+  prepareRules,
+  type PreparedRule,
+  type RuleWarning,
+} from '../rules/conditions.ts'
+import {
+  ARCHETYPE_LIBRARY,
+  DEFAULT_ARCHETYPE_IDS,
+  FALLBACK_ARCHETYPE_ID,
+} from './library.ts'
+import { effectivePartIds, emptyParts, overrideKey } from './parts.ts'
 import type {
   Archetype,
+  AssignmentRule,
   Building,
-  BuildingUse,
-  Schedule,
+  BuildingParts,
+  PartKind,
+  RuleCondition,
   WorkbenchState,
 } from '../types.ts'
+import { PART_KINDS } from '../types.ts'
 
-// Archetype assignment and schedule statistics (jobs rollout plan, slice 5).
-// An archetype matches a building by use and an optional construction-year
-// range; the narrowest matching range wins, then the archetype ID, so the
-// choice never depends on object order.
+export {
+  dayHours,
+  scheduleStats,
+  weekdayHours,
+  type ScheduleStats,
+} from './schedules.ts'
+
+// Archetype assignment by rules (decision 0032): RC's four parts assigned
+// separately. Rules are tried top first; each part takes the first enabled
+// rule that matches the building and sets that part. Manual overrides win.
 
 export function rangeWidth(archetype: Archetype): number {
   const from = archetype.yearFrom ?? 1600
@@ -19,112 +40,236 @@ export function rangeWidth(archetype: Archetype): number {
   return to - from
 }
 
-export function matchesBuilding(
-  archetype: Archetype,
-  building: Pick<Building, 'use' | 'yearBuilt'>,
-): boolean {
-  if (building.use !== archetype.use) return false
-  if (archetype.yearFrom === null && archetype.yearTo === null) return true
-  // An unknown year falls in any range open at one end; the narrowest wins.
-  if (building.yearBuilt === null) {
-    return archetype.yearFrom === null || archetype.yearTo === null
+/** The conditions a default rule for an archetype uses: its use and year range. */
+export function archetypeConditions(archetype: Archetype): RuleCondition[] {
+  const conditions: RuleCondition[] = [
+    { field: 'use', operator: 'equals', value: archetype.use },
+  ]
+  // RC turns "at least" into larger than one less (TemplateAssignmentController.cs).
+  if (archetype.yearFrom !== null) {
+    conditions.push({
+      field: 'yearBuilt',
+      operator: 'larger',
+      value: String(archetype.yearFrom - 1),
+    })
   }
-  return (
-    (archetype.yearFrom === null || building.yearBuilt >= archetype.yearFrom) &&
-    (archetype.yearTo === null || building.yearBuilt <= archetype.yearTo)
-  )
-}
-
-/** The archetype a building gets from the project's definitions, or null. */
-export function matchArchetype(
-  archetypes: Record<string, Archetype>,
-  building: Pick<Building, 'use' | 'yearBuilt'>,
-): string | null {
-  const candidates = Object.values(archetypes)
-    .filter((archetype) => matchesBuilding(archetype, building))
-    .sort(
-      (a, b) =>
-        rangeWidth(a) - rangeWidth(b) ||
-        (a.id < b.id ? -1 : a.id > b.id ? 1 : 0),
-    )
-  return candidates[0]?.id ?? null
-}
-
-export type ScheduleStats = {
-  /** Equivalent full-load hours in a week: each day's profile, summed. */
-  weeklyHours: number
-  /** Equivalent full-load hours in a 365-day year (52 weeks and a Monday). */
-  annualHours: number
-  /**
-   * The year-round average fraction: annual full-load hours over the 8,760
-   * hours of the year. A constant schedule at this value gives the same
-   * annual total.
-   */
-  annualAverage: number
-  min: number
-  max: number
-}
-
-const HOURS_IN_YEAR = 8760
-
-/** The hours of the day profile a day of the week uses (0 is Monday). */
-export function dayHours(
-  schedule: Pick<Schedule, 'days' | 'week'>,
-  weekDay: number,
-): number[] {
-  const id = schedule.week[weekDay]
-  return schedule.days.find((day) => day.id === id)?.hours ?? []
-}
-
-/** The profile a typical working day uses: Monday's. */
-export function weekdayHours(
-  schedule: Pick<Schedule, 'days' | 'week'>,
-): number[] {
-  return dayHours(schedule, 0)
-}
-
-export function scheduleStats(
-  schedule: Pick<Schedule, 'days' | 'week'>,
-): ScheduleStats {
-  const sum = (values: number[]) =>
-    values.reduce((total, value) => total + value, 0)
-  const daily = schedule.week.map((_, day) => sum(dayHours(schedule, day)))
-  const weeklyHours = sum(daily)
-  const annualHours = weeklyHours * 52 + (daily[0] ?? 0)
-  const used = schedule.days.filter((day) => schedule.week.includes(day.id))
-  const all = used.flatMap((day) => day.hours)
-  return {
-    weeklyHours: Math.round(weeklyHours * 10) / 10,
-    annualHours: Math.round(annualHours),
-    annualAverage: Math.round((annualHours / HOURS_IN_YEAR) * 1000) / 1000,
-    min: all.length > 0 ? Math.min(...all) : 0,
-    max: all.length > 0 ? Math.max(...all) : 0,
+  if (archetype.yearTo !== null) {
+    conditions.push({
+      field: 'yearBuilt',
+      operator: 'smaller',
+      value: String(archetype.yearTo + 1),
+    })
   }
+  return conditions
 }
 
-export type CoverageRow = {
-  use: BuildingUse | 'unknown'
-  buildings: number
-  assigned: number
-  unassigned: number
-  overridden: number
-}
+export const FALLBACK_RULE_NAME = 'Fallback: any building'
 
-export type AssignmentPreview = {
-  rows: CoverageRow[]
-  assigned: number
-  unassigned: number
-  /** Buildings whose assignment would change from the current one. */
-  changes: number
-  /** Manual archetype overrides that win over the rules. */
-  overrides: number
-  /** Buildings by archetype ID after assignment. */
-  byArchetype: Record<string, number>
+/** A generated rule and the archetype it comes from; null for the fallback. */
+export type DefaultRuleDraft = {
+  archetypeId: string | null
+  rule: Omit<AssignmentRule, 'id'>
 }
 
 /**
- * Library defaults a run adds before assigning: while Archetype modeling has
- * never run, every default archetype the project lacks, skipping names in use.
+ * The default rules RC generates per building type and vintage, with a
+ * fallback without conditions last (TemplateAssignmentController.cs:1444-1538).
+ * In the demo they come from the project's archetypes: by use, the narrowest
+ * year range first, then id, so specific vintages win over open ones. The
+ * fallback takes the Mixed use archetype's parts when the project has them.
+ */
+export function defaultRuleDrafts(
+  archetypes: Record<string, Archetype>,
+): DefaultRuleDraft[] {
+  const ordered = Object.values(archetypes).sort(
+    (a, b) =>
+      a.use.localeCompare(b.use) ||
+      rangeWidth(a) - rangeWidth(b) ||
+      (a.id < b.id ? -1 : a.id > b.id ? 1 : 0),
+  )
+  const drafts: DefaultRuleDraft[] = ordered.map((archetype) => ({
+    archetypeId: archetype.id,
+    rule: {
+      name: archetype.name,
+      enabled: true,
+      logic: 'all',
+      conditions: archetypeConditions(archetype),
+      parts: { ...archetype.parts },
+      origin: 'default',
+    },
+  }))
+  const fallback =
+    archetypes[FALLBACK_ARCHETYPE_ID] ??
+    ARCHETYPE_LIBRARY.find((entry) => entry.id === FALLBACK_ARCHETYPE_ID)
+  if (fallback) {
+    drafts.push({
+      archetypeId: null,
+      rule: {
+        name: FALLBACK_RULE_NAME,
+        enabled: true,
+        logic: 'all',
+        conditions: [],
+        parts: { ...fallback.parts },
+        origin: 'default',
+      },
+    })
+  }
+  return drafts
+}
+
+/** The rules in order, as evaluation reads them. */
+export function orderedRules(
+  state: Pick<WorkbenchState, 'rules' | 'ruleIds'>,
+): AssignmentRule[] {
+  return state.ruleIds.flatMap((id) => {
+    const rule = state.rules[id]
+    return rule ? [rule] : []
+  })
+}
+
+/** The enabled rules ready to evaluate, with RC's coded warnings. */
+export function prepareAssignmentRules(
+  state: Pick<WorkbenchState, 'rules' | 'ruleIds' | 'parts'>,
+): { prepared: PreparedRule<PartKind>[]; warnings: RuleWarning[] } {
+  return prepareRules(
+    orderedRules(state).map((rule) => ({ ...rule, slots: rule.parts })),
+    PART_KINDS,
+    (kind, partId) => state.parts[partId]?.kind === kind,
+  )
+}
+
+/** The parts the rules give one building, by the rule that set each. */
+export function assignBuilding(
+  prepared: PreparedRule<PartKind>[],
+  building: Building,
+): { parts: BuildingParts; matched: string[] } {
+  const { winners, matched } = firstMatches(
+    prepared,
+    PART_KINDS,
+    buildingSubject(building),
+  )
+  const parts = emptyParts()
+  for (const kind of PART_KINDS) {
+    const winner = winners[kind]
+    parts[kind] = winner
+      ? {
+          partId: winner.value,
+          ruleId: winner.ruleId,
+          ruleName: winner.ruleName,
+        }
+      : null
+  }
+  return { parts, matched }
+}
+
+export type RulePreview = {
+  ruleId: string
+  /** Buildings whose attributes the rule matches. */
+  matched: number
+  /** Buildings whose part of each kind this rule sets, after manual overrides. */
+  takes: Record<PartKind, number>
+  /** Buildings the rule matches, in building order. */
+  buildingIds: string[]
+}
+
+export type AssignmentPreview = {
+  /** Per rule in list order; disabled and skipped rules match nothing. */
+  rules: RulePreview[]
+  /** Buildings left without each part after rules and overrides. */
+  unassigned: Record<PartKind, number>
+  /** Manual overrides of each kind, which win over the rules. */
+  manual: Record<PartKind, number>
+  /** Buildings with all four parts. */
+  complete: number
+  buildings: number
+  /** Buildings whose effective parts would change from the published ones. */
+  changes: number
+  warnings: RuleWarning[]
+  /** Rule results by building, before manual overrides. */
+  byBuilding: Record<string, BuildingParts>
+}
+
+const zeroCounts = (): Record<PartKind, number> => ({
+  construction: 0,
+  systems: 0,
+  spaceLoads: 0,
+  externalLoads: 0,
+})
+
+/**
+ * What the current rules would assign, before running: per rule, how many
+ * buildings it matches and how many parts it takes; unassigned and manual
+ * parts per kind; coded warnings. Pure; shared by the page, the agent, and
+ * the job, so a preview and a run never disagree.
+ */
+export function previewAssignment(
+  state: Pick<
+    WorkbenchState,
+    'rules' | 'ruleIds' | 'parts' | 'buildings' | 'buildingIds' | 'overrides'
+  >,
+): AssignmentPreview {
+  const { prepared, warnings } = prepareAssignmentRules(state)
+  const previews = new Map<string, RulePreview>(
+    state.ruleIds.map((id) => [
+      id,
+      { ruleId: id, matched: 0, takes: zeroCounts(), buildingIds: [] },
+    ]),
+  )
+  const unassigned = zeroCounts()
+  const manual = zeroCounts()
+  const byBuilding: Record<string, BuildingParts> = {}
+  let complete = 0
+  let changes = 0
+  for (const id of state.buildingIds) {
+    const building = state.buildings[id]
+    if (!building) continue
+    const { parts, matched } = assignBuilding(prepared, building)
+    byBuilding[id] = parts
+    for (const ruleId of matched) {
+      const preview = previews.get(ruleId)
+      if (!preview) continue
+      preview.matched += 1
+      preview.buildingIds.push(id)
+    }
+    const current = effectivePartIds(state, building)
+    let full = true
+    let changed = false
+    for (const kind of PART_KINDS) {
+      const override = state.overrides[overrideKey(id, kind)]
+      const next =
+        override && typeof override.value === 'string'
+          ? override.value
+          : (parts[kind]?.partId ?? null)
+      if (override) manual[kind] += 1
+      else if (parts[kind]) {
+        const preview = previews.get(parts[kind].ruleId)
+        if (preview) preview.takes[kind] += 1
+      }
+      if (next === null) {
+        unassigned[kind] += 1
+        full = false
+      }
+      if (next !== current[kind]) changed = true
+    }
+    if (full) complete += 1
+    if (changed) changes += 1
+  }
+  return {
+    rules: [...previews.values()],
+    unassigned,
+    manual,
+    complete,
+    buildings: state.buildingIds.length,
+    changes,
+    warnings,
+    byBuilding,
+  }
+}
+
+/**
+ * Library defaults a first run adds before assigning: while Archetype
+ * modeling has never run, every default archetype the project lacks,
+ * skipping names in use.
  */
 export function missingDefaults(state: WorkbenchState): Archetype[] {
   const stage = state.workflow.stages[STAGE_IDS.archetypes]
@@ -142,59 +287,8 @@ export function missingDefaults(state: WorkbenchState): Archetype[] {
   )
 }
 
-/** What assigning the current definitions would do, including defaults a first run adds; pure. */
-export function previewAssignment(state: WorkbenchState): AssignmentPreview {
-  const archetypes = {
-    ...Object.fromEntries(
-      missingDefaults(state).map((entry) => [entry.id, entry]),
-    ),
-    ...state.archetypes,
-  }
-  const rows = new Map<CoverageRow['use'], CoverageRow>()
-  const byArchetype: Record<string, number> = {}
-  let assigned = 0
-  let unassigned = 0
-  let changes = 0
-  let overrides = 0
-  for (const id of state.buildingIds) {
-    const building = state.buildings[id]
-    if (!building) continue
-    const use = building.use ?? 'unknown'
-    const row = rows.get(use) ?? {
-      use,
-      buildings: 0,
-      assigned: 0,
-      unassigned: 0,
-      overridden: 0,
-    }
-    rows.set(use, row)
-    row.buildings += 1
-    const override = state.overrides[`${id}:archetypeId`]
-    const archetypeId = override
-      ? typeof override.value === 'string'
-        ? override.value
-        : null
-      : matchArchetype(archetypes, building)
-    if (override) {
-      row.overridden += 1
-      overrides += 1
-    }
-    if (archetypeId) {
-      row.assigned += 1
-      assigned += 1
-      byArchetype[archetypeId] = (byArchetype[archetypeId] ?? 0) + 1
-    } else {
-      row.unassigned += 1
-      unassigned += 1
-    }
-    if (archetypeId !== building.archetypeId) changes += 1
-  }
-  return {
-    rows: [...rows.values()].sort((a, b) => a.use.localeCompare(b.use)),
-    assigned,
-    unassigned,
-    changes,
-    overrides,
-    byArchetype,
-  }
+/** Whether a first run would also generate the default rules: it has never run and has none. */
+export function generatesDefaultRules(state: WorkbenchState): boolean {
+  const stage = state.workflow.stages[STAGE_IDS.archetypes]
+  return Boolean(stage && stage.lastRun === null && state.ruleIds.length === 0)
 }

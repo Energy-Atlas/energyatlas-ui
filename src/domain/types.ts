@@ -61,14 +61,39 @@ export type Building = {
   zoneCount: number | null
   shadingFactor: number | null
   pvYieldKwh: number | null
-  archetypeId: string | null
+  /**
+   * The archetype parts Archetype modeling published for the building, by
+   * the rule that set each one (decision 0032). A manual override in
+   * `overrides` wins over these; see `effectiveParts`.
+   */
+  parts: BuildingParts
 }
+
+/** RC's four archetype parts, assigned separately (decision 0032). */
+export type PartKind =
+  'construction' | 'systems' | 'spaceLoads' | 'externalLoads'
+
+export const PART_KINDS = [
+  'construction',
+  'systems',
+  'spaceLoads',
+  'externalLoads',
+] as const satisfies readonly PartKind[]
+
+/** A part a rule gave a building, with the rule's name when it ran. */
+export type AssignedPart = { partId: string; ruleId: string; ruleName: string }
+
+export type BuildingParts = Record<PartKind, AssignedPart | null>
 
 /** Where a definition came from: the synthetic library, or an operation in this project. */
 export type DefinitionSource =
   | { kind: 'library'; libraryId: string }
   | { kind: 'project'; operationId: string; libraryId?: string }
 
+/**
+ * A named bundle of the four parts for one use and construction-year range.
+ * Default assignment rules are generated from archetypes (decision 0032).
+ */
 export type Archetype = {
   id: string
   name: string
@@ -76,9 +101,110 @@ export type Archetype = {
   /** Construction years the archetype covers; null leaves that end open. */
   yearFrom: number | null
   yearTo: number | null
-  euiKwhPerM2: number
+  /** The part of each kind the archetype bundles; null leaves it unset. */
+  parts: Record<PartKind, string | null>
+  source: DefinitionSource
+}
+
+/** The envelope: heat loss through walls, roof, windows, and air leakage. */
+export type ConstructionPart = {
+  id: string
+  name: string
+  kind: 'construction'
+  /** U-values in W/m²K. */
+  wallU: number
+  roofU: number
+  windowU: number
+  /** Share of the facade that is glazed, 0 to 0.9. */
+  windowRatio: number
+  /** Air changes per hour from infiltration. */
+  infiltrationAch: number
+  source: DefinitionSource
+}
+
+export type FuelKind = 'gas' | 'electric' | 'district'
+
+/** Heating, cooling, and hot water plant. */
+export type SystemsPart = {
+  id: string
+  name: string
+  kind: 'systems'
+  fuel: FuelKind
+  /** Seasonal heating efficiency, or a heat pump's COP above 1. */
+  heatingEfficiency: number
+  coolingCop: number
+  /** Hot water need in kWh/m² a year, served by the heating plant. */
+  hotWaterKwhPerM2: number
+  source: DefinitionSource
+}
+
+/** Loads inside the building: lighting, equipment, and people, by schedule. */
+export type SpaceLoadsPart = {
+  id: string
+  name: string
+  kind: 'spaceLoads'
+  lightingWPerM2: number
+  equipmentWPerM2: number
+  /** Floor area per occupant in m². */
+  m2PerPerson: number
+  /** The occupancy schedule the loads follow; null is a flat half load. */
   scheduleId: string | null
   source: DefinitionSource
+}
+
+/** Loads outside the conditioned zones, such as exterior lighting and process loads. */
+export type ExternalLoadsPart = {
+  id: string
+  name: string
+  kind: 'externalLoads'
+  /** kWh per m² of floor area a year. */
+  exteriorLightingKwhPerM2: number
+  processKwhPerM2: number
+  source: DefinitionSource
+}
+
+export type ArchetypePart =
+  ConstructionPart | SystemsPart | SpaceLoadsPart | ExternalLoadsPart
+
+/** How a rule combines its conditions, as in RC. */
+export type RuleLogic = 'all' | 'any' | 'none'
+
+/** RC's condition operators (GISSelection.cs); does not contain is `notContains`. */
+export type ConditionOperator =
+  'larger' | 'smaller' | 'equals' | 'contains' | 'notContains'
+
+/** Building attributes a condition can test. */
+export type ConditionField =
+  | 'use'
+  | 'yearBuilt'
+  | 'floors'
+  | 'floorAreaM2'
+  | 'heightM'
+  | 'footprintAreaM2'
+  | 'name'
+
+/** One condition; a blank one (no field) is dropped when rules are evaluated. */
+export type RuleCondition = {
+  field: ConditionField | null
+  operator: ConditionOperator
+  value: string
+}
+
+/**
+ * An archetype assignment rule (decision 0032): conditions on building
+ * attributes and the parts it sets. Rules are tried in list order, top first;
+ * each part takes the first enabled matching rule that sets it.
+ */
+export type AssignmentRule = {
+  id: string
+  name: string
+  enabled: boolean
+  logic: RuleLogic
+  conditions: RuleCondition[]
+  /** The part of each kind the rule sets; null leaves that part to later rules. */
+  parts: Record<PartKind, string | null>
+  /** Generated from an archetype or as the fallback, or written in the project. */
+  origin: 'default' | 'project'
 }
 
 /** One kind of day in a schedule, such as Weekday or Sunday: 24 hourly fractions. */
@@ -309,10 +435,10 @@ export type HeldFusionOutput = {
   footprint: LngLat[] | null
 }
 
-/** One building's held archetype assignment, published with the whole group. */
+/** One building's held part assignment by the rules, published with the whole group. */
 export type HeldAssignmentOutput = {
   kind: 'assignment'
-  archetypeId: string | null
+  parts: BuildingParts
 }
 
 /** One scenario's held result, published with the whole comparison set. */
@@ -448,6 +574,8 @@ export type SelectableEntity =
   | 'libraryArchetype'
   | 'librarySchedule'
   | 'libraryMeasure'
+  | 'archetypePart'
+  | 'assignmentRule'
 
 export const SELECTABLE_ENTITIES = [
   'building',
@@ -461,6 +589,8 @@ export const SELECTABLE_ENTITIES = [
   'libraryArchetype',
   'librarySchedule',
   'libraryMeasure',
+  'archetypePart',
+  'assignmentRule',
 ] as const satisfies readonly SelectableEntity[]
 
 export type Selection = {
@@ -468,7 +598,8 @@ export type Selection = {
   ids: string[]
 }
 
-export type EditableBuildingField = 'floors' | 'archetypeId'
+/** Floors, or a manual archetype part that wins over the rules (decision 0032). */
+export type EditableBuildingField = 'floors' | PartKind
 
 export type EditValue = number | string | null
 
@@ -499,6 +630,11 @@ export type WorkbenchState = {
   buildings: Record<string, Building>
   buildingIds: string[]
   archetypes: Record<string, Archetype>
+  /** Archetype parts of the four kinds (decision 0032). */
+  parts: Record<string, ArchetypePart>
+  /** Archetype assignment rules by id; `ruleIds` orders them, top first. */
+  rules: Record<string, AssignmentRule>
+  ruleIds: string[]
   schedules: Record<string, Schedule>
   measures: Record<string, Measure>
   scenarios: Record<string, Scenario>

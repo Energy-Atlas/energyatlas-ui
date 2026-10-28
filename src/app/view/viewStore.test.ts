@@ -1,3 +1,4 @@
+import { emptyParts } from '../../domain/archetypes/parts.ts'
 import { describe, expect, it } from 'vitest'
 import { createInitialState } from '../../domain/initialState.ts'
 import type { Building, ResultSet, WorkbenchState } from '../../domain/types.ts'
@@ -38,7 +39,7 @@ function building(id: string): Building {
     zoneCount: 2,
     shadingFactor: null,
     pvYieldKwh: null,
-    archetypeId: null,
+    parts: emptyParts(),
   }
 }
 

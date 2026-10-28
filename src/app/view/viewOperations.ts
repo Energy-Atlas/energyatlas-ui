@@ -2,7 +2,14 @@ import { z } from 'zod'
 import type { ValidationIssue } from '../../domain/commands.ts'
 import { findDataset } from '../../domain/intake/datasets.ts'
 import { TARGET_FIELDS, suggestMapping } from '../../domain/intake/fusion.ts'
-import type { FieldMapping, WorkbenchState } from '../../domain/types.ts'
+import { previewAssignment } from '../../domain/archetypes/assignment.ts'
+import { PART_LABELS } from '../../domain/archetypes/parts.ts'
+import type {
+  FieldMapping,
+  PartKind,
+  WorkbenchState,
+} from '../../domain/types.ts'
+import { PART_KINDS } from '../../domain/types.ts'
 import { computeMetric, METRICS } from '../pages/mapMetrics.ts'
 import {
   BUILDING_COLORS,
@@ -87,6 +94,11 @@ export type ViewState = {
   dashboard: { hiddenScenarioIds: string[]; charts: ChartSpec[] }
   /** The Jobs page's selected job and list filter; selecting never edits the project. */
   jobs: { selectedTaskId: string | null; filter: JobFilter }
+  /**
+   * Which part the assignment preview counts on the Archetypes page
+   * (decision 0032); "all" counts every part.
+   */
+  archetypes: { previewPart: PartKind | 'all' }
   /** The data intake draft: a dataset and its mapping, not sent until applied. */
   intake: { datasetId: string | null; mapping: FieldMapping }
   /** The Results page's chosen result, drilled-down building, and resolution. */
@@ -119,6 +131,7 @@ export function createInitialViewState(
     table: { view: 'buildings', quickFilter: '' },
     dashboard: { hiddenScenarioIds: [], charts: [] },
     jobs: { selectedTaskId: null, filter: 'all' },
+    archetypes: { previewPart: 'all' },
     intake: { datasetId: null, mapping: {} },
     results: { resultId: 'baseline', buildingId: null, resolution: 'monthly' },
     nextChartNumber: 1,
@@ -605,6 +618,33 @@ export const viewOperationDefinitions = {
     run(view, { filter }) {
       view.jobs.filter = filter
       return applied(`Jobs list shows: ${JOB_FILTERS[filter].toLowerCase()}.`)
+    },
+  }),
+
+  'archetypes.setPreviewPart': defineViewOperation({
+    title: 'Preview a part',
+    description:
+      'Choose which archetype part the assignment preview on the Archetypes page counts: all, construction, systems, spaceLoads, or externalLoads. The summary reports, for that part, how many buildings each rule takes and how many stay unassigned with the current rules, before Archetype modeling runs.',
+    input: z.object({ part: z.enum(['all', ...PART_KINDS]) }),
+    run(view, { part }, project) {
+      view.archetypes.previewPart = part
+      const preview = previewAssignment(project)
+      const kinds = part === 'all' ? [...PART_KINDS] : [part]
+      const taking = preview.rules
+        .map((rule) => ({
+          name: project.rules[rule.ruleId]?.name ?? rule.ruleId,
+          count: kinds.reduce((sum, kind) => sum + rule.takes[kind], 0),
+        }))
+        .filter((rule) => rule.count > 0)
+      const unassigned = kinds.reduce(
+        (sum, kind) => sum + preview.unassigned[kind],
+        0,
+      )
+      const label =
+        part === 'all' ? 'all parts' : PART_LABELS[part].toLowerCase()
+      return applied(
+        `Previewing ${label}: ${taking.length === 0 ? 'no rule takes a part' : taking.map((rule) => `"${rule.name}" ${rule.count}`).join(', ')}; ${unassigned} unassigned of ${preview.buildings * kinds.length}.`,
+      )
     },
   }),
 

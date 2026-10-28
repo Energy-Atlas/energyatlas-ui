@@ -44,13 +44,13 @@ export const capabilities = {
     label: 'Archetypes and assignment',
     status: 'simulated',
     explanation:
-      'Archetype definitions, the library, validation, coverage, and assignment jobs are real state transitions; the library and energy use intensities are synthetic.',
+      'Archetype parts, archetypes, assignment rules with per-part first match, manual parts, the preview, validation, and assignment jobs are real state transitions; the library values and the demand formula from parts are synthetic.',
   },
   'archetypes.schedules': {
     label: 'Schedules',
     status: 'simulated',
     explanation:
-      'Daily and weekly schedules are validated and kept with archetypes, with full-load hours; synthetic energy results do not use them yet.',
+      'Daily and weekly schedules are validated and kept with space-loads parts; their full-load hours scale the synthetic lighting, equipment, and occupant loads.',
   },
   'calibration.fit': {
     label: 'Calibration',

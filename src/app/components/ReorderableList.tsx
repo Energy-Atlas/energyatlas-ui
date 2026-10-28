@@ -22,6 +22,11 @@ export type ReorderableItem = {
   meta?: string
   /** The row's own switch, such as whether a map layer is shown. */
   checked: boolean
+  /**
+   * A short mark before the title, such as a rule's position; not part of
+   * the row's name, since the list already says where a row is.
+   */
+  marker?: string
 }
 
 type ReorderableListProps = {
@@ -114,7 +119,14 @@ export function ReorderableList({
             onChange={(checked) => onCheck(item.id, checked)}
           />
           <div className={styles.text}>
-            <span className={styles.title}>{item.title}</span>
+            <span className={styles.title}>
+              {item.marker ? (
+                <span className={styles.marker} aria-hidden="true">
+                  {item.marker}
+                </span>
+              ) : null}
+              {item.title}
+            </span>
             {item.meta ? (
               <Text slot="description" className={styles.meta}>
                 {item.meta}

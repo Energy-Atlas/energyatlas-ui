@@ -1,3 +1,4 @@
+import { emptyParts } from '../archetypes/parts.ts'
 import type { ValidationIssue } from '../commands.ts'
 import { GROUP, upsertAsset } from '../assets.ts'
 import { ringAreaM2, round } from '../simulation.ts'
@@ -545,7 +546,7 @@ export function newBuilding(
     zoneCount: null,
     shadingFactor: null,
     pvYieldKwh: null,
-    archetypeId: null,
+    parts: emptyParts(),
   }
   applyFields(building, fields)
   return building

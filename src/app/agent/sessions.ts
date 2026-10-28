@@ -1,3 +1,4 @@
+import { previewAssignment } from '../../domain/archetypes/assignment.ts'
 import type { Requirement } from '../../domain/stagePlan.ts'
 import type { StageState, WorkbenchState } from '../../domain/types.ts'
 import { STAGE_IDS } from '../../domain/workflow.ts'
@@ -397,6 +398,136 @@ const modelChangeSession: ScriptedSession = {
   ],
 }
 
+const HEAT_PUMP = 'Air-source heat pump'
+const TALL_RULE = 'Tall buildings: heat pumps'
+
+/** The heat pump part the rules session adds, if the project has it. */
+function heatPumpId(state: WorkbenchState): string | null {
+  return (
+    Object.values(state.parts).find(
+      (part) => part.kind === 'systems' && part.name === HEAT_PUMP,
+    )?.id ?? null
+  )
+}
+
+const rulesSession: ScriptedSession = {
+  id: 'assignmentRules',
+  label: 'Add an assignment rule',
+  prompt: 'Give tall buildings heat pumps with an archetype assignment rule.',
+  description:
+    'Previews the archetype assignment rules, proposes a rule that sets one part for tall buildings (it waits for approval), and reassigns.',
+  keywords: [
+    /\bassignment rules?\b/,
+    /\barchetype rules?\b/,
+    /\bheat pumps?\b/,
+  ],
+  steps: [
+    reason(
+      'Assignment rules give each building four archetype parts, tried top first; a rule that sets only the systems part leaves the other parts to the rules below it.',
+    ),
+    ensure([STAGE_IDS.archetypes], 'Assigning archetype parts'),
+    tool(
+      'Open Archetypes',
+      layoutCall({ type: 'layout.openPage', input: { page: 'archetypes' } }),
+    ),
+    tool(
+      'Preview the systems part',
+      viewCall({
+        type: 'archetypes.setPreviewPart',
+        input: { part: 'systems' },
+      }),
+    ),
+    (context) => {
+      const state = context.state()
+      const calls: TitledCall[] = []
+      if (!heatPumpId(state)) {
+        calls.push({
+          title: `Create the systems part "${HEAT_PUMP}"`,
+          call: command({
+            type: 'part.save',
+            input: {
+              name: HEAT_PUMP,
+              kind: 'systems',
+              fuel: 'electric',
+              heatingEfficiency: 2.8,
+              coolingCop: 3.4,
+              hotWaterKwhPerM2: 20,
+            },
+          }),
+        })
+      }
+      const existing = Object.values(state.rules).find(
+        (rule) => rule.name === TALL_RULE,
+      )
+      calls.push({
+        title: `${existing ? 'Update' : 'Add'} the rule "${TALL_RULE}" at the top`,
+        call: (current) =>
+          command({
+            type: 'rule.save',
+            input: {
+              name: TALL_RULE,
+              ...(existing ? { id: existing.id } : {}),
+              logic: 'all',
+              conditions: [{ field: 'floors', operator: 'larger', value: '6' }],
+              parts: {
+                construction: null,
+                systems: heatPumpId(current.state()),
+                spaceLoads: null,
+                externalLoads: null,
+              },
+              position: 0,
+            },
+          }),
+      })
+      const tall = state.buildingIds.filter(
+        (id) => (state.buildings[id]?.floors ?? 0) > 6,
+      ).length
+      return [
+        reason(
+          `${tall} buildings have more than six floors. A rule at the top that sets only their systems part keeps their construction and loads from the rules below.`,
+        ),
+        propose(
+          'Give tall buildings heat pumps',
+          `${heatPumpId(state) ? '' : `Create the systems part "${HEAT_PUMP}" (electric, COP 2.8 heating, 3.4 cooling), then `}add the rule "${TALL_RULE}" (floors larger than 6, sets systems) at the top. Archetype modeling becomes outdated until it runs again.`,
+          calls,
+        ),
+      ]
+    },
+    (context) => {
+      const state = context.state()
+      const rule = Object.values(state.rules).find(
+        (each) => each.name === TALL_RULE,
+      )
+      const preview = previewAssignment(state)
+      const own = preview.rules.find((each) => each.ruleId === rule?.id)
+      if (!rule || !own) {
+        return say('The rule was not added, so there is nothing to preview.')
+      }
+      return [
+        say(
+          `The preview shows **${TALL_RULE}** taking the systems part of ${own.takes.systems} buildings; their other parts still come from the rules below. ${preview.changes} buildings would change.`,
+        ),
+        reference('Show the rules on the Archetypes page', {
+          type: 'page',
+          page: 'archetypes',
+        }),
+      ]
+    },
+    ensure([STAGE_IDS.archetypes], 'Publishing the new parts', 'current'),
+    (context) => {
+      const state = context.state()
+      const id = heatPumpId(state)
+      const count = state.buildingIds.filter(
+        (buildingId) =>
+          state.buildings[buildingId]?.parts.systems?.partId === id,
+      ).length
+      return say(
+        `Archetype modeling published the parts: ${count} buildings now use the heat pump. Stages that use the parts, such as Baseline model setup, are outdated until they run again.`,
+      )
+    },
+  ],
+}
+
 const restoreSession: ScriptedSession = {
   id: 'restore',
   label: 'Restore the default layout',
@@ -486,7 +617,7 @@ const calibrationSession: ScriptedSession = {
           }),
         ),
         say(
-          `Results now show ${top[0]} with ${Math.round(top[1]).toLocaleString('en-US')} kWh a year and its typical weekday from its archetype schedule. Export CSV on that page downloads the published baseline with its run named in the header.`,
+          `Results now show ${top[0]} with ${Math.round(top[1]).toLocaleString('en-US')} kWh a year and its typical weekday from its space-loads schedule. Export CSV on that page downloads the published baseline with its run named in the header.`,
         ),
       ]
     },
@@ -498,6 +629,7 @@ export const SESSIONS: ScriptedSession[] = [
   representationSession,
   modelChangeSession,
   calibrationSession,
+  rulesSession,
   restoreSession,
 ]
 
@@ -507,6 +639,7 @@ const MATCH_ORDER = [
   calibrationSession,
   layoutSession,
   representationSession,
+  rulesSession,
   modelChangeSession,
 ]
 

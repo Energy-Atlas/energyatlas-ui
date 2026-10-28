@@ -20,6 +20,8 @@ export function selectableCollection(
     | 'buildings'
     | 'gridElements'
     | 'archetypes'
+    | 'parts'
+    | 'rules'
     | 'schedules'
     | 'measures'
     | 'scenarios'
@@ -51,5 +53,9 @@ export function selectableCollection(
       return LIBRARY_SCHEDULES
     case 'libraryMeasure':
       return LIBRARY_MEASURES
+    case 'archetypePart':
+      return state.parts
+    case 'assignmentRule':
+      return state.rules
   }
 }

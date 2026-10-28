@@ -2,6 +2,10 @@ import {
   scheduleStats,
   weekdayHours,
 } from '../../../domain/archetypes/assignment.ts'
+import {
+  archetypeLabel,
+  buildingSchedule,
+} from '../../../domain/archetypes/parts.ts'
 import type {
   ResultSet,
   StageState,
@@ -145,15 +149,13 @@ export function buildingRows(
     .map(([id, annualKwh]): BuildingRow => {
       const building = state.buildings[id]
       const area = building?.floorAreaM2 ?? null
-      const archetype = building?.archetypeId
-        ? state.archetypes[building.archetypeId]
-        : undefined
+      const archetype = building ? archetypeLabel(state, building) : null
       const baselineKwh = entry.compareTo?.byBuildingKwh[id]
       return {
         id,
         name: building?.name ?? id,
         use: building?.use ?? 'unknown',
-        archetype: archetype?.name ?? 'none',
+        archetype: archetype ?? 'none',
         floorAreaM2: area,
         annualKwh,
         euiKwhPerM2:
@@ -188,7 +190,7 @@ export type HourlyProfile = {
 }
 
 /**
- * A typical weekday profile in kW for one building: its archetype schedule's
+ * A typical weekday profile in kW for one building: its space loads' schedule's
  * weekday shape scaled to its annual demand. Hourly values are kept only as
  * this typical day; daily resolution is not offered.
  */
@@ -199,19 +201,14 @@ export function hourlyProfile(
 ): HourlyProfile {
   const annualKwh = result.byBuildingKwh[buildingId] ?? 0
   const building = state.buildings[buildingId]
-  const archetype = building?.archetypeId
-    ? state.archetypes[building.archetypeId]
-    : undefined
-  const schedule = archetype?.scheduleId
-    ? state.schedules[archetype.scheduleId]
-    : undefined
+  const schedule = building ? buildingSchedule(state, building) : null
   if (!schedule) {
     return {
       kw: Array.from(
         { length: 24 },
         () => Math.round((annualKwh / 8760) * 10) / 10,
       ),
-      basis: 'Flat: the building has no archetype schedule.',
+      basis: 'Flat: the building has no space-loads schedule.',
     }
   }
   const { annualHours } = scheduleStats(schedule)

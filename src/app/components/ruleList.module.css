@@ -1,0 +1,76 @@
+/* Assignment rules (decision 0032): a toolbar over the ordered list. */
+.frame {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  min-width: 0;
+}
+
+/* The condition builder: a logic choice, then one row per condition. */
+.conditions {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+
+.legend {
+  margin-bottom: var(--space-1);
+  padding: 0;
+  color: var(--color-text-muted);
+  font-family: var(--label-font);
+  font-size: var(--label-size);
+  font-weight: var(--label-weight);
+  letter-spacing: var(--label-tracking);
+  text-transform: var(--label-case);
+}
+
+/* Properties is narrow: field, operator, and value stack, with Remove beside
+   the field. */
+.row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  grid-auto-flow: row dense;
+  gap: var(--space-1);
+  align-items: start;
+  padding: var(--space-1);
+  border-radius: var(--radius-sm);
+  background: var(--color-surface-raised);
+}
+
+.row select,
+.row input {
+  width: 100%;
+  min-width: 0;
+}
+
+.row > * {
+  grid-column: 1;
+}
+
+.rowError {
+  grid-column: 1 / -1;
+}
+
+.blank {
+  background: var(--tone-warning-bg);
+}
+
+.note {
+  margin: 0;
+  color: var(--color-text-muted);
+  font-size: var(--font-size-small);
+}
+
+.row > .remove {
+  grid-column: 2;
+  grid-row: 1;
+  align-self: center;
+}
+
+.row [aria-invalid='true'] {
+  border-color: var(--tone-danger-text);
+}

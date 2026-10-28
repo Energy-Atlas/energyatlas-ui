@@ -104,6 +104,9 @@ describe('scripted agent', () => {
     expect(matchSession('Please reset the layout')?.id).toBe('restore')
     expect(matchSession('Show me a chart of demand')?.id).toBe('representation')
     expect(matchSession('Put the map beside the table')?.id).toBe('layout')
+    expect(matchSession('Add an assignment rule for heat pumps')?.id).toBe(
+      'assignmentRules',
+    )
     expect(matchSession('Pick a preset')).toBeNull()
   })
 
@@ -179,6 +182,42 @@ describe('scripted agent', () => {
     const last = transcript().at(-2)
     expect(last?.kind).toBe('agent')
     expect(JSON.stringify(last)).toContain('reduces annual demand by')
+  })
+
+  it('adds an assignment rule after approval, previews it, and reassigns parts', async () => {
+    const { workbench, manual, agent, lastApproval, agentEntries, transcript } =
+      setup()
+    agent.startPreset('assignmentRules')
+    await manual.settle(50)
+    expect(lastApproval().title).toMatch(/^Run \d+ missing stages$/)
+    agent.approve(lastApproval().id)
+    await manual.settle(20000)
+    expect(lastApproval().title).toBe('Give tall buildings heat pumps')
+    agent.approve(lastApproval().id)
+    await manual.settle(500)
+    const state = workbench.getState()
+    expect(state.rules[state.ruleIds[0] ?? '']?.name).toBe(
+      'Tall buildings: heat pumps',
+    )
+    expect(JSON.stringify(transcript())).toContain('taking the systems part')
+    // Publishing the new parts is a second approved run.
+    expect(lastApproval().title).toMatch(/^Run \d+ outdated/)
+    agent.approve(lastApproval().id)
+    await manual.settle(20000)
+    expect(agent.store.getState().status).toBe('idle')
+    expect(
+      agentEntries()
+        .map((entry) => entry.type)
+        .filter((type) => type !== 'workflow.runStage'),
+    ).toEqual([
+      'layout.openPage',
+      'archetypes.setPreviewPart',
+      'part.save',
+      'rule.save',
+    ])
+    expect(JSON.stringify(transcript())).toMatch(
+      / [1-9]\d* buildings now use the heat pump/,
+    )
   })
 
   it('fits the baseline as a job after approval, leaves it unadopted, and drills into results', async () => {

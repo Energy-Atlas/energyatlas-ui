@@ -21,6 +21,12 @@ import type {
 } from '../../domain/types.ts'
 import { STAGE_IDS } from '../../domain/workflow.ts'
 import {
+  PART_LABELS,
+  archetypeLabel,
+  effectiveParts,
+} from '../../domain/archetypes/parts.ts'
+import { PART_KINDS, type PartKind } from '../../domain/types.ts'
+import {
   useServices,
   useClientSnapshot,
   useViewState,
@@ -38,7 +44,19 @@ import { usePendingReason } from '../service/usePendingReason.ts'
 import type { DataColumn } from '../tables/tableModel.ts'
 import styles from './table.module.css'
 
-type BuildingRow = Building & { baselineMwh: number | null }
+type BuildingRow = Building & {
+  baselineMwh: number | null
+  /** The part of each kind that applies, with a pending edit laid over it. */
+  partIds: Record<PartKind, string | null>
+  archetype: string | null
+  assignedBy: string | null
+}
+
+/** Column id of a part column. */
+const partColumn = (kind: PartKind) => `part:${kind}`
+
+/** The value the part editor uses for following the rules again. */
+const BY_RULES = ''
 
 type GridRow = GridElement & {
   loadingPercent: number | null
@@ -180,6 +198,8 @@ function BuildingsTable() {
   const archetypes = useWorkbenchSnapshot(
     (snapshot) => snapshot.state.archetypes,
   )
+  const parts = useWorkbenchSnapshot((snapshot) => snapshot.state.parts)
+  const overrides = useWorkbenchSnapshot((snapshot) => snapshot.state.overrides)
   const pendingEdits = useWorkbenchSnapshot(
     (snapshot) => snapshot.state.pendingEdits,
   )
@@ -220,29 +240,62 @@ function BuildingsTable() {
         const building = buildings[id]
         if (!building) return []
         const floors = pendingEdits[`${id}:floors`]
-        const archetype = pendingEdits[`${id}:archetypeId`]
         const kwh = baseline?.byBuildingKwh[id]
+        const effective = effectiveParts({ overrides }, building)
+        const partIds = {} as Record<PartKind, string | null>
+        for (const kind of PART_KINDS) {
+          const edit = pendingEdits[`${id}:${kind}`]
+          // A pending "follow the rules" shows the published rule part.
+          partIds[kind] = edit
+            ? typeof edit.to === 'string'
+              ? edit.to
+              : (building.parts[kind]?.partId ?? null)
+            : (effective[kind]?.partId ?? null)
+        }
+        // Provenance: the rules that set the parts, and which parts are manual.
+        const rules = [
+          ...new Set(
+            PART_KINDS.flatMap((kind) => {
+              const part = effective[kind]
+              return part?.via === 'rule' ? [part.ruleName] : []
+            }),
+          ),
+        ]
+        const manual = PART_KINDS.filter(
+          (kind) => effective[kind]?.via === 'manual',
+        )
+        const assignedBy = [
+          ...(manual.length > 0
+            ? [
+                `Manual ${manual.map((kind) => PART_LABELS[kind].toLowerCase()).join(', ')}`,
+              ]
+            : []),
+          ...rules,
+        ].join('; ')
         return [
           {
             ...building,
             floors:
               typeof floors?.to === 'number' ? floors.to : building.floors,
-            archetypeId:
-              archetype &&
-              (archetype.to === null || typeof archetype.to === 'string')
-                ? archetype.to
-                : building.archetypeId,
+            partIds,
+            archetype: archetypeLabel({ overrides, archetypes }, building),
+            assignedBy: assignedBy || null,
             baselineMwh: kwh === undefined ? null : Math.round(kwh / 100) / 10,
           },
         ]
       }),
-    [buildingIds, buildings, pendingEdits, baseline],
+    [buildingIds, buildings, pendingEdits, baseline, overrides, archetypes],
   )
 
-  const archetypeIds = useMemo(() => Object.keys(archetypes), [archetypes])
+  const partIdsByKind = useMemo(() => {
+    const byKind = Object.fromEntries(
+      PART_KINDS.map((kind) => [kind, [] as string[]]),
+    ) as Record<PartKind, string[]>
+    for (const part of Object.values(parts)) byKind[part.kind].push(part.id)
+    return byKind
+  }, [parts])
   const floorsEditable =
     applying === null && rows.some((row) => row.floors !== null)
-  const archetypesEditable = applying === null && archetypeIds.length > 0
 
   const columns = useMemo<DataColumn<BuildingRow>[]>(
     () => [
@@ -302,14 +355,29 @@ function BuildingsTable() {
         width: 100,
       },
       {
-        id: 'archetypeId',
+        id: 'archetype',
         header: 'Archetype',
-        value: (row) =>
-          row.archetypeId
-            ? (archetypes[row.archetypeId]?.name ?? row.archetypeId)
-            : null,
+        value: (row) => row.archetype,
         type: 'enum',
         empty: 'None',
+        width: 200,
+      },
+      ...PART_KINDS.map((kind): DataColumn<BuildingRow> => ({
+        id: partColumn(kind),
+        header: PART_LABELS[kind],
+        value: (row) => {
+          const id = row.partIds[kind]
+          return id ? (parts[id]?.name ?? id) : null
+        },
+        type: 'enum',
+        empty: 'None',
+        width: 200,
+      })),
+      {
+        id: 'assignedBy',
+        header: 'Assigned by',
+        value: (row) => row.assignedBy,
+        empty: 'Not assigned',
         width: 220,
       },
       {
@@ -330,7 +398,7 @@ function BuildingsTable() {
         width: 160,
       },
     ],
-    [archetypes],
+    [parts],
   )
 
   // Editing is AG Grid's own; edits go to drafts through `edits.propose`.
@@ -344,31 +412,38 @@ function BuildingsTable() {
             Boolean(params.data && pendingEdits[`${params.data.id}:floors`]),
         },
       },
-      archetypeId: {
-        editable: archetypesEditable,
-        // The editor works on the archetype id; the cell shows its name.
-        valueGetter: (params) => params.data?.archetypeId ?? null,
-        valueFormatter: (params) => {
-          const value = params.value as string | null | undefined
-          return value ? (archetypes[value]?.name ?? value) : 'None'
-        },
-        cellEditor: 'agSelectCellEditor',
-        cellEditorParams: { values: ['', ...archetypeIds] },
-        cellClassRules: {
-          [PENDING_CELL_CLASS]: (params) =>
-            Boolean(
-              params.data && pendingEdits[`${params.data.id}:archetypeId`],
-            ),
-        },
-      },
+      // A part's editor works on part ids and names them; choosing "By
+      // rules" drops a manual part (decision 0032).
+      ...Object.fromEntries(
+        PART_KINDS.map((kind): [string, ColDef<BuildingRow>] => {
+          const name = (value: unknown) =>
+            typeof value === 'string' && value !== BY_RULES
+              ? (parts[value]?.name ?? value)
+              : 'By rules'
+          return [
+            partColumn(kind),
+            {
+              editable: applying === null && partIdsByKind[kind].length > 0,
+              valueGetter: (params) => params.data?.partIds[kind] ?? BY_RULES,
+              valueFormatter: (params) =>
+                params.value === BY_RULES ? 'None' : name(params.value),
+              cellEditor: 'agSelectCellEditor',
+              cellEditorParams: {
+                values: [BY_RULES, ...partIdsByKind[kind]],
+                formatValue: name,
+              },
+              cellClassRules: {
+                [PENDING_CELL_CLASS]: (params) =>
+                  Boolean(
+                    params.data && pendingEdits[`${params.data.id}:${kind}`],
+                  ),
+              },
+            },
+          ]
+        }),
+      ),
     }),
-    [
-      floorsEditable,
-      archetypesEditable,
-      archetypeIds,
-      archetypes,
-      pendingEdits,
-    ],
+    [floorsEditable, applying, partIdsByKind, parts, pendingEdits],
   )
   const table = useWorkbenchTable({
     id: 'table.buildings',
@@ -447,7 +522,7 @@ function BuildingsTable() {
         <p className={styles.hint}>
           {applying
             ? 'Waiting for the server to answer Apply. Drafts can be changed or undone after it answers.'
-            : 'Floors and archetype become editable once their stages have run. Edits stay pending, highlighted, until applied.'}
+            : 'Floors and archetype parts become editable once their stages have run. A part set here wins over the assignment rules; By rules drops it. Edits stay pending, highlighted, until applied.'}
         </p>
       )}
       <GridTable<BuildingRow>
@@ -479,19 +554,20 @@ function BuildingsTable() {
         gridOptions={{
           readOnlyEdit: true,
           onCellEditRequest: (event: CellEditRequestEvent<BuildingRow>) => {
-            const field = event.column.getColId()
-            if (field !== 'floors' && field !== 'archetypeId') return
+            const columnId = event.column.getColId()
+            const kind = PART_KINDS.find(
+              (each) => partColumn(each) === columnId,
+            )
+            if (columnId !== 'floors' && !kind) return
+            const field = kind ?? 'floors'
             const raw: unknown = event.newValue
-            const value =
-              field === 'archetypeId'
-                ? raw === '' || raw === null || raw === undefined
-                  ? null
-                  : typeof raw === 'string'
-                    ? raw
-                    : null
-                : typeof raw === 'number' || typeof raw === 'string'
-                  ? raw
-                  : null
+            const value = kind
+              ? typeof raw === 'string' && raw !== BY_RULES
+                ? raw
+                : null
+              : typeof raw === 'number' || typeof raw === 'string'
+                ? raw
+                : null
             const result = workbench.execute({
               type: 'edits.propose',
               input: { entityId: event.data.id, field, value },

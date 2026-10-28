@@ -26,6 +26,10 @@ import {
   type ReorderableItem,
 } from '../components/ReorderableList.tsx'
 import { SelectableList } from '../components/SelectableList.tsx'
+import { RuleList, type RuleListItem } from '../components/RuleList.tsx'
+import { ConditionBuilder } from '../components/ConditionBuilder.tsx'
+import { CONDITION_FIELDS } from '../../domain/rules/conditions.ts'
+import type { RuleCondition, RuleLogic } from '../../domain/types.ts'
 import type { Message } from '../messages/messageCenter.ts'
 import { MessageHistory } from '../panels/MessagesPanel.tsx'
 import { Toast } from '../shell/ToastHost.tsx'
@@ -245,6 +249,42 @@ export default function ComponentGallery() {
     },
   ])
   const [stackChoice, setStackChoice] = useState('buildings')
+  const [rules, setRules] = useState<RuleListItem[]>([
+    {
+      id: 'tall',
+      name: 'Tall buildings: heat pumps',
+      enabled: true,
+      summary: 'Floors is larger than 6; sets systems',
+      effect: 'Matches 41, takes parts of 41',
+    },
+    {
+      id: 'office',
+      name: 'Office',
+      enabled: true,
+      summary: 'Use equals Office; sets all four parts',
+      effect: 'Matches 68, takes parts of 68',
+    },
+    {
+      id: 'unused',
+      name: 'Schools before 1900',
+      enabled: false,
+      summary: 'Use equals School and Year built is smaller than 1900',
+    },
+    {
+      id: 'fallback',
+      name: 'Fallback: any building',
+      enabled: true,
+      summary: 'Every building; sets all four parts',
+      effect: 'Matches 464, takes parts of 18',
+    },
+  ])
+  const [ruleChoice, setRuleChoice] = useState<string | null>('office')
+  const [logic, setLogic] = useState<RuleLogic>('all')
+  const [conditions, setConditions] = useState<RuleCondition[]>([
+    { field: 'use', operator: 'equals', value: 'residential' },
+    { field: 'yearBuilt', operator: 'smaller', value: 'nineteen eighty' },
+    { field: null, operator: 'equals', value: '' },
+  ])
   const [appearance, setAppearance] = useState<AppearanceId>(initialAppearance)
   const [last, setLast] = useState('Nothing pressed yet.')
   const [filter, setFilter] = useState<JobFilter>('all')
@@ -637,6 +677,106 @@ export default function ComponentGallery() {
             onCheck={() => undefined}
             onMove={() => undefined}
             empty={<p>No layers yet.</p>}
+          />
+        </section>
+
+        <section className={styles.cell}>
+          <h2>Rule list</h2>
+          <RuleList
+            aria-label="Sample rules"
+            rules={rules}
+            selectedId={ruleChoice}
+            onSelect={(id) => {
+              setRuleChoice(id)
+              note(`Selected ${id}.`)
+            }}
+            onToggle={(id, enabled) => {
+              setRules((items) =>
+                items.map((item) =>
+                  item.id === id ? { ...item, enabled } : item,
+                ),
+              )
+              note(`Switched ${id} ${enabled ? 'on' : 'off'}.`)
+            }}
+            onMove={(id, position) => {
+              setRules((items) => {
+                const moved = items.find((item) => item.id === id)
+                if (!moved) return items
+                const rest = items.filter((item) => item.id !== id)
+                rest.splice(position, 0, moved)
+                return rest
+              })
+              note(`Moved ${id} to position ${position + 1}.`)
+            }}
+            onAdd={() => note('New rule pressed.')}
+            onDuplicate={(id) => note(`Duplicate ${id} pressed.`)}
+            onRemove={(id) => note(`Remove ${id} pressed.`)}
+            onBlocked={blocked}
+            empty={<p>No rules yet.</p>}
+          />
+          <RuleList
+            aria-label="Sample rules waiting"
+            rules={rules.slice(0, 1)}
+            selectedId={null}
+            onSelect={() => undefined}
+            onToggle={() => undefined}
+            onMove={() => undefined}
+            onAdd={() => undefined}
+            onDuplicate={() => undefined}
+            onRemove={() => undefined}
+            disabledReason="Waiting for the server to answer: the rules are being changed."
+            onBlocked={blocked}
+            empty={<p>No rules yet.</p>}
+          />
+          <RuleList
+            aria-label="Sample empty rules"
+            rules={[]}
+            selectedId={null}
+            onSelect={() => undefined}
+            onToggle={() => undefined}
+            onMove={() => undefined}
+            onAdd={() => note('New rule pressed.')}
+            onDuplicate={() => undefined}
+            onRemove={() => undefined}
+            onBlocked={blocked}
+            empty={
+              <p>No rules yet. Generate the default rules or write one.</p>
+            }
+          />
+        </section>
+
+        <section className={styles.cell}>
+          <h2>Condition builder</h2>
+          <ConditionBuilder
+            fields={CONDITION_FIELDS}
+            logic={logic}
+            onLogicChange={(value) => {
+              setLogic(value)
+              note(`Logic ${value}.`)
+            }}
+            conditions={conditions}
+            onChange={(value) => {
+              setConditions(value)
+              note(`${value.length} conditions.`)
+            }}
+            errors={{ 'conditions.1.value': 'Enter a number.' }}
+          />
+          <ConditionBuilder
+            fields={CONDITION_FIELDS}
+            logic="any"
+            onLogicChange={() => undefined}
+            conditions={[]}
+            onChange={() => undefined}
+          />
+          <ConditionBuilder
+            fields={CONDITION_FIELDS}
+            logic="none"
+            onLogicChange={() => undefined}
+            conditions={[
+              { field: 'name', operator: 'contains', value: 'annex' },
+            ]}
+            onChange={() => undefined}
+            readOnly
           />
         </section>
 

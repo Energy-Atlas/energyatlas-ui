@@ -1,8 +1,15 @@
 import { createStore, type StoreApi } from 'zustand/vanilla'
+import type { PartKind } from '../../domain/types.ts'
 import type { Workbench } from '../../domain/workbench.ts'
 
 /** Definitions the Properties panel can create as well as edit. */
-export type DefinitionKind = 'archetype' | 'schedule' | 'measure' | 'scenario'
+export type DefinitionKind =
+  | 'archetype'
+  | 'schedule'
+  | 'measure'
+  | 'scenario'
+  | 'assignmentRule'
+  | `part:${PartKind}`
 
 export type PropertiesSnapshot = {
   /** A blank definition of this kind is shown for creating, or null. */

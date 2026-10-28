@@ -80,6 +80,12 @@
   overflow-wrap: anywhere;
 }
 
+.marker {
+  margin-right: var(--space-1);
+  color: var(--color-text-muted);
+  font-variant-numeric: tabular-nums;
+}
+
 .meta {
   color: var(--color-text-muted);
   font-size: var(--font-size-small);

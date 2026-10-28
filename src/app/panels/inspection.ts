@@ -1,3 +1,9 @@
+import {
+  PART_LABELS,
+  archetypeLabel,
+  effectiveParts,
+} from '../../domain/archetypes/parts.ts'
+import { PART_KINDS } from '../../domain/types.ts'
 import type {
   Building,
   EditableBuildingField,
@@ -71,7 +77,7 @@ const GRID_KIND_LABELS: Record<GridElementKind, string> = {
 
 const FIELD_LABELS: Record<EditableBuildingField, string> = {
   floors: 'Floors',
-  archetypeId: 'Archetype',
+  ...PART_LABELS,
 }
 
 const STAGE_PROVENANCE =
@@ -90,9 +96,9 @@ function formatEditValue(
   field: EditableBuildingField,
   value: EditValue,
 ): string {
-  if (value === null) return 'no value'
-  if (field === 'archetypeId' && typeof value === 'string') {
-    return state.archetypes[value]?.name ?? value
+  if (value === null) return field === 'floors' ? 'no value' : 'the rules'
+  if (field !== 'floors' && typeof value === 'string') {
+    return state.parts[value]?.name ?? value
   }
   return typeof value === 'number' ? value.toLocaleString('en-US') : value
 }
@@ -109,6 +115,12 @@ function compareWithBaseline(
   if (change > 0) return `, ${percent}% below baseline`
   if (change < 0) return `, ${percent}% above baseline`
   return ', same as baseline'
+}
+
+/** "a", "a or b", "a, b, or c". */
+function orList(items: string[]): string {
+  if (items.length <= 2) return items.join(' or ')
+  return `${items.slice(0, -1).join(', ')}, or ${items.at(-1)}`
 }
 
 function sum(values: number[]): number {
@@ -140,10 +152,14 @@ function buildingResultsHint(
   if (!state.results.baseline) {
     return 'No results yet. Run "Baseline model setup" to compute demand.'
   }
-  // The baseline model skips buildings without an archetype or a floor area
-  // (src/domain/simulation.ts).
+  // The baseline model skips buildings without all four archetype parts or
+  // a floor area (src/domain/simulation.ts).
+  const parts = effectiveParts(state, building)
+  const missingParts = PART_KINDS.filter((kind) => parts[kind] === null)
   const reasons = [
-    building.archetypeId === null ? 'no archetype' : null,
+    missingParts.length > 0
+      ? `no ${orList(missingParts.map((kind) => PART_LABELS[kind].toLowerCase()))} part`
+      : null,
     building.floorAreaM2 === null ? 'no floor area' : null,
   ].filter((reason): reason is string => reason !== null)
   return reasons.length > 0
@@ -155,9 +171,7 @@ function inspectBuilding(
   state: WorkbenchState,
   building: Building,
 ): SingleInspection {
-  const archetype = building.archetypeId
-    ? state.archetypes[building.archetypeId]
-    : undefined
+  const parts = effectiveParts(state, building)
   const baselineKwh = state.results.baseline?.byBuildingKwh[building.id]
 
   const results: Fact[] = []
@@ -177,7 +191,9 @@ function inspectBuilding(
   const missing = [
     building.use === null ? 'use' : null,
     building.floors === null ? 'floors' : null,
-    building.archetypeId === null ? 'archetype' : null,
+    ...PART_KINDS.map((kind) =>
+      parts[kind] === null ? `${PART_LABELS[kind].toLowerCase()} part` : null,
+    ),
   ].filter((label): label is string => label !== null)
   if (missing.length > 0) {
     warnings.push(`No data for ${missing.join(', ')}.`)
@@ -192,13 +208,44 @@ function inspectBuilding(
   const connected = Object.values(state.gridElements).filter((element) =>
     element.buildingIds.includes(building.id),
   )
-  const { entities, more } = limited(connected, gridEntity)
+  // Parts and the rules that set them link to their Properties.
+  const definitions: LinkedEntity[] = []
+  for (const kind of PART_KINDS) {
+    const part = parts[kind]
+    if (!part) continue
+    definitions.push({
+      entityType: 'archetypePart',
+      id: part.partId,
+      label: `${PART_LABELS[kind]}: ${state.parts[part.partId]?.name ?? part.partId}`,
+    })
+  }
+  const ruleIds = [
+    ...new Set(
+      PART_KINDS.flatMap((kind) => {
+        const part = parts[kind]
+        return part?.via === 'rule' && state.rules[part.ruleId]
+          ? [part.ruleId]
+          : []
+      }),
+    ),
+  ]
+  for (const ruleId of ruleIds) {
+    definitions.push({
+      entityType: 'assignmentRule',
+      id: ruleId,
+      label: `Rule: ${state.rules[ruleId]?.name ?? ruleId}`,
+    })
+  }
+  const linkedGrid = limited(connected, gridEntity)
+  const entities = [...definitions, ...linkedGrid.entities]
+  const more = linkedGrid.more
 
   const provenance = Object.values(state.overrides)
     .filter((override) => override.entityId === building.id)
-    .map(
-      (override) =>
-        `${FIELD_LABELS[override.field]} set to ${formatEditValue(state, override.field, override.value)} by a ${override.source} edit (operation ${override.operationId}); it survives stage reruns.`,
+    .map((override) =>
+      override.field === 'floors'
+        ? `${FIELD_LABELS[override.field]} set to ${formatEditValue(state, override.field, override.value)} by a ${override.source} edit (operation ${override.operationId}); it survives stage reruns.`
+        : `${FIELD_LABELS[override.field]} part set to ${formatEditValue(state, override.field, override.value)} by a ${override.source} edit (operation ${override.operationId}); it wins over the assignment rules.`,
     )
   const imported = Object.values(state.sourceRecords).find(
     (record) => record.buildingId === building.id,
@@ -243,7 +290,21 @@ function inspectBuilding(
       },
       { label: 'Floor area', value: formatValue(building.floorAreaM2, 'm²') },
       { label: 'Thermal zones', value: formatValue(building.zoneCount) },
-      { label: 'Archetype', value: archetype?.name ?? NO_DATA },
+      { label: 'Archetype', value: archetypeLabel(state, building) ?? NO_DATA },
+      ...PART_KINDS.map((kind) => {
+        const part = parts[kind]
+        const name = part
+          ? (state.parts[part.partId]?.name ?? part.partId)
+          : null
+        return {
+          label: PART_LABELS[kind],
+          value: !part
+            ? NO_DATA
+            : part.via === 'manual'
+              ? `${name} (manual)`
+              : `${name} (rule "${part.ruleName}")`,
+        }
+      }),
       {
         label: 'Shading factor',
         value:

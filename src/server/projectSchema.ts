@@ -1,11 +1,19 @@
 import { z } from 'zod'
 import { capabilities, type CapabilityId } from '../domain/capabilities.ts'
 import {
-  ARCHETYPE_LIBRARY,
   SCHEDULE_LIBRARY,
   weekdayWeekend,
 } from '../domain/archetypes/library.ts'
-import { SELECTABLE_ENTITIES, type WorkbenchState } from '../domain/types.ts'
+import {
+  CONDITION_FIELD_IDS,
+  CONDITION_OPERATORS,
+} from '../domain/rules/conditions.ts'
+import {
+  PART_KINDS,
+  SELECTABLE_ENTITIES,
+  type WorkbenchState,
+} from '../domain/types.ts'
+import { migrateArchetypeParts } from './migrateArchetypes.ts'
 
 const id = z.string().min(1)
 const text = z.string()
@@ -21,7 +29,22 @@ const capability = z.enum(
 const record = <Schema extends z.ZodType>(schema: Schema) =>
   z.record(id, schema)
 const editValue = z.union([number, text, z.null()])
-const field = z.enum(['floors', 'archetypeId'])
+const field = z.enum(['floors', ...PART_KINDS])
+const partIds = z.object({
+  construction: id.nullable(),
+  systems: id.nullable(),
+  spaceLoads: id.nullable(),
+  externalLoads: id.nullable(),
+})
+const assignedPart = z
+  .object({ partId: id, ruleId: id, ruleName: text })
+  .nullable()
+const buildingParts = z.object({
+  construction: assignedPart,
+  systems: assignedPart,
+  spaceLoads: assignedPart,
+  externalLoads: assignedPart,
+})
 const provenance = z.discriminatedUnion('kind', [
   z.object({ kind: z.literal('skeleton') }),
   z.object({
@@ -82,7 +105,7 @@ const heldFusion = z.object({
 })
 const heldAssignment = z.object({
   kind: z.literal('assignment'),
-  archetypeId: id.nullable(),
+  parts: buildingParts,
 })
 const heldScenario = z.object({
   kind: z.literal('scenarioResult'),
@@ -101,34 +124,65 @@ const definitionSource = z.discriminatedUnion('kind', [
     libraryId: id.optional(),
   }),
 ])
-const archetypeFields = z.object({
+// Saves from before archetype parts are migrated first (migrateArchetypes.ts).
+const archetype = z.object({
   id,
   name: text,
   use,
   yearFrom: nullableNumber,
   yearTo: nullableNumber,
-  euiKwhPerM2: number,
-  scheduleId: id.nullable(),
+  parts: partIds,
   source: definitionSource,
 })
-/**
- * Archetypes saved before definitions had year ranges and schedules take them
- * from the library entry of the same id, so assignment stays as it was.
- */
-const archetype = z.preprocess((value) => {
-  if (!value || typeof value !== 'object' || 'source' in value) return value
-  const saved = value as { id?: unknown }
-  const entry = ARCHETYPE_LIBRARY.find((candidate) => candidate.id === saved.id)
-  return entry
-    ? { ...entry, ...saved, source: entry.source }
-    : {
-        yearFrom: null,
-        yearTo: null,
-        scheduleId: null,
-        ...saved,
-        source: { kind: 'project', operationId: 'saved-before-definitions' },
-      }
-}, archetypeFields)
+const partBase = { id, name: text, source: definitionSource }
+const part = z.discriminatedUnion('kind', [
+  z.object({
+    ...partBase,
+    kind: z.literal('construction'),
+    wallU: number,
+    roofU: number,
+    windowU: number,
+    windowRatio: number,
+    infiltrationAch: number,
+  }),
+  z.object({
+    ...partBase,
+    kind: z.literal('systems'),
+    fuel: z.enum(['gas', 'electric', 'district']),
+    heatingEfficiency: number.positive(),
+    coolingCop: number.positive(),
+    hotWaterKwhPerM2: number,
+  }),
+  z.object({
+    ...partBase,
+    kind: z.literal('spaceLoads'),
+    lightingWPerM2: number,
+    equipmentWPerM2: number,
+    m2PerPerson: number.positive(),
+    scheduleId: id.nullable(),
+  }),
+  z.object({
+    ...partBase,
+    kind: z.literal('externalLoads'),
+    exteriorLightingKwhPerM2: number,
+    processKwhPerM2: number,
+  }),
+])
+const rule = z.object({
+  id,
+  name: text,
+  enabled: z.boolean(),
+  logic: z.enum(['all', 'any', 'none']),
+  conditions: z.array(
+    z.object({
+      field: z.enum(CONDITION_FIELD_IDS).nullable(),
+      operator: z.enum(CONDITION_OPERATORS),
+      value: text,
+    }),
+  ),
+  parts: partIds,
+  origin: z.enum(['default', 'project']),
+})
 const hours = z.array(number).length(24)
 // Schedules saved before day types had one weekday and one weekend profile;
 // they load as those two day types (Monday to Friday, Saturday and Sunday).
@@ -229,7 +283,7 @@ const stageRun = z.object({
  * Fields added after projects were first saved have defaults, so parsing an
  * older save migrates it; use the parsed output, not the stored value.
  */
-export const projectStateSchema: z.ZodType<WorkbenchState, unknown> = z
+const savedState = z
   .object({
     project: z.object({
       id,
@@ -284,11 +338,14 @@ export const projectStateSchema: z.ZodType<WorkbenchState, unknown> = z
         zoneCount: nullableNumber,
         shadingFactor: nullableNumber,
         pvYieldKwh: nullableNumber,
-        archetypeId: id.nullable(),
+        parts: buildingParts,
       }),
     ),
     buildingIds: ids,
     archetypes: record(archetype),
+    parts: record(part).default({}),
+    rules: record(rule).default({}),
+    ruleIds: ids.default([]),
     schedules: record(schedule).default({}),
     measures: record(
       z.object({
@@ -455,16 +512,19 @@ export const projectStateSchema: z.ZodType<WorkbenchState, unknown> = z
         if (task) task.sideRun = true
       }
     }
-    // Library archetypes migrated above bring the library schedule they use.
-    for (const item of Object.values(state.archetypes)) {
-      if (item.scheduleId === null || item.scheduleId in state.schedules)
+    // Library space loads bring the library schedule they follow.
+    for (const item of Object.values(state.parts)) {
+      if (
+        item.kind !== 'spaceLoads' ||
+        item.source.kind !== 'library' ||
+        item.scheduleId === null ||
+        item.scheduleId in state.schedules
+      )
         continue
       const entry = SCHEDULE_LIBRARY.find(
         (candidate) => candidate.id === item.scheduleId,
       )
-      if (entry && item.source.kind === 'library') {
-        state.schedules[entry.id] = structuredClone(entry)
-      }
+      if (entry) state.schedules[entry.id] = structuredClone(entry)
     }
     return state
   })
@@ -483,9 +543,16 @@ export const projectStateSchema: z.ZodType<WorkbenchState, unknown> = z
     references(state.buildingIds, state.buildings)
     references(state.taskIds, state.tasks)
     references(state.runGroupIds, state.runGroups)
-    for (const item of Object.values(state.archetypes)) {
-      if (item.scheduleId !== null && !(item.scheduleId in state.schedules))
-        fail('An archetype refers to a missing schedule.')
+    references(state.ruleIds, state.rules)
+    if (state.ruleIds.length !== Object.keys(state.rules).length)
+      fail('An assignment rule is missing from the saved order.')
+    for (const item of Object.values(state.parts)) {
+      if (
+        item.kind === 'spaceLoads' &&
+        item.scheduleId !== null &&
+        !(item.scheduleId in state.schedules)
+      )
+        fail('A space-loads part refers to a missing schedule.')
     }
     for (const [key, value] of Object.entries(state.schedules))
       if (key !== value.id) fail('A saved schedule has the wrong identity.')
@@ -545,6 +612,8 @@ export const projectStateSchema: z.ZodType<WorkbenchState, unknown> = z
       state.measures,
       state.scenarios,
       state.archetypes,
+      state.parts,
+      state.rules,
       state.gridElements,
       state.runGroups,
     ]
@@ -607,6 +676,10 @@ export const projectStateSchema: z.ZodType<WorkbenchState, unknown> = z
     )
       fail('A saved graph contains a cycle.')
   })
+
+/** Saves from before archetype parts are migrated before they are checked. */
+export const projectStateSchema: z.ZodType<WorkbenchState, unknown> =
+  z.preprocess(migrateArchetypeParts, savedState)
 
 /**
  * The views saved beside the model: table arrangements (decision 0029), the

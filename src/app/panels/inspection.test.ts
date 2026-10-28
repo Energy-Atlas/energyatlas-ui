@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { createInitialState } from '../../domain/initialState.ts'
 import type { Building, WorkbenchState } from '../../domain/types.ts'
+import { emptyParts } from '../../domain/archetypes/parts.ts'
 import { buildInspection, LIST_LIMIT } from './inspection.ts'
 
 function building(id: string, patch: Partial<Building> = {}): Building {
@@ -18,7 +19,12 @@ function building(id: string, patch: Partial<Building> = {}): Building {
     zoneCount: 2,
     shadingFactor: 0.8,
     pvYieldKwh: 12000,
-    archetypeId: 'ARC-1',
+    parts: {
+      construction: { partId: 'C1', ruleId: 'R1', ruleName: 'Offices' },
+      systems: { partId: 'S1', ruleId: 'R1', ruleName: 'Offices' },
+      spaceLoads: { partId: 'L1', ruleId: 'R1', ruleName: 'Offices' },
+      externalLoads: { partId: 'E1', ruleId: 'R1', ruleName: 'Offices' },
+    },
     ...patch,
   }
 }
@@ -34,9 +40,77 @@ const archetypes: WorkbenchState['archetypes'] = {
     use: 'office',
     yearFrom: 1990,
     yearTo: 1999,
-    euiKwhPerM2: 120,
-    scheduleId: null,
+    parts: {
+      construction: 'C1',
+      systems: 'S1',
+      spaceLoads: 'L1',
+      externalLoads: 'E1',
+    },
     source: { kind: 'project', operationId: 'op-1' },
+  },
+}
+
+const source = { kind: 'project', operationId: 'op-1' } as const
+const parts: WorkbenchState['parts'] = {
+  C1: {
+    id: 'C1',
+    name: 'Curtain wall',
+    kind: 'construction',
+    wallU: 0.7,
+    roofU: 0.4,
+    windowU: 2.6,
+    windowRatio: 0.5,
+    infiltrationAch: 0.5,
+    source,
+  },
+  S1: {
+    id: 'S1',
+    name: 'VAV',
+    kind: 'systems',
+    fuel: 'gas',
+    heatingEfficiency: 0.85,
+    coolingCop: 3.2,
+    hotWaterKwhPerM2: 6,
+    source,
+  },
+  S2: {
+    id: 'S2',
+    name: 'Heat pump',
+    kind: 'systems',
+    fuel: 'electric',
+    heatingEfficiency: 3,
+    coolingCop: 3.5,
+    hotWaterKwhPerM2: 6,
+    source,
+  },
+  L1: {
+    id: 'L1',
+    name: 'Office loads',
+    kind: 'spaceLoads',
+    lightingWPerM2: 10,
+    equipmentWPerM2: 12,
+    m2PerPerson: 15,
+    scheduleId: null,
+    source,
+  },
+  E1: {
+    id: 'E1',
+    name: 'Exterior',
+    kind: 'externalLoads',
+    exteriorLightingKwhPerM2: 3,
+    processKwhPerM2: 8,
+    source,
+  },
+}
+const rules: WorkbenchState['rules'] = {
+  R1: {
+    id: 'R1',
+    name: 'Offices',
+    enabled: true,
+    logic: 'all',
+    conditions: [],
+    parts: archetypes['ARC-1']!.parts,
+    origin: 'project',
   },
 }
 
@@ -50,6 +124,9 @@ describe('buildInspection', () => {
       buildings: { B1: building('B1', { use: null }) },
       buildingIds: ['B1'],
       archetypes,
+      parts,
+      rules,
+      ruleIds: ['R1'],
       results: {
         baseline: {
           id: 'baseline',
@@ -76,10 +153,10 @@ describe('buildInspection', () => {
         'B1:floors': { entityId: 'B1', field: 'floors', from: 3, to: 5 },
       },
       overrides: {
-        'B1:archetypeId': {
+        'B1:systems': {
           entityId: 'B1',
-          field: 'archetypeId',
-          value: 'ARC-1',
+          field: 'systems',
+          value: 'S2',
           operationId: 'op-7',
           source: 'manual',
         },
@@ -91,9 +168,18 @@ describe('buildInspection', () => {
     expect(inspection.kind).toBe('single')
     if (inspection.kind !== 'single') return
     expect(inspection.title).toBe('Building B1')
+    // A manual part makes the combination no archetype's.
     expect(inspection.properties).toContainEqual({
       label: 'Archetype',
-      value: 'Office 1990s',
+      value: 'Mixed parts',
+    })
+    expect(inspection.properties).toContainEqual({
+      label: 'Construction',
+      value: 'Curtain wall (rule "Offices")',
+    })
+    expect(inspection.properties).toContainEqual({
+      label: 'Systems',
+      value: 'Heat pump (manual)',
     })
     expect(inspection.properties).toContainEqual({
       label: 'Use',
@@ -107,16 +193,33 @@ describe('buildInspection', () => {
       'Pending edit, not applied: Floors 3 to 5.',
     ])
     expect(inspection.linked).toEqual([
+      {
+        entityType: 'archetypePart',
+        id: 'C1',
+        label: 'Construction: Curtain wall',
+      },
+      { entityType: 'archetypePart', id: 'S2', label: 'Systems: Heat pump' },
+      {
+        entityType: 'archetypePart',
+        id: 'L1',
+        label: 'Space loads: Office loads',
+      },
+      {
+        entityType: 'archetypePart',
+        id: 'E1',
+        label: 'External loads: Exterior',
+      },
+      { entityType: 'assignmentRule', id: 'R1', label: 'Rule: Offices' },
       { entityType: 'gridElement', id: 'T1', label: 'Transformer T1' },
     ])
     expect(inspection.provenance[0]).toContain(
-      'Archetype set to Office 1990s by a manual edit (operation op-7)',
+      'Systems part set to Heat pump by a manual edit (operation op-7); it wins over the assignment rules.',
     )
   })
 
   it('explains why the baseline has no result for a building', () => {
     const state = stateWith({
-      buildings: { B1: building('B1', { archetypeId: null }) },
+      buildings: { B1: building('B1', { parts: emptyParts() }) },
       buildingIds: ['B1'],
       results: {
         baseline: {
@@ -139,9 +242,11 @@ describe('buildInspection', () => {
     }
     expect(inspection.results).toEqual([])
     expect(inspection.resultsHint).toBe(
-      'The baseline model skipped this building: it has no archetype.',
+      'The baseline model skipped this building: it has no construction, systems, space loads, or external loads part.',
     )
-    expect(inspection.warnings).toEqual(['No data for archetype.'])
+    expect(inspection.warnings).toEqual([
+      'No data for construction part, systems part, space loads part, external loads part.',
+    ])
   })
 
   it('summarizes several buildings and limits the listed items', () => {

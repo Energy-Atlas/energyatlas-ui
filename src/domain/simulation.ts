@@ -1,10 +1,15 @@
 import { GROUP, removeAsset, upsertAsset } from './assets.ts'
+import { previewAssignment } from './archetypes/assignment.ts'
+import {
+  PART_LABELS,
+  buildingIntensity,
+  emptyParts,
+} from './archetypes/parts.ts'
 import { addedBuildings, applySourceRecords } from './intake/fusion.ts'
 import backBayBuildings from './fixtures/back-bay-buildings.geo.json'
 import type {
   Building,
   BuildingUse,
-  EditableBuildingField,
   GridElement,
   HeldAssignmentOutput,
   HeldPreprocessingOutput,
@@ -15,6 +20,7 @@ import type {
   Scenario,
   WorkbenchState,
 } from './types.ts'
+import { PART_KINDS } from './types.ts'
 import { STAGE_IDS } from './workflow.ts'
 
 // Deterministic stand-ins for the engineering stages of decision 0005.
@@ -162,25 +168,18 @@ function quadrantOf(building: Building): number {
   return (lng < DISTRICT_CENTER[0] ? 0 : 1) + (lat < DISTRICT_CENTER[1] ? 0 : 2)
 }
 
-function applyOverrides(
-  state: WorkbenchState,
-  field: EditableBuildingField,
-): number {
+/**
+ * Applies manual floor overrides again after a rerun. Manual archetype parts
+ * are not written into buildings; they win when parts are read
+ * (`effectiveParts`).
+ */
+function applyFloorOverrides(state: WorkbenchState): number {
   let applied = 0
   for (const override of Object.values(state.overrides)) {
-    if (override.field !== field) continue
+    if (override.field !== 'floors') continue
     const building = state.buildings[override.entityId]
-    if (!building) continue
-    if (field === 'floors' && typeof override.value === 'number') {
-      building.floors = override.value
-    } else if (
-      field === 'archetypeId' &&
-      (override.value === null || typeof override.value === 'string')
-    ) {
-      building.archetypeId = override.value
-    } else {
-      continue
-    }
+    if (!building || typeof override.value !== 'number') continue
+    building.floors = override.value
     applied += 1
   }
   return applied
@@ -232,7 +231,7 @@ function captureFootprints(
       zoneCount: null,
       shadingFactor: null,
       pvYieldKwh: null,
-      archetypeId: null,
+      parts: emptyParts(),
     }
     buildingIds.push(id)
   })
@@ -309,7 +308,7 @@ function enrichFootprints(
   })
   // Precedence: synthetic values, then fused source records, then manual overrides.
   const imported = applySourceRecords(state)
-  const kept = applyOverrides(state, 'floors')
+  const kept = applyFloorOverrides(state)
 
   upsertAsset(state, {
     id: 'asset:enriched-footprints',
@@ -491,7 +490,7 @@ function estimateShadingAndPv(
   }
 }
 
-/** Why held archetype assignments cannot be published, or null. */
+/** Why held part assignments cannot be published, or null. */
 export function validateAssignment(
   state: WorkbenchState,
   membership: string[],
@@ -501,16 +500,19 @@ export function validateAssignment(
     const output = held[id]
     if (!state.buildings[id]) return `building ${id} no longer exists`
     if (!output) return `building ${id} has no held assignment`
-    if (output.archetypeId !== null && !state.archetypes[output.archetypeId]) {
-      return `archetype ${output.archetypeId} no longer exists`
+    for (const kind of PART_KINDS) {
+      const assigned = output.parts[kind]
+      if (assigned && state.parts[assigned.partId]?.kind !== kind) {
+        return `the ${PART_LABELS[kind].toLowerCase()} part ${assigned.partId} no longer exists`
+      }
     }
   }
   return null
 }
 
 /**
- * Publishes a complete assignment group at once: every member gets its held
- * archetype, then manual archetype overrides are applied again so they win.
+ * Publishes a complete assignment group at once: every member gets the parts
+ * the rules gave it. Manual parts are not touched; they win when read.
  */
 export function publishAssignment(
   state: WorkbenchState,
@@ -521,23 +523,25 @@ export function publishAssignment(
   for (const id of membership) {
     const building = state.buildings[id]
     const output = held[id]
-    if (building && output) building.archetypeId = output.archetypeId
+    if (!building || !output) continue
+    // Held outputs are drafts here, so they are copied field by field.
+    for (const kind of PART_KINDS) {
+      const assigned = output.parts[kind]
+      building.parts[kind] = assigned ? { ...assigned } : null
+    }
   }
-  applyOverrides(state, 'archetypeId')
-  const unmatched = state.buildingIds.filter(
-    (id) => state.buildings[id]?.archetypeId === null,
-  ).length
+  const preview = previewAssignment(state)
   const archetypeCount = Object.keys(state.archetypes).length
   const scheduleCount = Object.keys(state.schedules).length
   const provenance = fromStage(STAGE_IDS.archetypes, context)
   upsertAsset(state, {
     id: 'asset:archetype-library',
     kind: 'archetypes',
-    name: 'Archetype library and assignments',
+    name: 'Archetypes, parts, and assignment rules',
     parentId: GROUP.archetypes,
     provenance,
     capability: 'archetypes.library',
-    summary: `${archetypeCount} archetypes; ${state.buildingIds.length - unmatched} buildings assigned`,
+    summary: `${archetypeCount} archetypes, ${Object.keys(state.parts).length} parts, ${state.ruleIds.length} rules; ${preview.complete} buildings have all four parts`,
   })
   upsertAsset(state, {
     id: 'asset:schedules',
@@ -548,15 +552,19 @@ export function publishAssignment(
     capability: 'archetypes.schedules',
     summary: `${scheduleCount} daily and weekly schedules (synthetic)`,
   })
+  const missing = PART_KINDS.filter((kind) => preview.unassigned[kind] > 0)
+  const incomplete = preview.buildings - preview.complete
   return {
     ok: true,
-    summary: `Assigned archetypes to ${state.buildingIds.length - unmatched} buildings.`,
-    warnings:
-      unmatched > 0
+    summary: `Assigned archetype parts by ${state.ruleIds.length} rules; ${preview.complete} of ${preview.buildings} buildings have all four parts.`,
+    warnings: [
+      ...(incomplete > 0
         ? [
-            `${unmatched} buildings have no matching archetype and are excluded from energy results. Assign one in the table or add an archetype.`,
+            `${incomplete} buildings lack a part (${missing.map((kind) => `${PART_LABELS[kind].toLowerCase()}: ${preview.unassigned[kind]}`).join(', ')}) and are excluded from energy results. Add a rule for them or set the part in the Table.`,
           ]
-        : [],
+        : []),
+      ...preview.warnings.map((warning) => warning.message),
+    ],
   }
 }
 
@@ -564,30 +572,21 @@ function setUpBaseline(
   state: WorkbenchState,
   context: StageRunContext,
 ): StageRunResult {
-  if (Object.keys(state.archetypes).length === 0) {
-    return {
-      ok: false,
-      message: 'No archetypes are available. Run "Archetype modeling".',
-    }
-  }
   const byBuildingKwh: Record<string, number> = {}
   let excluded = 0
   forEachBuilding(state, (building) => {
-    const archetype = building.archetypeId
-      ? state.archetypes[building.archetypeId]
-      : undefined
-    if (!archetype || building.floorAreaM2 === null) {
+    const intensity = buildingIntensity(state, building)
+    if (!intensity || building.floorAreaM2 === null) {
       excluded += 1
       return
     }
-    byBuildingKwh[building.id] = round(
-      building.floorAreaM2 * archetype.euiKwhPerM2,
-    )
+    byBuildingKwh[building.id] = round(building.floorAreaM2 * intensity.total)
   })
   if (Object.keys(byBuildingKwh).length === 0) {
     return {
       ok: false,
-      message: 'No building has both an archetype and a floor area.',
+      message:
+        'No building has all four archetype parts and a floor area. Run "Archetype modeling".',
     }
   }
   const baseline = makeResultSet(
@@ -634,7 +633,9 @@ function setUpBaseline(
     summary: `Baseline demand is ${megawattHours(baseline.totalKwh)}/yr (synthetic).`,
     warnings:
       excluded > 0
-        ? [`${excluded} buildings without an archetype were excluded.`]
+        ? [
+            `${excluded} buildings without all four archetype parts or a floor area were excluded.`,
+          ]
         : [],
   }
 }

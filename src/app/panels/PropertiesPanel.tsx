@@ -8,6 +8,9 @@ import {
 } from '../../domain/archetypes/library.ts'
 import { MEASURE_LIBRARY } from '../../domain/scenarios/library.ts'
 import type { SelectableEntity } from '../../domain/types.ts'
+import { PART_KINDS } from '../../domain/types.ts'
+import { PartProperties } from '../properties/PartProperties.tsx'
+import { RuleProperties } from '../properties/RuleProperties.tsx'
 import { useServices, useWorkbenchSnapshot } from '../WorkbenchContext.tsx'
 import { ActionButton } from '../components/ActionButton.tsx'
 import { CapabilityBadge } from '../components/CapabilityBadge.tsx'
@@ -233,6 +236,44 @@ function DefinitionProperties() {
       />
     )
   }
+  if (
+    creating === 'assignmentRule' ||
+    (entityType === 'assignmentRule' && id)
+  ) {
+    const rule = id && !creating ? (state.rules[id] ?? null) : null
+    return (
+      <RuleProperties
+        key={rule?.id ?? 'new'}
+        rule={rule}
+        onCreated={select('assignmentRule')}
+        onCancelCreate={cancel}
+      />
+    )
+  }
+  const newPart = PART_KINDS.find((kind) => creating === `part:${kind}`)
+  if (newPart) {
+    return (
+      <PartProperties
+        key={`new:${newPart}`}
+        kind={newPart}
+        part={null}
+        onCreated={select('archetypePart')}
+        onCancelCreate={cancel}
+      />
+    )
+  }
+  if (entityType === 'archetypePart' && id && !creating) {
+    const part = state.parts[id]
+    return part ? (
+      <PartProperties
+        key={part.id}
+        kind={part.kind}
+        part={part}
+        onCreated={select('archetypePart')}
+        onCancelCreate={cancel}
+      />
+    ) : null
+  }
   if (entityType === 'asset' && id) {
     const asset = state.assets[id]
     return asset ? <AssetProperties asset={asset} /> : null
@@ -361,8 +402,9 @@ export function PropertiesPanel() {
           </p>
           <p className={styles.muted}>
             Select buildings or grid elements on the Map or Table page, an
-            asset, or an archetype, schedule, measure, or scenario to see its
-            properties here. Definitions are edited here too.
+            asset, or an assignment rule, archetype, part, schedule, measure, or
+            scenario to see its properties here. Definitions are edited here
+            too.
           </p>
           <div className={styles.actions}>{pageActions}</div>
         </div>

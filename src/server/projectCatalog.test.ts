@@ -16,6 +16,7 @@ import { findDataset } from '../domain/intake/datasets.ts'
 import { suggestMapping } from '../domain/intake/fusion.ts'
 import { createWorkbench } from '../domain/workbench.ts'
 import { STAGE_IDS } from '../domain/workflow.ts'
+import { legacySave } from '../testing/legacySave.ts'
 
 function memoryStorage(): Storage {
   const values = new Map<string, string>()
@@ -340,14 +341,12 @@ describe('project catalog', () => {
     ).toBeTruthy()
   })
 
-  it('migrates archetypes saved before year ranges and schedules', () => {
+  it('migrates archetypes saved before year ranges, schedules, and parts', () => {
     const storage = memoryStorage()
     const state = buildFixture('complete', () => new Date())
-    const old = JSON.parse(JSON.stringify(state)) as Record<string, unknown>
+    const old = legacySave(state)
     delete old.schedules
-    for (const item of Object.values(
-      old.archetypes as Record<string, Record<string, unknown>>,
-    )) {
+    for (const item of Object.values(old.archetypes)) {
       for (const key of ['yearFrom', 'yearTo', 'scheduleId', 'source'])
         delete item[key]
     }
@@ -365,8 +364,17 @@ describe('project catalog', () => {
     const migrated = read.catalog.projects[0]?.state
     expect(
       migrated?.archetypes['archetype:residential-pre-1980'],
-    ).toMatchObject({ yearTo: 1979, scheduleId: 'schedule:residential' })
-    expect(Object.keys(migrated?.schedules ?? {})).toHaveLength(4)
+    ).toMatchObject({
+      yearTo: 1979,
+      parts: { spaceLoads: 'loads:residential' },
+    })
+    // Library space loads bring their library schedules.
+    expect(Object.keys(migrated?.schedules ?? {}).sort()).toEqual([
+      'schedule:office',
+      'schedule:residential',
+      'schedule:retail',
+      'schedule:school',
+    ])
   })
 
   it('marks fusion jobs saved before side runs as side runs', () => {

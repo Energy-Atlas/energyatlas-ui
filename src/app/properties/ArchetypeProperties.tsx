@@ -1,5 +1,12 @@
 import { useState } from 'react'
-import type { Archetype } from '../../domain/types.ts'
+import {
+  PART_LABELS,
+  archetypeIntensity,
+} from '../../domain/archetypes/parts.ts'
+import type { Archetype, PartKind } from '../../domain/types.ts'
+import { PART_KINDS } from '../../domain/types.ts'
+import { PropertyList } from '../components/PropertyList.tsx'
+import { formatNumber } from '../format.ts'
 import {
   useClientSnapshot,
   useServices,
@@ -7,7 +14,10 @@ import {
 } from '../WorkbenchContext.tsx'
 import { splitIssues } from '../commandErrors.ts'
 import { waitingReason } from '../service/usePendingReason.ts'
-import { SCHEDULE_LIBRARY } from '../../domain/archetypes/library.ts'
+import {
+  PART_LIBRARY,
+  SCHEDULE_LIBRARY,
+} from '../../domain/archetypes/library.ts'
 import { ActionButton } from '../components/ActionButton.tsx'
 import {
   LIBRARY_READ_ONLY,
@@ -22,9 +32,7 @@ type ArchetypeFields = {
   use: Archetype['use']
   yearFrom: string
   yearTo: string
-  euiKwhPerM2: string
-  scheduleId: string
-}
+} & Record<PartKind, string>
 
 function toFields(archetype: Archetype | null): ArchetypeFields {
   return {
@@ -32,8 +40,10 @@ function toFields(archetype: Archetype | null): ArchetypeFields {
     use: archetype?.use ?? 'residential',
     yearFrom: archetype?.yearFrom?.toString() ?? '',
     yearTo: archetype?.yearTo?.toString() ?? '',
-    euiKwhPerM2: archetype?.euiKwhPerM2.toString() ?? '150',
-    scheduleId: archetype?.scheduleId ?? '',
+    construction: archetype?.parts.construction ?? '',
+    systems: archetype?.parts.systems ?? '',
+    spaceLoads: archetype?.parts.spaceLoads ?? '',
+    externalLoads: archetype?.parts.externalLoads ?? '',
   }
 }
 
@@ -46,9 +56,10 @@ function isUse(value: string): value is Archetype['use'] {
 }
 
 /**
- * An archetype in Properties: its name, use, year range, energy use
- * intensity, and schedule. Saving outdates Archetype modeling; buildings
- * change only when assignment runs again.
+ * An archetype in Properties (decision 0032): its name, use, year range, and
+ * the part of each of RC's four kinds it bundles, with the synthetic
+ * intensity they give. Default rules are generated from archetypes, so a
+ * change takes effect when the default rules are generated again.
  */
 export function ArchetypeProperties({
   archetype,
@@ -68,16 +79,23 @@ export function ArchetypeProperties({
   const projectSchedules = useWorkbenchSnapshot(
     (snapshot) => snapshot.state.schedules,
   )
+  const projectParts = useWorkbenchSnapshot((snapshot) => snapshot.state.parts)
   const inProject = useWorkbenchSnapshot((snapshot) =>
     archetype ? archetype.id in snapshot.state.archetypes : false,
   )
-  // A library entry names the library schedule it would bring.
+  // A library entry names the library parts and schedules it would bring.
   const schedules = library
     ? {
         ...Object.fromEntries(SCHEDULE_LIBRARY.map((item) => [item.id, item])),
         ...projectSchedules,
       }
     : projectSchedules
+  const parts = library
+    ? {
+        ...Object.fromEntries(PART_LIBRARY.map((item) => [item.id, item])),
+        ...projectParts,
+      }
+    : projectParts
   const edits = useEdits(
     toFields(archetype),
     archetype
@@ -103,6 +121,16 @@ export function ArchetypeProperties({
     })
   }
 
+  const intensity = archetypeIntensity(
+    {
+      parts: Object.fromEntries(
+        PART_KINDS.map((kind) => [kind, draft[kind] || null]),
+      ) as Record<PartKind, string | null>,
+    },
+    parts,
+    schedules,
+  )
+
   const submit = () => {
     // Numbers are checked here so a blank or mistyped value is never sent as NaN.
     const local: Record<string, string> = {}
@@ -111,12 +139,6 @@ export function ArchetypeProperties({
       if (value !== null && !Number.isInteger(value)) {
         local[field] = 'Enter a whole year, or leave it empty.'
       }
-    }
-    if (
-      !draft.euiKwhPerM2.trim() ||
-      !Number.isFinite(Number(draft.euiKwhPerM2))
-    ) {
-      local.euiKwhPerM2 = 'Enter the energy use intensity as a number.'
     }
     if (Object.keys(local).length > 0) {
       setErrors(local)
@@ -132,8 +154,9 @@ export function ArchetypeProperties({
           use: draft.use,
           yearFrom: optionalYear(draft.yearFrom),
           yearTo: optionalYear(draft.yearTo),
-          euiKwhPerM2: Number(draft.euiKwhPerM2),
-          scheduleId: draft.scheduleId || null,
+          parts: Object.fromEntries(
+            PART_KINDS.map((kind) => [kind, draft[kind] || null]),
+          ) as Record<PartKind, string | null>,
         },
       })
       .then((result) => {
@@ -243,27 +266,37 @@ export function ArchetypeProperties({
         error={errors.yearTo}
         onChange={(value) => update('yearTo', value)}
       />
-      <TextProperty
-        label="Energy use intensity (kWh/m² per year)"
-        value={draft.euiKwhPerM2}
-        inputMode="decimal"
-        edited={highlight('euiKwhPerM2')}
-        error={errors.euiKwhPerM2}
-        onChange={(value) => update('euiKwhPerM2', value)}
-      />
-      <SelectProperty
-        label="Schedule"
-        value={draft.scheduleId}
-        edited={highlight('scheduleId')}
-        error={errors.scheduleId}
-        options={[
-          { value: '', label: 'None' },
-          ...Object.values(schedules).map((schedule) => ({
-            value: schedule.id,
-            label: schedule.name,
-          })),
+      {PART_KINDS.map((kind) => (
+        <SelectProperty
+          key={kind}
+          label={`${PART_LABELS[kind]} part`}
+          value={draft[kind]}
+          edited={highlight(kind)}
+          error={
+            errors[`parts.${kind}`] ??
+            (kind === 'construction' ? errors.parts : undefined)
+          }
+          options={[
+            { value: '', label: 'None' },
+            ...Object.values(parts)
+              .filter((part) => part.kind === kind)
+              .map((part) => ({ value: part.id, label: part.name })),
+          ]}
+          onChange={(value) => update(kind, value)}
+        />
+      ))}
+      <PropertyList
+        items={[
+          {
+            label: 'Energy use intensity',
+            value: intensity
+              ? formatNumber(intensity.total, {
+                  maxDigits: 1,
+                  unit: 'kWh/m² a year (synthetic)',
+                })
+              : 'Needs all four parts',
+          },
         ]}
-        onChange={(value) => update('scheduleId', value)}
       />
     </PropertyForm>
   )

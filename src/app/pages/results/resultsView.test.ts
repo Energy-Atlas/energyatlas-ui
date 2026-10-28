@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'vitest'
-import { finishJobNow } from '../../../domain/jobs/runNow.ts'
+import { finishJobNow, runStageNow } from '../../../domain/jobs/runNow.ts'
 import { createWorkbench } from '../../../domain/workbench.ts'
 import { STAGE_IDS, deriveStageStates } from '../../../domain/workflow.ts'
 import { buildFixture } from '../../../server/fixtures.ts'
@@ -154,6 +154,14 @@ describe('results view', () => {
 
   test('drill-down refuses buildings the shown result did not model', () => {
     const workbench = complete()
+    // Without the fallback rule, mixed-use buildings get no parts.
+    const fallback = workbench.getState().ruleIds.at(-1) ?? ''
+    workbench.execute({
+      type: 'rule.setEnabled',
+      input: { ruleId: fallback, enabled: false },
+    })
+    runStageNow(workbench, STAGE_IDS.archetypes)
+    runStageNow(workbench, STAGE_IDS.baseline)
     const view = createViewStore(workbench)
     const state = workbench.getState()
     const unmodeled = state.buildingIds.find(

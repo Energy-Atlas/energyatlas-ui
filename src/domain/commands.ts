@@ -1,7 +1,28 @@
 import { z } from 'zod'
 import { GROUP, upsertAsset } from './assets.ts'
-import { matchArchetype, missingDefaults } from './archetypes/assignment.ts'
-import { ARCHETYPE_LIBRARY, SCHEDULE_LIBRARY } from './archetypes/library.ts'
+import {
+  assignBuilding,
+  defaultRuleDrafts,
+  generatesDefaultRules,
+  missingDefaults,
+  prepareAssignmentRules,
+} from './archetypes/assignment.ts'
+import {
+  ARCHETYPE_LIBRARY,
+  FALLBACK_ARCHETYPE_ID,
+  PART_LIBRARY,
+  SCHEDULE_LIBRARY,
+} from './archetypes/library.ts'
+import {
+  PART_LABELS,
+  effectivePartIds,
+  overrideKey,
+} from './archetypes/parts.ts'
+import {
+  CONDITION_FIELD_IDS,
+  CONDITION_OPERATORS,
+  conditionIssue,
+} from './rules/conditions.ts'
 import {
   adoptBlocker,
   calibratedResult,
@@ -57,13 +78,18 @@ import type {
   HeldScenarioOutput,
   Measure,
   HeldPreprocessingOutput,
+  PartKind,
   RunGroup,
   Scenario,
   StageRecord,
   Task,
   WorkbenchState,
 } from './types.ts'
-import { SELECTABLE_ENTITIES, type SelectableEntity } from './types.ts'
+import {
+  PART_KINDS,
+  SELECTABLE_ENTITIES,
+  type SelectableEntity,
+} from './types.ts'
 import { selectableCollection } from './selection.ts'
 import {
   STAGE_IDS,
@@ -182,6 +208,8 @@ const SELECTION_NOUNS: Record<SelectableEntity, string> = {
   libraryArchetype: 'library archetype(s)',
   librarySchedule: 'library schedule(s)',
   libraryMeasure: 'library measure(s)',
+  archetypePart: 'archetype part(s)',
+  assignmentRule: 'assignment rule(s)',
 }
 
 const JOB_STATUS_WORDS: Record<Task['status'], string> = {
@@ -222,13 +250,26 @@ export function definitionsBlocker(state: WorkbenchState): string | null {
   if (state.buildingIds.some((id) => state.buildings[id]?.use === null)) {
     return 'Building use is missing. Run "Geospatial data enriching".'
   }
-  for (const archetype of Object.values(state.archetypes)) {
+  for (const part of Object.values(state.parts)) {
     if (
-      archetype.scheduleId !== null &&
-      !state.schedules[archetype.scheduleId]
+      part.kind === 'spaceLoads' &&
+      part.scheduleId !== null &&
+      !state.schedules[part.scheduleId]
     ) {
-      return `"${archetype.name}" uses a schedule that no longer exists. Choose another schedule first.`
+      return `"${part.name}" uses a schedule that no longer exists. Choose another schedule first.`
     }
+  }
+  const stage = state.workflow.stages[STAGE_IDS.archetypes]
+  if (state.ruleIds.length === 0 && stage?.lastRun) {
+    return 'There are no assignment rules. Generate the default rules or add a rule first.'
+  }
+  if (
+    state.ruleIds.length > 0 &&
+    state.ruleIds.every((id) => state.rules[id]?.enabled === false)
+  ) {
+    return 'Every assignment rule is off. Switch one on first.'
+  }
+  for (const archetype of Object.values(state.archetypes)) {
     if (
       archetype.yearFrom !== null &&
       archetype.yearTo !== null &&
@@ -312,10 +353,11 @@ function stageItem(
     return { output: null, missing: 'The building no longer exists.' }
   }
   if (stageId === STAGE_IDS.archetypes) {
+    const { prepared } = prepareAssignmentRules(state)
     return {
       output: {
         kind: 'assignment',
-        archetypeId: matchArchetype(state.archetypes, building),
+        parts: assignBuilding(prepared, building).parts,
       },
       missing: null,
     }
@@ -347,20 +389,84 @@ function touchArchetypeInputs(state: WorkbenchState) {
 }
 
 /**
- * Copies a library archetype and the schedule it uses into the project. A
- * copied schedule whose name is taken gets a "(library)" suffix, so names
- * stay unique and both stay editable.
+ * Copies library parts the project lacks, with the schedules their space
+ * loads use. A copied part or schedule whose name is taken gets a
+ * "(library)" suffix, so names stay unique and both stay editable.
  */
+function addLibraryParts(state: WorkbenchState, ids: (string | null)[]) {
+  for (const id of ids) {
+    if (id === null || state.parts[id]) continue
+    const entry = PART_LIBRARY.find((item) => item.id === id)
+    if (!entry) continue
+    const part = structuredClone(entry)
+    if (!uniqueName(Object.values(state.parts), part.name)) {
+      part.name = `${part.name} (library)`
+    }
+    state.parts[part.id] = part
+    if (part.kind !== 'spaceLoads') continue
+    const schedule = SCHEDULE_LIBRARY.find(
+      (item) => item.id === part.scheduleId,
+    )
+    if (schedule && !state.schedules[schedule.id]) {
+      const copy = structuredClone(schedule)
+      if (!uniqueName(Object.values(state.schedules), copy.name)) {
+        copy.name = `${copy.name} (library)`
+      }
+      state.schedules[copy.id] = copy
+    }
+  }
+}
+
+/** Copies a library archetype into the project with the parts and schedules it bundles. */
 function addLibraryArchetype(state: WorkbenchState, entry: Archetype) {
   state.archetypes[entry.id] = structuredClone(entry)
-  const schedule = SCHEDULE_LIBRARY.find((item) => item.id === entry.scheduleId)
-  if (schedule && !state.schedules[schedule.id]) {
-    const copy = structuredClone(schedule)
-    if (!uniqueName(Object.values(state.schedules), copy.name)) {
-      copy.name = `${copy.name} (library)`
-    }
-    state.schedules[copy.id] = copy
+  addLibraryParts(
+    state,
+    PART_KINDS.map((kind) => entry.parts[kind]),
+  )
+}
+
+/**
+ * Replaces the generated rules with fresh ones from the project's
+ * archetypes, below the project's own rules, with the fallback last. The
+ * fallback's library parts come into the project when it lacks them.
+ */
+function generateDefaultRules(state: WorkbenchState): number {
+  for (const id of state.ruleIds) {
+    if (state.rules[id]?.origin === 'default') delete state.rules[id]
   }
+  state.ruleIds = state.ruleIds.filter((id) => id in state.rules)
+  const fallback = ARCHETYPE_LIBRARY.find(
+    (entry) => entry.id === FALLBACK_ARCHETYPE_ID,
+  )
+  if (fallback && !state.archetypes[FALLBACK_ARCHETYPE_ID]) {
+    addLibraryParts(
+      state,
+      PART_KINDS.map((kind) => fallback.parts[kind]),
+    )
+  }
+  const drafts = defaultRuleDrafts(state.archetypes)
+  for (const draft of drafts) {
+    const id = allocateId(state, 'rule')
+    state.rules[id] = { id, ...draft.rule }
+    state.ruleIds.push(id)
+  }
+  return drafts.length
+}
+
+/** Whether rules, overrides, or published assignments use a part, so editing it changes results. */
+function partInUse(state: WorkbenchState, partId: string): boolean {
+  return (
+    Object.values(state.rules).some((rule) =>
+      PART_KINDS.some((kind) => rule.parts[kind] === partId),
+    ) ||
+    Object.values(state.overrides).some(
+      (override) => override.field !== 'floors' && override.value === partId,
+    ) ||
+    Object.values(state.buildings).some((building) =>
+      PART_KINDS.some((kind) => building.parts[kind]?.partId === partId),
+    )
+  )
 }
 
 /** Why a stage run cannot be submitted, including item-input checks; shared by commands and controls. */
@@ -578,6 +684,89 @@ const buildingUseSchema = z.enum([
   'mixed',
 ])
 
+const partIdSchema = z.string().min(1).nullable()
+
+const partIdsSchema = z.object({
+  construction: partIdSchema,
+  systems: partIdSchema,
+  spaceLoads: partIdSchema,
+  externalLoads: partIdSchema,
+})
+
+/** A part reference of the wrong kind or to nothing, on its field. */
+function partIdsIssue(
+  state: WorkbenchState,
+  parts: Record<PartKind, string | null>,
+): CommandOutcome | null {
+  for (const kind of PART_KINDS) {
+    const partId = parts[kind]
+    if (partId !== null && state.parts[partId]?.kind !== kind) {
+      return rejected(
+        `Choose an existing ${PART_LABELS[kind].toLowerCase()} part, or none.`,
+        `parts.${kind}`,
+      )
+    }
+  }
+  return null
+}
+
+const measured = (label: string, min: number, max: number, unit = '') =>
+  z
+    .number({ error: `Enter ${label} as a number.` })
+    .min(
+      min,
+      `${label[0]?.toUpperCase()}${label.slice(1)} must be at least ${min}${unit}.`,
+    )
+    .max(
+      max,
+      `${label[0]?.toUpperCase()}${label.slice(1)} must be at most ${max}${unit}.`,
+    )
+
+const partBase = {
+  id: z.string().min(1).optional(),
+  name: nameSchema,
+}
+
+const partInputSchema = z.discriminatedUnion('kind', [
+  z.object({
+    ...partBase,
+    kind: z.literal('construction'),
+    wallU: measured('the wall U-value', 0.1, 4, ' W/m²K'),
+    roofU: measured('the roof U-value', 0.1, 4, ' W/m²K'),
+    windowU: measured('the window U-value', 0.5, 6, ' W/m²K'),
+    windowRatio: measured('the window ratio', 0, 0.9),
+    infiltrationAch: measured('infiltration', 0, 3, ' ACH'),
+  }),
+  z.object({
+    ...partBase,
+    kind: z.literal('systems'),
+    fuel: z.enum(['gas', 'electric', 'district']),
+    heatingEfficiency: measured('the heating efficiency', 0.5, 5),
+    coolingCop: measured('the cooling COP', 1, 7),
+    hotWaterKwhPerM2: measured('hot water', 0, 80, ' kWh/m²'),
+  }),
+  z.object({
+    ...partBase,
+    kind: z.literal('spaceLoads'),
+    lightingWPerM2: measured('lighting', 0, 30, ' W/m²'),
+    equipmentWPerM2: measured('equipment', 0, 60, ' W/m²'),
+    m2PerPerson: measured('the floor area per person', 2, 200, ' m²'),
+    scheduleId: z.string().min(1).nullable(),
+  }),
+  z.object({
+    ...partBase,
+    kind: z.literal('externalLoads'),
+    exteriorLightingKwhPerM2: measured('exterior lighting', 0, 30, ' kWh/m²'),
+    processKwhPerM2: measured('process loads', 0, 200, ' kWh/m²'),
+  }),
+])
+
+const conditionSchema = z.object({
+  field: z.enum(CONDITION_FIELD_IDS).nullable(),
+  operator: z.enum(CONDITION_OPERATORS),
+  value: z.string().max(200, 'Use at most 200 characters.'),
+})
+
 const measureInputSchema = z.object({
   name: nameSchema,
   kind: z.enum(['envelope', 'heating', 'lighting', 'pv']),
@@ -703,8 +892,18 @@ function setPendingEdit(
   to: EditValue,
 ): CommandOutcome {
   const key = pendingKey(building.id, field)
-  const from = building[field]
-  if (from === to) {
+  const from =
+    field === 'floors'
+      ? building.floors
+      : effectivePartIds(state, building)[field]
+  // For a part, null asks to drop the manual part and follow the rules again.
+  const unchanged =
+    field === 'floors'
+      ? from === to
+      : to === null
+        ? !state.overrides[key]
+        : state.overrides[key]?.value === to
+  if (unchanged) {
     delete state.pendingEdits[key]
     return applied(
       `No change to ${field} of ${building.id}; pending edit cleared.`,
@@ -757,10 +956,13 @@ export const commandDefinitions = {
         stageId === STAGE_IDS.archetypes &&
         !stageRunBlocker(state.workflow, state.tasks, stageId)
       ) {
-        // A first assignment adds the default library archetypes the project lacks.
+        // A first assignment adds the default library archetypes the
+        // project lacks and, when it has no rules, generates the defaults.
+        const generate = generatesDefaultRules(state)
         for (const entry of missingDefaults(state)) {
           addLibraryArchetype(state, entry)
         }
+        if (generate) generateDefaultRules(state)
       }
       const blocker =
         stageRunBlocker(state.workflow, state.tasks, stageId) ??
@@ -901,18 +1103,14 @@ export const commandDefinitions = {
   'archetype.save': defineCommand({
     title: 'Save archetype',
     description:
-      'Create an archetype, or change one by id: name, building use, optional construction-year range, energy use intensity (kWh/m² per year), and an optional schedule. Archetype modeling becomes outdated so buildings are reassigned with the new definitions.',
+      'Create an archetype, or change one by id: a name, building use, optional construction-year range, and the part of each of the four kinds it bundles (construction, systems, spaceLoads, externalLoads; a part id or null). Archetypes feed the generated default rules; generate them again to use the change.',
     input: z.object({
-      id: z.string().min(1).optional(),
       name: nameSchema,
+      id: z.string().min(1).optional(),
       use: buildingUseSchema,
       yearFrom: yearSchema,
       yearTo: yearSchema,
-      euiKwhPerM2: z
-        .number({ error: 'Enter the energy use intensity as a number.' })
-        .min(20, 'Energy use intensity must be at least 20 kWh/m².')
-        .max(600, 'Energy use intensity must be at most 600 kWh/m².'),
-      scheduleId: z.string().min(1).nullable(),
+      parts: partIdsSchema,
     }),
     undoable: true,
     run(state, input, context) {
@@ -939,8 +1137,10 @@ export const commandDefinitions = {
           'yearTo',
         )
       }
-      if (input.scheduleId !== null && !state.schedules[input.scheduleId]) {
-        return rejected('Choose an existing schedule or none.', 'scheduleId')
+      const partIssue = partIdsIssue(state, input.parts)
+      if (partIssue) return partIssue
+      if (PART_KINDS.every((kind) => input.parts[kind] === null)) {
+        return rejected('Choose at least one part.', 'parts')
       }
       const id = existing?.id ?? allocateId(state, 'archetype')
       state.archetypes[id] = {
@@ -949,15 +1149,13 @@ export const commandDefinitions = {
         use: input.use,
         yearFrom: input.yearFrom,
         yearTo: input.yearTo,
-        euiKwhPerM2: input.euiKwhPerM2,
-        scheduleId: input.scheduleId,
+        parts: { ...input.parts },
         source: editedSource(existing?.source ?? null, context.operationId),
       }
-      touchArchetypeInputs(state)
       return applied(
         existing
-          ? `Updated archetype "${input.name}"; run Archetype modeling to reassign buildings.`
-          : `Created archetype "${input.name}"; run Archetype modeling to assign it.`,
+          ? `Updated archetype "${input.name}"; generate the default rules again to use it.`
+          : `Created archetype "${input.name}"; generate the default rules again to assign it.`,
       )
     },
   }),
@@ -965,7 +1163,7 @@ export const commandDefinitions = {
   'archetype.addFromLibrary': defineCommand({
     title: 'Add archetype from library',
     description:
-      'Copy an archetype from the synthetic library into the project, with its schedule. The copy keeps its library provenance and can then be edited.',
+      'Copy an archetype from the synthetic library into the project, with the four parts it bundles and their schedules. The copy keeps its library provenance and can then be edited; generate the default rules again to assign it.',
     input: z.object({
       libraryId: z.string().min(1, 'Choose a library archetype.'),
     }),
@@ -992,18 +1190,66 @@ export const commandDefinitions = {
         )
       }
       addLibraryArchetype(state, entry)
-      touchArchetypeInputs(state)
-      return applied(`Added "${entry.name}" from the synthetic library.`)
+      return applied(
+        `Added "${entry.name}" and its parts from the synthetic library.`,
+      )
+    },
+  }),
+
+  'part.save': defineCommand({
+    title: 'Save archetype part',
+    description:
+      'Create an archetype part, or change one by id. kind is construction (wallU, roofU, windowU in W/m²K, windowRatio 0 to 0.9, infiltrationAch), systems (fuel gas, electric, or district; heatingEfficiency 0.5 to 5, coolingCop 1 to 7, hotWaterKwhPerM2), spaceLoads (lightingWPerM2, equipmentWPerM2, m2PerPerson, scheduleId or null), or externalLoads (exteriorLightingKwhPerM2, processKwhPerM2). A part used by rules or buildings outdates Archetype modeling.',
+    input: partInputSchema,
+    undoable: true,
+    run(state, input, context) {
+      const existing = input.id ? state.parts[input.id] : undefined
+      if (input.id && !existing) {
+        return rejected(`Unknown part "${input.id}".`, 'id')
+      }
+      if (existing && existing.kind !== input.kind) {
+        return rejected(
+          `"${existing.name}" is a ${PART_LABELS[existing.kind].toLowerCase()} part; its kind cannot change.`,
+          'kind',
+        )
+      }
+      const others = Object.values(state.parts).filter(
+        (part) => part.id !== input.id,
+      )
+      if (!uniqueName(others, input.name)) {
+        return rejected(`A part named "${input.name}" already exists.`, 'name')
+      }
+      if (
+        input.kind === 'spaceLoads' &&
+        input.scheduleId !== null &&
+        !state.schedules[input.scheduleId]
+      ) {
+        return rejected('Choose an existing schedule or none.', 'scheduleId')
+      }
+      const id = existing?.id ?? allocateId(state, 'part')
+      const { id: _id, ...fields } = input
+      void _id
+      state.parts[id] = {
+        ...fields,
+        id,
+        source: editedSource(existing?.source ?? null, context.operationId),
+      }
+      if (existing && partInUse(state, id)) touchArchetypeInputs(state)
+      return applied(
+        existing
+          ? `Updated part "${input.name}".`
+          : `Created ${PART_LABELS[input.kind].toLowerCase()} part "${input.name}".`,
+      )
     },
   }),
 
   'schedule.save': defineCommand({
     title: 'Save schedule',
     description:
-      'Create a schedule, or change one by id: a name, one to seven day types (such as Weekday, Saturday, Sunday) each with 24 hourly fractions from 0 to 1, and the day type each day of the week uses, Monday first. Archetypes using it become outdated.',
+      'Create a schedule, or change one by id: a name, one to seven day types (such as Weekday, Saturday, Sunday) each with 24 hourly fractions from 0 to 1, and the day type each day of the week uses, Monday first. Space-loads parts using it, and so Archetype modeling, become outdated.',
     input: z.object({
-      id: z.string().min(1).optional(),
       name: nameSchema,
+      id: z.string().min(1).optional(),
       days: z
         .array(dayProfileSchema)
         .min(1, 'Add at least one day type.')
@@ -1061,10 +1307,13 @@ export const commandDefinitions = {
         week: [...input.week],
         source: editedSource(existing?.source ?? null, context.operationId),
       }
-      // Only archetypes that use the schedule are affected.
+      // Only space loads that follow the schedule, and are in use, are affected.
       if (
-        Object.values(state.archetypes).some(
-          (archetype) => archetype.scheduleId === id,
+        Object.values(state.parts).some(
+          (part) =>
+            part.kind === 'spaceLoads' &&
+            part.scheduleId === id &&
+            partInUse(state, part.id),
         )
       ) {
         touchArchetypeInputs(state)
@@ -1073,6 +1322,212 @@ export const commandDefinitions = {
         existing
           ? `Updated schedule "${input.name}".`
           : `Created schedule "${input.name}".`,
+      )
+    },
+  }),
+
+  'rule.save': defineCommand({
+    title: 'Save assignment rule',
+    description:
+      'Create an archetype assignment rule, or change one by id: a name, enabled, logic (all, any, or none of the conditions), conditions of field (use, yearBuilt, floors, floorAreaM2, heightM, footprintAreaM2, name, or null for a blank one), operator (larger, smaller, equals, contains, notContains; numbers take larger, smaller, equals; use takes equals, notContains; text takes contains, notContains, equals), and value, and the part of each kind it sets (a part id or null). No conditions match every building. Rules are tried top first and each part takes the first enabled matching rule that sets it; a new rule goes to position (default 0, the top). Archetype modeling becomes outdated.',
+    input: z.object({
+      name: nameSchema,
+      id: z.string().min(1).optional(),
+      enabled: z.boolean().default(true),
+      logic: z.enum(['all', 'any', 'none']),
+      conditions: z
+        .array(conditionSchema)
+        .max(20, 'Use at most 20 conditions.'),
+      parts: partIdsSchema,
+      position: z.number().int().min(0).optional(),
+    }),
+    undoable: true,
+    run(state, input) {
+      const existing = input.id ? state.rules[input.id] : undefined
+      if (input.id && !existing) {
+        return rejected(`Unknown rule "${input.id}".`, 'id')
+      }
+      const others = Object.values(state.rules).filter(
+        (rule) => rule.id !== input.id,
+      )
+      if (!uniqueName(others, input.name)) {
+        return rejected(`A rule named "${input.name}" already exists.`, 'name')
+      }
+      const issues: ValidationIssue[] = []
+      input.conditions.forEach((condition, index) => {
+        const issue = conditionIssue(condition)
+        if (issue) {
+          issues.push({
+            path: `conditions.${index}.${issue.path}`,
+            message: issue.message,
+          })
+        }
+      })
+      for (const kind of PART_KINDS) {
+        const partId = input.parts[kind]
+        if (partId !== null && state.parts[partId]?.kind !== kind) {
+          issues.push({
+            path: `parts.${kind}`,
+            message: `Choose an existing ${PART_LABELS[kind].toLowerCase()} part, or none.`,
+          })
+        }
+      }
+      if (PART_KINDS.every((kind) => input.parts[kind] === null)) {
+        issues.push({
+          path: 'parts',
+          message: 'Choose at least one part for the rule to set.',
+        })
+      }
+      if (issues.length > 0) return { status: 'rejected', issues }
+      const id = existing?.id ?? allocateId(state, 'rule')
+      state.rules[id] = {
+        id,
+        name: input.name,
+        enabled: input.enabled,
+        logic: input.logic,
+        conditions: input.conditions.map((condition) => ({
+          field: condition.field,
+          operator: condition.operator,
+          value: condition.value.trim(),
+        })),
+        parts: { ...input.parts },
+        // An edited generated rule becomes the project's own.
+        origin: 'project',
+      }
+      if (!existing) {
+        const position = Math.min(input.position ?? 0, state.ruleIds.length)
+        state.ruleIds.splice(position, 0, id)
+      }
+      touchArchetypeInputs(state)
+      return applied(
+        existing
+          ? `Updated rule "${input.name}"; run Archetype modeling to reassign parts.`
+          : `Created rule "${input.name}" at position ${state.ruleIds.indexOf(id) + 1}; run Archetype modeling to assign it.`,
+      )
+    },
+  }),
+
+  'rule.move': defineCommand({
+    title: 'Move assignment rule',
+    description:
+      'Move an assignment rule to a position counted from the top (0 is the highest priority). Archetype modeling becomes outdated.',
+    input: z.object({
+      ruleId: z.string().min(1, 'Choose a rule.'),
+      position: z.number().int().min(0),
+    }),
+    undoable: true,
+    run(state, { ruleId, position }) {
+      const rule = state.rules[ruleId]
+      const from = state.ruleIds.indexOf(ruleId)
+      if (!rule || from < 0)
+        return rejected(`Unknown rule "${ruleId}".`, 'ruleId')
+      if (position >= state.ruleIds.length) {
+        return rejected(
+          `Choose a position from 1 to ${state.ruleIds.length}.`,
+          'position',
+        )
+      }
+      if (position === from) {
+        return rejected(`"${rule.name}" is already there.`, 'position')
+      }
+      state.ruleIds.splice(from, 1)
+      state.ruleIds.splice(position, 0, ruleId)
+      touchArchetypeInputs(state)
+      return applied(
+        `Moved "${rule.name}" to position ${position + 1} of ${state.ruleIds.length}.`,
+      )
+    },
+  }),
+
+  'rule.setEnabled': defineCommand({
+    title: 'Switch assignment rule',
+    description:
+      'Switch an assignment rule on or off; a rule that is off is skipped. Archetype modeling becomes outdated.',
+    input: z.object({
+      ruleId: z.string().min(1, 'Choose a rule.'),
+      enabled: z.boolean(),
+    }),
+    undoable: true,
+    run(state, { ruleId, enabled }) {
+      const rule = state.rules[ruleId]
+      if (!rule) return rejected(`Unknown rule "${ruleId}".`, 'ruleId')
+      if (rule.enabled === enabled) {
+        return rejected(
+          `"${rule.name}" is already ${enabled ? 'on' : 'off'}.`,
+          'enabled',
+        )
+      }
+      rule.enabled = enabled
+      touchArchetypeInputs(state)
+      return applied(`Switched "${rule.name}" ${enabled ? 'on' : 'off'}.`)
+    },
+  }),
+
+  'rule.duplicate': defineCommand({
+    title: 'Duplicate assignment rule',
+    description:
+      'Copy an assignment rule just below it, as the project’s own rule. Archetype modeling becomes outdated.',
+    input: z.object({ ruleId: z.string().min(1, 'Choose a rule.') }),
+    undoable: true,
+    run(state, { ruleId }) {
+      const rule = state.rules[ruleId]
+      const from = state.ruleIds.indexOf(ruleId)
+      if (!rule || from < 0)
+        return rejected(`Unknown rule "${ruleId}".`, 'ruleId')
+      const names = Object.values(state.rules)
+      let name = `${rule.name} (copy)`
+      for (let number = 2; !uniqueName(names, name); number += 1) {
+        name = `${rule.name} (copy ${number})`
+      }
+      const id = allocateId(state, 'rule')
+      // The rule is a draft here, so it is copied field by field.
+      state.rules[id] = {
+        id,
+        name,
+        enabled: rule.enabled,
+        logic: rule.logic,
+        conditions: rule.conditions.map((condition) => ({ ...condition })),
+        parts: { ...rule.parts },
+        origin: 'project',
+      }
+      state.ruleIds.splice(from + 1, 0, id)
+      touchArchetypeInputs(state)
+      return applied(`Duplicated "${rule.name}" as "${name}".`)
+    },
+  }),
+
+  'rule.remove': defineCommand({
+    title: 'Remove assignment rule',
+    description:
+      'Remove an assignment rule. Buildings keep their published parts until Archetype modeling runs again; undo brings the rule back.',
+    input: z.object({ ruleId: z.string().min(1, 'Choose a rule.') }),
+    undoable: true,
+    run(state, { ruleId }) {
+      const rule = state.rules[ruleId]
+      if (!rule) return rejected(`Unknown rule "${ruleId}".`, 'ruleId')
+      delete state.rules[ruleId]
+      state.ruleIds = state.ruleIds.filter((id) => id !== ruleId)
+      touchArchetypeInputs(state)
+      return applied(`Removed "${rule.name}".`)
+    },
+  }),
+
+  'rule.generateDefaults': defineCommand({
+    title: 'Generate default rules',
+    description:
+      'Replace the generated assignment rules with one rule per project archetype (its use and construction-year range, narrowest range first) and a fallback rule without conditions last, as RC does. Rules written in the project are kept above them.',
+    input: z.object({}),
+    undoable: true,
+    run(state) {
+      if (Object.keys(state.archetypes).length === 0) {
+        return rejected(
+          'There are no archetypes to generate rules from. Add archetypes from the library first.',
+        )
+      }
+      const count = generateDefaultRules(state)
+      touchArchetypeInputs(state)
+      return applied(
+        `Generated ${count} default rules from ${Object.keys(state.archetypes).length} archetypes, with the fallback last.`,
       )
     },
   }),
@@ -1709,10 +2164,10 @@ export const commandDefinitions = {
   'edits.propose': defineCommand({
     title: 'Propose edit',
     description:
-      'Validate a building edit and hold it as pending until applied or discarded.',
+      'Validate a building edit and hold it as pending until applied or discarded: floors, or a manual archetype part (field construction, systems, spaceLoads, or externalLoads with a part id; null follows the rules again). Manual parts win over the rules.',
     input: z.object({
       entityId: z.string().min(1, 'Choose a building.'),
-      field: z.enum(['floors', 'archetypeId']),
+      field: z.enum(['floors', ...PART_KINDS]),
       value: z.union([z.number(), z.string(), z.null()]),
     }),
     undoable: false,
@@ -1743,19 +2198,23 @@ export const commandDefinitions = {
         return setPendingEdit(state, building, 'floors', parsed.data)
       }
 
-      if (Object.keys(state.archetypes).length === 0) {
+      const label = PART_LABELS[field].toLowerCase()
+      if (!Object.values(state.parts).some((part) => part.kind === field)) {
         return rejected(
-          'Archetypes are available after "Archetype modeling" runs.',
+          `There are no ${label} parts yet. Run "Archetype modeling" or add one on the Archetypes page.`,
           'field',
         )
       }
       if (
         value !== null &&
-        (typeof value !== 'string' || !state.archetypes[value])
+        (typeof value !== 'string' || state.parts[value]?.kind !== field)
       ) {
-        return rejected('Choose an existing archetype or none.', 'value')
+        return rejected(
+          `Choose an existing ${label} part, or follow the rules.`,
+          'value',
+        )
       }
-      return setPendingEdit(state, building, 'archetypeId', value)
+      return setPendingEdit(state, building, field, value)
     },
   }),
 
@@ -1777,11 +2236,16 @@ export const commandDefinitions = {
         if (edit.field === 'floors' && typeof edit.to === 'number') {
           building.floors = edit.to
           ownerStageIds.add(STAGE_IDS.enrichment)
+        } else if (edit.field !== 'floors' && edit.to === null) {
+          // Back to the rules: the published rule part applies again.
+          delete state.overrides[overrideKey(edit.entityId, edit.field)]
+          ownerStageIds.add(STAGE_IDS.archetypes)
+          continue
         } else if (
-          edit.field === 'archetypeId' &&
-          (edit.to === null || typeof edit.to === 'string')
+          edit.field !== 'floors' &&
+          typeof edit.to === 'string' &&
+          state.parts[edit.to]?.kind === edit.field
         ) {
-          building.archetypeId = edit.to
           ownerStageIds.add(STAGE_IDS.archetypes)
         } else {
           continue
