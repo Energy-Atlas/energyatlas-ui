@@ -3,7 +3,7 @@
 Date: 2026-10-28
 
 Status: accepted by the owner (2026-10-28, answering the [next stages discussion](../next-stages-discussion.md)).
-Nothing is built yet.
+All six stages are built on `claude/next-stages`, not merged; see the [completion report](../20261028_next-stages-completion.md).
 
 ## Context
 
