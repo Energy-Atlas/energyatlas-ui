@@ -674,7 +674,7 @@ function describeModellerTools(): AgentToolDescription[] {
       kind: 'handover' as const,
       title: 'Hand over project',
       description:
-        'Freeze the open project into a view-only handover package (the published model and results, its layouts and views, and provenance, without held job outputs, drafts, or job logs), keep it in this browser handover catalog for the viewer page, and return its id. Refused while jobs run. Waits for approval.',
+        'Freeze the copy of the open project saved in this browser into a view-only handover package (the published model and results, its layouts and views, and provenance, without held job outputs, drafts, job logs, or unsaved changes), keep it in this browser handover catalog for the viewer page, and return its id. Refused before the project is first saved, or when the saved copy was saved while jobs ran. Waits for approval.',
       requiresApproval: true,
       inputSchema: z.toJSONSchema(z.object({}), { io: 'input' }),
     },

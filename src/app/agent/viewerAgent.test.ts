@@ -210,6 +210,10 @@ describe('the modeller hand over tool', () => {
     const layout = createLayoutController(workbench, null)
     const view = createViewStore(workbench)
     const handover = createHandoverService({ client, workbench })
+    // A handover packages the saved copy (decision 0032).
+    const saved = client.save()
+    await manual.settle()
+    await saved
     const call = {
       kind: 'handover' as const,
       operation: { type: 'project.handover' as const, input: {} },

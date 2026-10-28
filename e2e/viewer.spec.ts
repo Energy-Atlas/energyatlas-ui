@@ -40,12 +40,28 @@ async function openLayouts(page: Page) {
   return dialog
 }
 
-/** Hands the open project over from File > Hand over…. */
-async function handOver(page: Page) {
+/** Saves the open project in this browser. */
+async function save(page: Page) {
+  await page.keyboard.press('Control+s')
+  await expect(page.getByTestId('save-status')).toContainText('Saved')
+}
+
+/** Opens File > Hand over…. */
+async function openHandover(page: Page) {
   const file = await openMenu(page, 'File')
   await file.getByRole('menuitem', { name: 'Hand over…' }).click()
   const dialog = page.getByRole('dialog', { name: 'Hand over this project' })
   await expect(dialog).toContainText('Left out: held job outputs')
+  return dialog
+}
+
+/**
+ * Hands the open project over from File > Hand over…, saving it first unless
+ * told not to: a handover packages the saved copy (decision 0032).
+ */
+async function handOver(page: Page, { saveFirst = true } = {}) {
+  if (saveFirst) await save(page)
+  const dialog = await openHandover(page)
   await dialog.getByRole('button', { name: 'Hand over the project' }).click()
   const done = page.getByRole('dialog', { name: 'Handed over' })
   await expect(done).toBeVisible()
@@ -60,6 +76,13 @@ test('hands over, lists, opens, and explores a package view only', async ({
 }) => {
   test.setTimeout(120_000)
   await page.goto('/?fixture=complete')
+
+  // A handover packages the saved copy, so a project never saved has none.
+  const fileMenu = await openMenu(page, 'File')
+  const handOverItem = fileMenu.getByRole('menuitem', { name: 'Hand over…' })
+  await expect(handOverItem).toHaveAttribute('aria-disabled', 'true')
+  await expect(handOverItem).toHaveAttribute('title', /Save the project first/)
+  await page.keyboard.press('Escape')
 
   // A project layout that opens the project on Results travels with it.
   await runFromPalette(page, 'Results')
@@ -80,8 +103,24 @@ test('hands over, lists, opens, and explores a package view only', async ({
   await page.keyboard.press('Space')
   await expect(opensWith).toBeChecked()
   await page.keyboard.press('Escape')
+  await save(page)
 
-  const done = await handOver(page)
+  // A layout saved after that is an unsaved change, which stays out.
+  dialog = await openLayouts(page)
+  await dialog.getByRole('textbox', { name: 'Layout name' }).fill('Not saved')
+  await dialog.getByRole('button', { name: 'Save layout' }).click()
+  await expect(
+    dialog
+      .getByRole('listbox', { name: 'Project layouts' })
+      .getByRole('option', { name: /Not saved/ }),
+  ).toBeVisible()
+  await page.keyboard.press('Escape')
+  const handover = await openHandover(page)
+  await expect(handover).toContainText('Unsaved changes stay out')
+  await handover.getByRole('button', { name: 'Hand over the project' }).click()
+  const done = page.getByRole('dialog', { name: 'Handed over' })
+  await expect(done).toBeVisible()
+  await expect(done).toContainText('later unsaved changes left out')
   await expect(done).toContainText("is in this browser's handover catalog")
   await expect(done).toContainText('12 stages: 12 complete')
   await expect(
@@ -149,6 +188,11 @@ test('hands over, lists, opens, and explores a package view only', async ({
   await expect(
     dialog.getByRole('heading', { name: 'Handed-over layouts' }),
   ).toBeVisible()
+  await expect(
+    dialog
+      .getByRole('listbox', { name: 'Project layouts' })
+      .getByRole('option', { name: /Not saved/ }),
+  ).toHaveCount(0)
   await dialog
     .getByRole('listbox', { name: 'Project layouts' })
     .getByRole('option', { name: /Results first/ })

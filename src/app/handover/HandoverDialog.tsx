@@ -4,8 +4,10 @@ import { packageWarnings } from '../../server/handover.ts'
 import {
   useClientSnapshot,
   useServices,
+  useUnsavedChanges,
   useWorkbenchSnapshot,
 } from '../WorkbenchContext.tsx'
+import { formatDateTime } from '../format.ts'
 import { ActionButton } from '../components/ActionButton.tsx'
 import { HandoverSummary } from '../components/HandoverSummary.tsx'
 import { InlineAlert } from '../components/InlineAlert.tsx'
@@ -19,8 +21,8 @@ import styles from './handover.module.css'
 
 /**
  * File > Hand over (decision 0032, stage 5): says what a handover package
- * holds and leaves out, freezes it, and then offers the viewer page and the
- * package file.
+ * holds and leaves out, freezes the copy saved in this browser, and then
+ * offers the viewer page and the package file.
  */
 export function HandoverDialog() {
   const { handover } = useServices()
@@ -29,8 +31,15 @@ export function HandoverDialog() {
   // Re-evaluated when requests start or finish, which can block a handover.
   useClientSnapshot((current) => current.pending.length)
   const blocker = snapshot.busy ? null : handover.blocker()
-  const warnings = useMemo(() => packageWarnings({ model: state }), [state])
   const drafts = Object.keys(state.pendingEdits).length
+  const savedAt = useClientSnapshot((current) => current.meta.savedAt)
+  const unsaved = useUnsavedChanges() || drafts > 0
+  // With unsaved changes the current model is not what the package holds, so
+  // its warnings are shown once the package is made.
+  const warnings = useMemo(
+    () => (unsaved ? [] : packageWarnings({ model: state })),
+    [state, unsaved],
+  )
   const done = snapshot.last
   const error = snapshot.issues.map((issue) => issue.message).join(' ')
 
@@ -82,18 +91,15 @@ export function HandoverDialog() {
       ) : (
         <>
           <p className={styles.lead}>
-            A handover package is a frozen, view-only copy of this project for
-            the viewer page: the published model and its current results, the
-            table settings, map layers, and project layouts, and where they came
-            from.
+            A handover package is a frozen, view-only copy of this project as
+            saved in this browser, for the viewer page: the published model and
+            its current results, the table settings, map layers, and project
+            layouts, and where they came from.
           </p>
           <ul className={styles.facts}>
             <li>
-              Left out: held job outputs, job logs, and unsent drafts
-              {drafts > 0
-                ? ` (${drafts} draft${drafts === 1 ? '' : 's'} here)`
-                : ''}
-              . Unsaved model changes are included.
+              Left out: held job outputs, job logs, unsent drafts, and changes
+              not saved in this browser.
             </li>
             <li>
               Result versions are not kept yet, so the package carries the
@@ -111,6 +117,11 @@ export function HandoverDialog() {
                   <li key={warning}>{warning}</li>
                 ))}
               </ul>
+            </InlineAlert>
+          ) : null}
+          {savedAt && unsaved && !blocker ? (
+            <InlineAlert tone="warning" title="Unsaved changes stay out">
+              {`The package holds the copy saved ${formatDateTime(savedAt)}${drafts > 0 ? `; ${drafts} unsent draft${drafts === 1 ? '' : 's'} here and` : ';'} changes made since are not in it. Save first (File > Save, Ctrl+S) to include them.`}
             </InlineAlert>
           ) : null}
           {blocker && !error ? (

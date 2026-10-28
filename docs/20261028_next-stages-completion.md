@@ -28,9 +28,9 @@ All 29 commits carry the configured identity, Cheng Xuan Li, and no attribution 
 Every stage document has a "Decisions taken for review" section, and those sections are the complete list. These
 items change behaviour you already know or read your words in a particular way:
 
-1. **Handover includes unsaved model changes** (viewer decision 2). The package freezes the server's current model
-   and records whether it had unsaved changes. The alternative is to hand over the last saved copy only. This needs
-   your reading of "the published model".
+1. **Handover packages the saved copy only** (viewer decision 2, resolved by the owner on 2026-10-28). Unsaved
+   model, view, and layout changes and drafts stay out, the dialog warns about them, and a project never saved cannot
+   be handed over. Built after the report in a follow-up commit on the same branch.
 2. **The viewer leaves out Roadmap** because every stage card has run controls; stage states appear in About this
    handover. **Demo conditions stay** on the viewer so its loading and error states can be shown, which differs
    from direction B. **The Dashboard's what-if adoption preview stays** without Apply (viewer decisions 7–9).
@@ -89,6 +89,8 @@ These were left out on purpose:
 | `npm run test:e2e` (all specs, 4 workers) | 128 passed |
 | `npm run test:e2e:preview` | 4 passed, including the viewer under the Pages base path |
 | `git diff --check` | clean |
+
+After the saved-copy handover change: the same checks passed again, with 526 unit tests (3 new), 128 development browser tests, and 4 production-preview tests.
 
 Port 5173 on this machine is held by the owner's RC build, so the development browser specs ran through an ignored
 throwaway Playwright config on port 5180 (`tmp/playwright.5180.config.ts`). The specs and the committed config are

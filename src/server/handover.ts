@@ -37,7 +37,10 @@ export type HandoverProvenance = {
   projectName: string
   /** When the modeller last saved the project in its browser; null if never. */
   savedAt: string | null
-  /** The model had changes the modeller had not saved when it was handed over. */
+  /**
+   * The modeller had changes it had not saved when it handed over; the package
+   * leaves them out, since it holds the saved copy.
+   */
   unsavedChanges: boolean
   handedOverBy: CommandSource
   /** Each stage's state at handover, in workflow order. */
@@ -61,17 +64,32 @@ export type HandoverPackage = {
   view: SavedView
 }
 
-/** Why a project cannot be handed over now, or null. */
-export function handoverBlocker(state: WorkbenchState): string | null {
+/** Why Hand over is refused before the project was ever saved. */
+export const NOT_SAVED_FOR_HANDOVER =
+  'Save the project first (File > Save, Ctrl+S): a handover packages the copy saved in this browser, not unsaved changes.'
+
+/**
+ * Why a project cannot be handed over, or null. `saved` checks the copy saved
+ * in this browser, which is what a handover packages (decision 0032).
+ */
+export function handoverBlocker(
+  state: WorkbenchState,
+  copy: 'current' | 'saved' = 'current',
+): string | null {
   const active = state.taskIds.filter((id) => {
     const status = state.tasks[id]?.status
     return status === 'queued' || status === 'running'
   })
   if (active.length > 0) {
-    return `${active.length === 1 ? 'A job is' : `${active.length} jobs are`} still running. A handover freezes published results only; wait for ${active.length === 1 ? 'it' : 'them'} to finish or cancel ${active.length === 1 ? 'it' : 'them'} first.`
+    const jobs = active.length === 1 ? 'a job' : `${active.length} jobs`
+    return copy === 'saved'
+      ? `The saved copy was saved while ${jobs} ran. A handover freezes published results only; save again once ${active.length === 1 ? 'it finishes' : 'they finish'}, then hand over.`
+      : `${active.length === 1 ? 'A job is' : `${active.length} jobs are`} still running. A handover freezes published results only; wait for ${active.length === 1 ? 'it' : 'them'} to finish or cancel ${active.length === 1 ? 'it' : 'them'} first.`
   }
   if (state.buildingIds.length === 0) {
-    return 'The project has no buildings yet. Run Location setup / footprint capturing before handing it over.'
+    return copy === 'saved'
+      ? 'The saved copy has no buildings yet. Run Location setup / footprint capturing and save before handing it over.'
+      : 'The project has no buildings yet. Run Location setup / footprint capturing before handing it over.'
   }
   return null
 }
@@ -139,7 +157,7 @@ function resultsOf(model: WorkbenchState): HandoverProvenance['results'] {
   ]
 }
 
-/** Freezes the server's project into a handover package. */
+/** Freezes a project (the copy saved in this browser) into a handover package. */
 export function buildHandoverPackage(options: {
   state: WorkbenchState
   view: SavedView | null

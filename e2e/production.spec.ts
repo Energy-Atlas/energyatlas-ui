@@ -105,6 +105,10 @@ test('serves the viewer page under the base path and opens a handover', async ({
     }
   })
   await page.goto(`${BASE_PATH}?fixture=complete`)
+  await expect(page.getByRole('main', { name: 'Workspace' })).toBeVisible()
+  // A handover packages the saved copy (decision 0032).
+  await page.keyboard.press('Control+s')
+  await expect(page.getByTestId('save-status')).toContainText('Saved')
   await page
     .getByRole('toolbar', { name: 'Workbench commands' })
     .getByRole('button', { name: 'File', exact: true })

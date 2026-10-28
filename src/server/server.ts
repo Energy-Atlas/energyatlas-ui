@@ -21,6 +21,7 @@ import {
 import {
   buildHandoverPackage,
   handoverBlocker,
+  NOT_SAVED_FOR_HANDOVER,
   MAX_PACKAGE_BYTES,
   packageWarnings,
   readHandoverText,
@@ -155,10 +156,14 @@ export type ServerRequest =
   | { type: 'project.open'; projectId: string; source: CommandSource }
   | { type: 'project.close'; source: CommandSource }
   | {
-      /** Freezes the project into a handover package (decision 0032, stage 5). */
+      /**
+       * Freezes the copy of the project saved in this browser into a handover
+       * package (decision 0032, stage 5); unsaved changes stay out.
+       */
       type: 'project.handover'
       source: CommandSource
-      view?: SavedView
+      /** The UI has view changes not saved with the project. */
+      viewUnsaved?: boolean
       /** Unsent drafts the UI holds, which the package leaves out. */
       drafts: number
     }
@@ -502,14 +507,25 @@ export function createMockServer(options: {
         ok: false,
         ...serverError('Open or create a project first.', 409),
       }
-    const state = engine.getState()
-    const blocker = handoverBlocker(state)
+    // The owner's choice (decision 0032): a handover packages the saved copy,
+    // never changes the modeller has not saved.
+    const saved = meta.savedAt
+      ? catalog.projects.find((entry) => entry.id === meta.currentProject?.id)
+      : undefined
+    if (!saved)
+      return {
+        ok: false,
+        ...serverError(NOT_SAVED_FOR_HANDOVER, 409),
+      }
+    const state = restoreProject(saved)
+    const blocker = handoverBlocker(saved.state, 'saved')
     if (blocker) return { ok: false, ...serverError(blocker, 409) }
     const pkg = buildHandoverPackage({
       state,
-      view: request.view ?? meta.view,
-      savedAt: meta.savedAt,
-      unsavedChanges: meta.dirty,
+      view: saved.view ?? null,
+      savedAt: saved.savedAt,
+      unsavedChanges:
+        meta.dirty || Boolean(request.viewUnsaved) || request.drafts > 0,
       drafts: request.drafts,
       source: request.source,
       now: now(),

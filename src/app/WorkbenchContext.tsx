@@ -255,7 +255,18 @@ function createCoreServices(mode: AppMode): CoreServices {
         layouts,
       ),
   })
-  const handover = createHandoverService({ client, workbench })
+  const handover = createHandoverService({
+    client,
+    workbench,
+    viewUnsaved: () =>
+      !viewOnly &&
+      viewUnsaved(
+        view.getState(),
+        client.store.getState(),
+        layouts.store.getState(),
+        layouts,
+      ),
+  })
   const agent = createScriptedAgent({
     workbench,
     client,

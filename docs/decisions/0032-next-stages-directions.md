@@ -77,6 +77,9 @@ items, and answered four execution questions:
 Each stage passes the full check list in `AGENTS.md` and an independent review, whose findings are fixed or
 recorded, before the next stage starts.
 
+On review (2026-10-28) the owner chose that a handover packages **the copy saved in the browser only**, never unsaved
+changes ([viewer status](../viewer-handover.md), decision 2).
+
 ## Consequences
 
 - The viewer's handover includes the current published results only, because result versions are deferred.

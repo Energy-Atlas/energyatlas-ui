@@ -4,6 +4,7 @@ import type { CommandSource } from '../../domain/types.ts'
 import type { Workbench } from '../../domain/workbench.ts'
 import {
   handoverBlocker,
+  NOT_SAVED_FOR_HANDOVER,
   packageFileName,
   type HandoverPackage,
 } from '../../server/handover.ts'
@@ -11,9 +12,10 @@ import { downloadText } from '../csv.ts'
 import type { ProjectClient } from '../service/projectClient.ts'
 
 // Hand over (decision 0032, stage 5): one service for the File menu, the
-// Hand over dialog, the palette, and the agent. It freezes the open project
-// into a view-only package through the project client, keeps the result for
-// the dialog, and downloads a package as a file.
+// Hand over dialog, the palette, and the agent. It freezes the copy of the
+// open project saved in this browser into a view-only package through the
+// project client (the owner's choice: unsaved changes stay out), keeps the
+// result for the dialog, and downloads a package as a file.
 
 export type HandoverSnapshot = {
   /** The dialog is open. */
@@ -30,6 +32,8 @@ export type HandoverService = {
   closeDialog: () => void
   /** Why Hand over cannot run now, or null. */
   blocker: () => string | null
+  /** The open project has changes the saved copy, and so a package, lacks. */
+  unsaved: () => boolean
   handOver: (source?: CommandSource) => Promise<HandoverSnapshot>
   /** Downloads a package as a JSON file the viewer page opens. */
   download: (pkg: HandoverPackage, source?: CommandSource) => void
@@ -44,8 +48,14 @@ export function viewerUrl(packageId?: string): string {
 export function createHandoverService(options: {
   client: ProjectClient
   workbench: Workbench
+  /** Views saved with the project, such as tables, changed since saving. */
+  viewUnsaved?: () => boolean
 }): HandoverService {
-  const { client, workbench } = options
+  const { client, workbench, viewUnsaved = () => false } = options
+  const unsaved = () =>
+    client.store.getState().meta.dirty ||
+    viewUnsaved() ||
+    Object.keys(workbench.getState().pendingEdits).length > 0
   const store = createStore<HandoverSnapshot>()(() => ({
     open: false,
     busy: false,
@@ -66,7 +76,10 @@ export function createHandoverService(options: {
     if (snapshot.pending.length > 0) {
       return 'Waiting for the server to answer earlier requests. Hand over once they finish.'
     }
-    return handoverBlocker(workbench.getState())
+    if (!snapshot.meta.savedAt) return NOT_SAVED_FOR_HANDOVER
+    // With nothing unsaved the saved copy is the current model, so its
+    // blockers can be named before the server is asked.
+    return unsaved() ? null : handoverBlocker(workbench.getState(), 'saved')
   }
 
   return {
@@ -75,6 +88,7 @@ export function createHandoverService(options: {
       store.setState({ open: true, last: null, issues: [], busy: false }),
     closeDialog: () => store.setState({ open: false }),
     blocker,
+    unsaved,
     async handOver(source = 'manual') {
       const reason = blocker()
       if (reason) {
@@ -90,7 +104,9 @@ export function createHandoverService(options: {
         return store.getState()
       }
       store.setState({ busy: true, issues: [], last: null })
-      const handed = await client.handOver(source)
+      const handed = await client.handOver(source, {
+        viewUnsaved: viewUnsaved(),
+      })
       store.setState({
         busy: false,
         last: handed.package

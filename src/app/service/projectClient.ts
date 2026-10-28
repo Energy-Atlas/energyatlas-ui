@@ -134,8 +134,15 @@ export type ProjectClient = {
     source?: CommandSource,
   ) => Promise<ExecuteResult>
   closeProject: (source?: CommandSource) => Promise<ExecuteResult>
-  /** Freezes the open project into a handover package (decision 0032, stage 5). */
-  handOver: (source?: CommandSource) => Promise<HandoverResult>
+  /**
+   * Freezes the copy of the open project saved in this browser into a
+   * handover package (decision 0032, stage 5). `viewUnsaved` tells the server
+   * the UI has view changes the saved copy lacks, for the package's provenance.
+   */
+  handOver: (
+    source?: CommandSource,
+    options?: { viewUnsaved?: boolean },
+  ) => Promise<HandoverResult>
   /** Viewer page: reads the browser's handover catalog. */
   listPackages: (source?: CommandSource) => Promise<ExecuteResult>
   /** Viewer page: opens a package from the catalog or from a file's text. */
@@ -479,12 +486,12 @@ export function createProjectClient(options: {
     attachView(view) {
       viewOf = view
     },
-    async handOver(source = 'manual') {
+    async handOver(source = 'manual', options = {}) {
       const sent = await send(
         {
           type: 'project.handover',
           source,
-          view: viewOf?.(),
+          viewUnsaved: options.viewUnsaved ?? false,
           drafts: Object.keys(workbench.getState().pendingEdits).length,
         },
         'project.handover',

@@ -48,7 +48,7 @@ type HandoverPackage = {
   provenance: {
     projectId, projectName,
     savedAt: string | null,  // the modeller's last save
-    unsavedChanges: boolean, // unsaved model changes are included
+    unsavedChanges: boolean, // the modeller had unsaved changes, which the package leaves out
     handedOverBy: 'manual' | 'agent' | 'system',
     stages: { id, name, state, finishedAt, runId }[],   // states at handover
     results: { id, label, runId }[],                    // the published results it carries
@@ -59,7 +59,8 @@ type HandoverPackage = {
 }
 ```
 
-Freezing (`freezeModel`) keeps everything published (buildings, definitions, results, calibration variants, jobs and
+A package is frozen from the copy of the project saved in this browser, never from unsaved changes (the owner's
+answer to decision 2, 2026-10-28). Freezing (`freezeModel`) keeps everything published (buildings, definitions, results, calibration variants, jobs and
 run groups as records) and removes held job outputs, every job log line, drafts, the selection, and the focused stage.
 Reading a package (`readHandoverPackage`) refuses, with a message each: a file that is not JSON, JSON that is not a
 package, a later format version, a damaged package (the first failing path is named), provenance naming another
@@ -68,8 +69,10 @@ project, and a package that still carries working data.
 ### Hand over (modeller)
 
 File > Hand over…, the palette, and the agent's `project.handover` tool (waits for approval) use `services.handover`.
-The dialog says what a package holds and leaves out, previews the warnings the package will carry, and explains a
-blocker (running jobs, no buildings, a pending request). After handing over it shows the package's summary, Download
+The dialog says what a package holds and leaves out, previews the warnings the package will carry when nothing is
+unsaved, warns that unsaved changes (model, views, project layouts, drafts) stay out of the package, and explains a
+blocker (never saved, a saved copy saved while jobs ran or without buildings, a pending request). Before the first
+save, File > Hand over… is unavailable with that reason. After handing over it shows the package's summary, Download
 package (a `.handover.json` file), and Open in the viewer (`viewer.html?package=<id>`, a new tab). The package is
 written to `eaui.handovers.v1`; when storage is full or unreadable the package is still returned for download and
 the dialog says it was not kept.
@@ -160,12 +163,14 @@ needs data the package lacks says so instead of offering a run.
 1. **`viewer.html` as a second Vite entry**, not `?viewer`: the Pages base path works for a second HTML file (the
    build emits `dist/viewer.html` with prefixed asset URLs, and `npm run test:e2e:preview` opens it under the base
    path), and the viewer's entry imports only the pages it shows.
-2. **The package freezes the server's current model**, including unsaved model changes, and records whether there
-   were any and when the modeller last saved; drafts in the UI are counted and left out. **Needs the owner's
-   confirmation** that this is what "the published model" means; the alternative is to hand over the last saved copy
-   only.
-3. **Hand over is refused while jobs run** (and before any building exists): a running job would freeze as "running"
-   forever and its held output is excluded anyway.
+2. **The package freezes the copy saved in this browser** (the owner's answer, 2026-10-28, choosing "saved copy
+   only" over the built default of the server's current model). Unsaved model changes, view changes, project layout
+   changes, and drafts stay out; the provenance records when the copy was saved and whether there were unsaved
+   changes, and the dialog warns before handing over. Handing over neither saves nor discards them. A project never
+   saved cannot be handed over.
+3. **Hand over is refused when the saved copy was saved while jobs ran** (and when it has no buildings): a running job
+   would freeze as "running" forever and its held output is excluded anyway. Jobs running now do not block a handover
+   of a copy saved before them.
 4. **Jobs and run groups stay in the package as records** without logs or held outputs, so stage states and result
    provenance (the run that published a result) derive as in the modeller; the viewer has no Jobs page to show them.
 5. **A package with working data is refused**, not cleaned, so a tampered or foreign file cannot smuggle drafts,
@@ -238,6 +243,17 @@ An independent review's findings, all fixed on `claude/next-stages`:
   derived from the model; the file size is checked before reading; `DefinitionCard` (the read-only definition) is in
   the gallery; the package list refreshes on other tabs' changes and on focus; stage references no longer open the
   Roadmap in the viewer.
+
+## Saved copy only (2026-10-28)
+
+The owner answered decision 2: a handover packages the saved copy only. `project.handover` now builds the package from
+the project's catalog entry (`restoreProject`, its saved views and layouts) instead of the server's current model;
+the request carries `viewUnsaved` instead of the UI's current views, for the provenance only. The client's blocker
+names `NOT_SAVED_FOR_HANDOVER` before the first save, and `handoverBlocker(state, 'saved')` words its refusals for
+the saved copy. Unit tests cover a project never saved, a package holding the saved zoning after an unsaved
+`zoning.set` (with the modeller's change kept), and the saved-copy blockers; the viewer spec checks the unavailable
+menu item, the dialog's warning, and that a project layout added after saving is not in the package. The other
+handover specs save first. Verification is in the completion report.
 
 ## Verification (2026-10-28)
 

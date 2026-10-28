@@ -102,7 +102,7 @@ export function HandoverSummary({
           {
             label: 'Saved by the modeller',
             value: provenance.savedAt
-              ? `${formatDateTime(provenance.savedAt)}${provenance.unsavedChanges ? ', with later changes not saved' : ''}`
+              ? `${formatDateTime(provenance.savedAt)}${provenance.unsavedChanges ? '; later unsaved changes left out' : ''}`
               : 'Never saved in the modeller',
           },
           fileName ? { label: 'Opened from', value: fileName } : null,

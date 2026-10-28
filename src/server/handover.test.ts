@@ -9,6 +9,7 @@ import {
   buildHandoverPackage,
   handoverBlocker,
   HANDOVER_VERSION,
+  NOT_SAVED_FOR_HANDOVER,
   packageFileName,
   packageWarnings,
   readHandoverPackage,
@@ -188,9 +189,12 @@ describe('handover package', () => {
   })
 })
 
-/** Hands a complete fixture over into `storage` from a modeller session. */
+/** Saves a complete fixture and hands it over into `storage` from a modeller session. */
 async function handOver(storage: Storage) {
   const modeller = createTestProject({ storage, fixture: 'complete' })
+  const saved = modeller.client.save()
+  await modeller.manual.settle()
+  expect((await saved).outcome.status).toBe('applied')
   const handed = modeller.client.handOver()
   await modeller.manual.settle()
   return { modeller, handed: await handed }
@@ -281,6 +285,60 @@ describe('forged packages', () => {
 })
 
 describe('handover through the mock server', () => {
+  test('a project never saved cannot be handed over', async () => {
+    const storage = memoryStorage()
+    const modeller = createTestProject({ storage, fixture: 'complete' })
+    const handed = modeller.client.handOver()
+    await modeller.manual.settle()
+    const { result, package: pkg } = await handed
+    expect(pkg).toBeNull()
+    expect(result.outcome.status).toBe('rejected')
+    if (result.outcome.status === 'rejected')
+      expect(result.outcome.issues[0]?.message).toBe(NOT_SAVED_FOR_HANDOVER)
+    expect(readHandoverCatalog(storage).catalog.packages).toEqual([])
+  })
+
+  test('the package holds the saved copy, not changes made since', async () => {
+    const storage = memoryStorage()
+    const modeller = createTestProject({ storage, fixture: 'complete' })
+    const saved = modeller.client.save()
+    await modeller.manual.settle()
+    await saved
+    const savedAt = modeller.client.store.getState().meta.savedAt
+    const savedMode = modeller.workbench.getState().zoning.mode
+    const changed = modeller.client.execute({
+      type: 'zoning.set',
+      input: { mode: savedMode === 'floors' ? 'single' : 'floors' },
+    })
+    await modeller.manual.settle()
+    expect((await changed).outcome.status).toBe('applied')
+    expect(modeller.client.store.getState().meta.dirty).toBe(true)
+
+    const handed = modeller.client.handOver()
+    await modeller.manual.settle()
+    const { package: pkg } = await handed
+    expect(pkg?.model.zoning.mode).toBe(savedMode)
+    expect(pkg?.provenance).toMatchObject({ savedAt, unsavedChanges: true })
+    // Handing over neither saves nor discards the modeller's changes.
+    expect(modeller.client.store.getState().meta.dirty).toBe(true)
+    expect(modeller.workbench.getState().zoning.mode).not.toBe(savedMode)
+  })
+
+  test('a copy saved while jobs ran is refused, whatever runs now', () => {
+    const state = workingState()
+    const taskId = state.taskIds.at(-1) ?? ''
+    state.tasks[taskId]!.status = 'running'
+    expect(handoverBlocker(state, 'saved')).toContain(
+      'The saved copy was saved while a job ran',
+    )
+    expect(
+      handoverBlocker(
+        buildFixture('new', () => NOW),
+        'saved',
+      ),
+    ).toContain('The saved copy has no buildings')
+  })
+
   test('the modeller hands over into the browser catalog', async () => {
     const storage = memoryStorage()
     const { handed, modeller } = await handOver(storage)
