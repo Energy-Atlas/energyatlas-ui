@@ -90,3 +90,43 @@ test('runs, holds, and retries a partial job in the built bundle', async ({
   await detail.getByRole('button', { name: /^Retry \d+ failed items?/ }).click()
   await expect(detail).toContainText('Published', { timeout: 20_000 })
 })
+
+// The viewer page (decision 0032, stage 5) is a second HTML entry; under the
+// base path it must load its own bundle, list a package handed over in the
+// modeller, and open it view only.
+test('serves the viewer page under the base path and opens a handover', async ({
+  page,
+}) => {
+  test.setTimeout(60_000)
+  const failed: string[] = []
+  page.on('response', (response) => {
+    if (response.status() >= 400) {
+      failed.push(`${response.status()} ${response.url()}`)
+    }
+  })
+  await page.goto(`${BASE_PATH}?fixture=complete`)
+  await page
+    .getByRole('toolbar', { name: 'Workbench commands' })
+    .getByRole('button', { name: 'File', exact: true })
+    .click()
+  await page.getByRole('menuitem', { name: 'Hand over…' }).click()
+  await page.getByRole('button', { name: 'Hand over the project' }).click()
+  const link = page.getByRole('link', { name: 'Open in the viewer' })
+  await expect(link).toHaveAttribute(
+    'href',
+    new RegExp(`^${BASE_PATH}viewer[.]html[?]package=`),
+  )
+
+  const viewer = await page.request.get(`${BASE_PATH}viewer.html`)
+  expect(viewer.status()).toBe(200)
+  // Preview falls back to index.html for missing files: check it is the viewer.
+  expect(await viewer.text()).toContain('EnergyAtlas viewer')
+
+  await page.goto((await link.getAttribute('href')) ?? '')
+  await expect(page.getByRole('main', { name: 'Workspace' })).toBeVisible()
+  await expect(page.getByText('View only').first()).toBeVisible()
+  await expect(page.locator('canvas.maplibregl-canvas')).toBeVisible({
+    timeout: 30_000,
+  })
+  expect(failed).toEqual([])
+})
