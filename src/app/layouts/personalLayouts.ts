@@ -14,11 +14,9 @@ export const PERSONAL_LAYOUTS_KEY = 'eaui.layouts.v1'
 /**
  * A viewer's personal layouts for one handover package (decision 0032, stage
  * 5): apart from the modeller's, and from other packages', so a layout made
- * for one handover never appears over another.
+ * for one handover never appears over another. Removing a package removes them.
  */
-export function viewerLayoutsKey(packageId: string): string {
-  return `eaui.viewer.layouts.v1:${packageId}`
-}
+export { viewerLayoutsKey } from '../../server/storageQuota.ts'
 
 export type PersonalStatus =
   | { kind: 'ready' }

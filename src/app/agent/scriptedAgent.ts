@@ -9,6 +9,7 @@ import {
   SESSIONS,
   VIEW_ONLY_ANSWER,
   VIEWER_SESSIONS,
+  VIEWER_UNMATCHED_ANSWER,
   type ScriptContext,
   type ScriptedSession,
   type Step,
@@ -166,12 +167,6 @@ export function createScriptedAgent(
 
   /** Answers a message: starts the session it matches, or explains that none does. */
   function deliver(prompt: string) {
-    if (viewOnly && asksForModelChange(prompt)) {
-      push({ id: nextId(), kind: 'user', text: prompt })
-      push({ id: nextId(), kind: 'agent', markdown: VIEW_ONLY_ANSWER })
-      deliverQueued()
-      return
-    }
     const session = viewOnly ? matchViewerSession(prompt) : matchSession(prompt)
     if (session) {
       start(session, prompt)
@@ -181,8 +176,12 @@ export function createScriptedAgent(
     push({
       id: nextId(),
       kind: 'agent',
-      markdown:
-        'I am a **scripted agent** in this prototype. I can only run the prepared sessions offered below, so I did not act on this message. Choose a session, or use the workbench controls directly.',
+      markdown: !viewOnly
+        ? 'I am a **scripted agent** in this prototype. I can only run the prepared sessions offered below, so I did not act on this message. Choose a session, or use the workbench controls directly.'
+        : // Refused only when no viewer session matches (decision 0032, stage 5).
+          asksForModelChange(prompt)
+          ? VIEW_ONLY_ANSWER
+          : VIEWER_UNMATCHED_ANSWER,
     })
     deliverQueued()
   }

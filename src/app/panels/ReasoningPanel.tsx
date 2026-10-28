@@ -413,7 +413,7 @@ function ModelMenu({ label }: { label: string }) {
  * agent may do without asking (decisions 0005, 0006, 0011, and 0016).
  */
 export function ReasoningPanel() {
-  const { agent, layout, workbench, showInspection } = useServices()
+  const { agent, layout, workbench, showInspection, viewOnly } = useServices()
   const status = useAgentSnapshot((snapshot) => snapshot.status)
   const transcript = useAgentSnapshot((snapshot) => snapshot.transcript)
   const presets = useAgentSnapshot((snapshot) => snapshot.presets)
@@ -444,6 +444,16 @@ export function ReasoningPanel() {
         layout.openPage(target.page)
         return
       case 'stage':
+        if (!layout.hasPage('roadmap')) {
+          // The viewer has no Roadmap (decision 0032, stage 5): the stage's
+          // properties, as handed over, show instead.
+          workbench.execute({
+            type: 'selection.set',
+            input: { entityType: 'stage', ids: [target.stageId] },
+          })
+          showInspection()
+          return
+        }
         workbench.execute({
           type: 'workflow.setCurrentStage',
           input: { stageId: target.stageId },
@@ -495,10 +505,9 @@ export function ReasoningPanel() {
       >
         {transcript.length === 0 ? (
           <p className={styles.intro}>
-            Choose a suggested next step or type a request. Sessions replay tool
-            calls through the same commands, view operations, and layout
-            operations as the workbench controls, and what the agent may do
-            without asking follows the permission mode below.
+            {viewOnly
+              ? 'Choose a suggested next step or type a question. On this view-only page the agent explains the handed-over results and changes views, through the same view operations and layout operations as the controls; it never changes the model.'
+              : 'Choose a suggested next step or type a request. Sessions replay tool calls through the same commands, view operations, and layout operations as the workbench controls, and what the agent may do without asking follows the permission mode below.'}
           </p>
         ) : (
           <ol className={styles.transcript}>
@@ -601,10 +610,14 @@ export function ReasoningPanel() {
             >
               <Plus size={14} aria-hidden="true" />
             </ActionButton>
-            <PermissionMenu
-              selected={permissionMode}
-              onSelect={(mode) => agent.setPermissionMode(mode)}
-            />
+            {/* Permission modes govern runs and model changes, which the
+                viewer's agent never makes (decision 0032, stage 5). */}
+            {viewOnly ? null : (
+              <PermissionMenu
+                selected={permissionMode}
+                onSelect={(mode) => agent.setPermissionMode(mode)}
+              />
+            )}
             <ModelMenu label="Scripted" />
             {status !== 'idle' ? (
               <ActionButton

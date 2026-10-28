@@ -11,3 +11,18 @@
   padding-left: var(--space-4);
   max-width: 36rem;
 }
+
+.catalog {
+  display: grid;
+  gap: var(--space-2);
+  margin-top: var(--space-3);
+  max-width: 36rem;
+}
+
+.catalog p {
+  margin: 0;
+}
+
+.catalogList {
+  max-height: 12rem;
+}

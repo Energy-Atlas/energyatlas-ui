@@ -15,8 +15,13 @@ import {
   readHandoverText,
   type HandoverPackage,
 } from './handover.ts'
-import { HANDOVER_CATALOG_KEY, readHandoverCatalog } from './handoverCatalog.ts'
-import { SERVER_COMMANDS } from './server.ts'
+import {
+  HANDOVER_CATALOG_KEY,
+  readHandoverCatalog,
+  viewerLayoutsKey,
+} from './handoverCatalog.ts'
+import { CATALOG_KEY } from './projectCatalog.ts'
+import { createMockServer, SERVER_COMMANDS } from './server.ts'
 
 const NOW = new Date('2026-10-28T12:00:00Z')
 
@@ -175,6 +180,90 @@ async function handOver(storage: Storage) {
   return { modeller, handed: await handed }
 }
 
+describe('forged packages', () => {
+  /** A package whose latest baseline job is queued again in an open run. */
+  function forged(): HandoverPackage {
+    const pkg = packageOf(structuredClone(buildFixture('complete', () => NOW)))
+    const task = [...pkg.model.taskIds]
+      .reverse()
+      .map((id) => pkg.model.tasks[id]!)
+      .find((each) => each.stageId === STAGE_IDS.baseline)!
+    task.status = 'queued'
+    task.progress = 0
+    if (task.groupId) pkg.model.runGroups[task.groupId]!.status = 'open'
+    return pkg
+  }
+
+  test('a package with queued jobs or open runs is refused', () => {
+    const read = readHandoverPackage(forged())
+    expect(read).toMatchObject({ ok: false, code: 'invalid' })
+    if (!read.ok) expect(read.message).toContain('queued or running jobs')
+    const server = createMockServer({
+      storage: null,
+      scheduler: { schedule: () => () => undefined },
+      startClosed: true,
+      mode: 'viewer',
+    })
+    const reply = server.handle({
+      type: 'handover.open',
+      source: 'manual',
+      file: { name: 'forged.json', text: JSON.stringify(forged()) },
+    })
+    expect(reply.ok).toBe(false)
+    expect(server.current().state).toBeNull()
+  })
+
+  test('freezing closes runs left open, so the modeller never writes one', () => {
+    const state = structuredClone(buildFixture('complete', () => NOW))
+    const groupId = state.runGroupIds[0] ?? ''
+    state.runGroups[groupId]!.status = 'open'
+    const pkg = packageOf(state)
+    expect(pkg.model.runGroups[groupId]?.status).toBe('cancelled')
+    expect(readHandoverPackage(pkg).ok).toBe(true)
+  })
+
+  test('a viewer session never starts the job runner', () => {
+    let scheduled = 0
+    const server = createMockServer({
+      storage: null,
+      scheduler: {
+        schedule: () => {
+          scheduled += 1
+          return () => undefined
+        },
+      },
+      startClosed: true,
+      mode: 'viewer',
+    })
+    const reply = server.handle({
+      type: 'handover.open',
+      source: 'manual',
+      file: { name: 'complete.json', text: JSON.stringify(packageOf()) },
+    })
+    expect(reply.ok).toBe(true)
+    expect(scheduled).toBe(0)
+    expect(server.current().meta.dirty).toBe(false)
+  })
+
+  test('results and stage states are read from the model, not the file', () => {
+    const pkg = packageOf()
+    pkg.provenance.results = [
+      { id: 'scenario:invented', label: 'Invented', runId: 'run-x' },
+    ]
+    pkg.provenance.stages = []
+    const read = readHandoverPackage(JSON.parse(JSON.stringify(pkg)))
+    expect(read.ok).toBe(true)
+    if (read.ok) {
+      expect(read.package.provenance.results.map((each) => each.id)).toEqual(
+        packageOf().provenance.results.map((each) => each.id),
+      )
+      expect(read.package.provenance.stages).toHaveLength(
+        pkg.model.workflow.stageIds.length,
+      )
+    }
+  })
+})
+
 describe('handover through the mock server', () => {
   test('the modeller hands over into the browser catalog', async () => {
     const storage = memoryStorage()
@@ -190,9 +279,46 @@ describe('handover through the mock server', () => {
       'project.handover',
     )
     // The modeller cannot open packages; that is the viewer page's job.
-    const open = modeller.client.listPackages()
+    const open = modeller.client.openPackage({
+      packageId: handed.package?.id ?? '',
+    })
     await modeller.manual.settle()
     expect((await open).outcome.status).toBe('rejected')
+    // It lists and removes them to free storage, with the viewer's layouts.
+    storage.setItem(viewerLayoutsKey(handed.package?.id ?? ''), '{}')
+    const listed = modeller.client.listPackages()
+    await modeller.manual.settle()
+    expect((await listed).outcome.status).toBe('applied')
+    expect(modeller.client.store.getState().meta.packages[0]?.bytes).toBe(
+      JSON.stringify(handed.package).length,
+    )
+    const removed = modeller.client.removePackage(handed.package?.id ?? '')
+    await modeller.manual.settle()
+    expect((await removed).outcome.status).toBe('applied')
+    expect(modeller.client.store.getState().meta.packages).toEqual([])
+    expect(storage.getItem(viewerLayoutsKey(handed.package?.id ?? ''))).toBe(
+      null,
+    )
+  })
+
+  test('a full storage names handover packages when a save fails', async () => {
+    const storage = memoryStorage()
+    await handOver(storage)
+    const setItem = storage.setItem.bind(storage)
+    storage.setItem = (key, value) => {
+      if (key === CATALOG_KEY)
+        throw new DOMException('full', 'QuotaExceededError')
+      setItem(key, value)
+    }
+    const project = createTestProject({ storage, fixture: 'partway' })
+    const saved = project.client.save()
+    await project.manual.settle()
+    const result = await saved
+    expect(result.outcome.status).toBe('rejected')
+    if (result.outcome.status === 'rejected')
+      expect(result.outcome.issues[0]?.message).toContain(
+        'Handover packages in this browser take about',
+      )
   })
 
   test('a full browser storage keeps the package for download', async () => {

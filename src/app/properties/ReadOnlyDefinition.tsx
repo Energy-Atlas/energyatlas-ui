@@ -152,6 +152,33 @@ function describe(
 }
 
 /**
+ * A definition or stage as handed over (decision 0032, stage 5): its kind,
+ * name, a note, and a few facts, with nothing to edit. Shown in the gallery.
+ */
+export function DefinitionCard({
+  eyebrow,
+  title,
+  note,
+  facts,
+}: {
+  eyebrow: string
+  title: string
+  note?: string
+  facts: Property[]
+}) {
+  return (
+    <section className={styles.definition} aria-label={`${eyebrow} ${title}`}>
+      <header className={styles.header}>
+        <p className={styles.eyebrow}>{eyebrow}</p>
+        <h3 className={styles.title}>{title}</h3>
+        {note ? <p className={styles.provenance}>{note}</p> : null}
+      </header>
+      {facts.length > 0 ? <PropertyList items={facts} /> : null}
+    </section>
+  )
+}
+
+/**
  * A definition or stage on the viewer page (decision 0032, stage 5): what it
  * is, as handed over. The viewer edits nothing, so there are no fields to
  * change and no Save; the modeller edits definitions.
@@ -169,45 +196,32 @@ export function ReadOnlyDefinition({
     const stage = state.workflow.stages[id]
     if (!stage) return null
     return (
-      <section className={styles.definition} aria-label={`Stage ${stage.name}`}>
-        <header className={styles.header}>
-          <p className={styles.eyebrow}>Stage</p>
-          <h3 className={styles.title}>{stage.name}</h3>
-        </header>
-        <PropertyList
-          items={[
-            {
-              label: 'State at handover',
-              value: <StateBadge state={stageStates[id] ?? 'future'} />,
-            },
-            {
-              label: 'Last run',
-              value: stage.lastRun
-                ? `${stage.lastRun.outcome === 'succeeded' ? 'Succeeded' : 'Failed'} ${formatDateTime(stage.lastRun.finishedAt)}`
-                : 'Never ran',
-            },
-          ]}
-        />
-      </section>
+      <DefinitionCard
+        eyebrow="Stage"
+        title={stage.name}
+        facts={[
+          {
+            label: 'State at handover',
+            value: <StateBadge state={stageStates[id] ?? 'future'} />,
+          },
+          {
+            label: 'Last run',
+            value: stage.lastRun
+              ? `${stage.lastRun.outcome === 'succeeded' ? 'Succeeded' : 'Failed'} ${formatDateTime(stage.lastRun.finishedAt)}`
+              : 'Never ran',
+          },
+        ]}
+      />
     )
   }
   const described = describe(state, entityType, id)
   if (!described) return null
   return (
-    <section
-      className={styles.definition}
-      aria-label={`${KIND_LABELS[entityType]} ${described.name}`}
-    >
-      <header className={styles.header}>
-        <p className={styles.eyebrow}>{KIND_LABELS[entityType]}</p>
-        <h3 className={styles.title}>{described.name}</h3>
-        <p className={styles.provenance}>
-          As handed over. Definitions are edited in the modeller.
-        </p>
-      </header>
-      {described.facts.length > 0 ? (
-        <PropertyList items={described.facts} />
-      ) : null}
-    </section>
+    <DefinitionCard
+      eyebrow={KIND_LABELS[entityType]}
+      title={described.name}
+      note="As handed over. Definitions are edited in the modeller."
+      facts={described.facts}
+    />
   )
 }

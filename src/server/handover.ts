@@ -17,7 +17,10 @@ import { projectStateSchema, savedViewSchema } from './projectSchema.ts'
 export const HANDOVER_FORMAT = 'energyatlas-ui.handover'
 /** The package format this version writes and reads; later formats are refused. */
 export const HANDOVER_VERSION = 1
-/** Files larger than this are refused before they are read. */
+/**
+ * Package files larger than this are refused: the viewer checks a file's size
+ * before reading it, and the server checks the text it is sent.
+ */
 export const MAX_PACKAGE_BYTES = 20 * 1024 * 1024
 
 export type HandoverStage = {
@@ -91,6 +94,13 @@ export function freezeModel(state: WorkbenchState): {
   for (const group of Object.values(model.runGroups)) {
     heldOutputs += Object.keys(group.held).length
     group.held = {}
+    // A run left open (a partial failure awaiting retry) cannot continue in
+    // a frozen package; its published results, if any, stay.
+    if (group.status === 'open') {
+      group.status = 'cancelled'
+      group.statusReason =
+        'Left open in the modeller; a handover keeps published results only.'
+    }
   }
   model.pendingEdits = {}
   model.selection = { entityType: null, ids: [] }
@@ -207,6 +217,8 @@ export type PackageSummary = {
   results: number
   warnings: string[]
   provenance: HandoverProvenance
+  /** Characters the package takes in browser storage. */
+  bytes: number
 }
 
 export function summarizePackage(pkg: HandoverPackage): PackageSummary {
@@ -219,6 +231,7 @@ export function summarizePackage(pkg: HandoverPackage): PackageSummary {
     results: pkg.provenance.results.length,
     warnings: packageWarnings(pkg),
     provenance: pkg.provenance,
+    bytes: JSON.stringify(pkg).length,
   }
 }
 
@@ -320,7 +333,17 @@ export function readHandoverPackage(value: unknown): PackageRead {
       message: `${DAMAGED}${where}: ${issue?.message ?? 'it does not match the package format.'}`,
     }
   }
-  const pkg: HandoverPackage = parsed.data
+  const parsedPackage: HandoverPackage = parsed.data
+  // Results and stage states are read from the model, never trusted from the
+  // file's provenance, so a tampered file cannot claim what the model lacks.
+  const pkg: HandoverPackage = {
+    ...parsedPackage,
+    provenance: {
+      ...parsedPackage.provenance,
+      stages: stagesOf(parsedPackage.model),
+      results: resultsOf(parsedPackage.model),
+    },
+  }
   if (pkg.model.project.id !== pkg.provenance.projectId) {
     return {
       ok: false,
@@ -339,6 +362,19 @@ export function readHandoverPackage(value: unknown): PackageRead {
       ok: false,
       code: 'invalid',
       message: `${DAMAGED}: it contains working data a handover leaves out (drafts, held job outputs, or job logs).`,
+    }
+  }
+  // Queued or running jobs and open runs would run and publish in a viewer.
+  const active =
+    Object.values(pkg.model.tasks).some(
+      (task) => task.status === 'queued' || task.status === 'running',
+    ) ||
+    Object.values(pkg.model.runGroups).some((group) => group.status === 'open')
+  if (active) {
+    return {
+      ok: false,
+      code: 'invalid',
+      message: `${DAMAGED}: it contains queued or running jobs or open runs, which a handover never holds.`,
     }
   }
   return { ok: true, package: pkg }

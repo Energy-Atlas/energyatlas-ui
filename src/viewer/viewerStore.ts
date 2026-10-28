@@ -1,5 +1,6 @@
 import { createStore } from 'zustand/vanilla'
 import type { ProjectClient } from '../app/service/projectClient.ts'
+import { MAX_PACKAGE_BYTES } from '../server/handover.ts'
 
 // The viewer page's own UI state (decision 0032, stage 5): which package is
 // being opened, why the last open failed, and whether About this handover is
@@ -36,6 +37,13 @@ export async function openPackage(
   try {
     let request: Parameters<ProjectClient['openPackage']>[0]
     if ('file' in from) {
+      // Refused before reading, so a huge file is never loaded into memory.
+      if (from.file.size > MAX_PACKAGE_BYTES) {
+        viewerStore.setState({
+          openError: `"${from.file.name}" is larger than ${MAX_PACKAGE_BYTES / 1024 / 1024} MB, too large for a handover package.`,
+        })
+        return
+      }
       let text: string
       try {
         text = await from.file.text()

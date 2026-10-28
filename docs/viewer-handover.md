@@ -161,13 +161,17 @@ needs data the package lacks says so instead of offering a run.
    build emits `dist/viewer.html` with prefixed asset URLs, and `npm run test:e2e:preview` opens it under the base
    path), and the viewer's entry imports only the pages it shows.
 2. **The package freezes the server's current model**, including unsaved model changes, and records whether there
-   were any and when the modeller last saved; drafts in the UI are counted and left out.
+   were any and when the modeller last saved; drafts in the UI are counted and left out. **Needs the owner's
+   confirmation** that this is what "the published model" means; the alternative is to hand over the last saved copy
+   only.
 3. **Hand over is refused while jobs run** (and before any building exists): a running job would freeze as "running"
    forever and its held output is excluded anyway.
 4. **Jobs and run groups stay in the package as records** without logs or held outputs, so stage states and result
    provenance (the run that published a result) derive as in the modeller; the viewer has no Jobs page to show them.
-5. **A package with working data is refused**, not cleaned, so a tampered or foreign file cannot smuggle drafts or
-   held results into a viewer.
+5. **A package with working data is refused**, not cleaned, so a tampered or foreign file cannot smuggle drafts,
+   held results, queued or running jobs, or open runs into a viewer. Freezing closes a run the modeller left open (a
+   partial failure awaiting retry) as cancelled, so the modeller never writes one. Results and stage states in the
+   provenance are derived from the model when a package is read, never trusted from the file.
 6. **Format versioning**: `format` names the file type, `version` 1; a higher version is refused as "made by a newer
    version"; the model inside goes through the saved-project migrations (`projectStateSchema`).
 7. **Viewer pages**: Map, Table, Dashboard, Results; panels Assets, Properties, Messages, Reasoning. Roadmap (named
@@ -187,23 +191,64 @@ needs data the package lacks says so instead of offering a run.
     with the package's table settings and map layers; the modeller's "Reset to layout" (last applied) stays too.
 13. **Opening a package applies its default project layout**, and tabs the viewer does not show are dropped silently
     (tabs no version knows are still reported).
-14. **Packages can be removed from the viewer's list** (confirmed inline), the only recovery from a full catalog
-    inside the app; downloaded copies are unaffected.
-15. **The agent's Hand over tool waits for approval** in the modeller; in the viewer, free text that asks for a model
-    change gets the view-only answer by keyword (run, change, add, delete, adopt, save, …), before session matching.
+14. **Packages can be removed** from the viewer's list and from the modeller's Hand over dialog (both confirmed
+    inline), which lists the packages kept here with their sizes; removal also deletes that package's personal
+    layouts (`eaui.viewer.layouts.v1:<id>`). Downloaded copies are unaffected. **No catalog cap**: the browser's quota
+    is the limit, and a refused save names the space packages take (about 550 KB for the complete fixture) and where
+    to remove them; a count cap would refuse a small package while doing nothing about one large one.
+15. **The agent's Hand over tool waits for approval** in the modeller. In the viewer, a message first starts a
+    matching viewer session; otherwise it gets the view-only answer when it names work only the modeller starts
+    (rerun, adopt, calibrate, retry, import) or a change verb on a model object (measure, scenario, archetype, rule,
+    stage, adoption, building, …) without a view word (layer, map, colour, layout, table, season, …), and the view
+    help answer otherwise. "Add a heat layer", "set the season", or "save my layout" are not refused.
 16. **The viewer's status bar** shows when the package was handed over instead of save state, and leaves out Issues,
     Jobs, the current stage, and the simulated worker count.
+17. **The viewer has no permission modes**: they govern runs and model changes, which its agent never makes; the
+    menu is left out and the agent asks before the only approvals left (updating or deleting a personal layout).
+18. **The viewer's job runner never starts**: a viewer session's mock server does not start the task simulator, which
+    executes on the engine directly, past the view-only refusal.
+19. **A package file is size-checked before it is read** (20 MB), and the package list refreshes when another tab
+    changes the catalog or the window regains focus.
+20. **A stage reference** from a future viewer session opens the stage's read-only properties instead of the Roadmap,
+    which the viewer lacks.
 
 ## Known issues and limits
 
 - The package is large (the full model, about the size of a saved project); a browser catalog of several packages
   can fill `localStorage`, which the dialog reports and Download covers.
-- The model-change keywords are a scripted heuristic: a question such as "what would change if…" gets the view-only
-  answer.
+- The model-change detection is a scripted keyword heuristic: "change the adoption" is refused while "show the
+  adoption" is not, and a message matching a viewer session (such as one mentioning results) starts that session
+  even if it also asks for a change.
 - The viewer's server session is read-only because the page asks for it (`mode: 'viewer'`); the modeller and the
   viewer each run their own in-page mock server, as every tab does (decision 0023).
 
+## Review (2026-10-28)
+
+An independent review's findings, all fixed on `claude/next-stages`:
+
+- **High**: a forged package with a queued job and an open run made the viewer's job runner run and publish it,
+  bypassing the view-only refusal, and left the viewer unable to close the package. Packages with queued or running
+  jobs or open runs are now refused, freezing closes open runs, and a viewer session never starts the job runner
+  (unit tests for each).
+- The viewer's agent refused view changes ("add a layer", "save my layout") and its answer said nothing could be
+  saved: sessions now match first, the refusal needs a model object (decision 15), and the answers were corrected.
+- Packages share storage with saved projects: a failed save now names the space packages take and where to remove
+  them, the modeller's Hand over dialog lists and removes packages, and removal deletes the package's viewer layouts.
+- The viewer's Reasoning panel no longer offers permission modes; the provenance's results and stage states are
+  derived from the model; the file size is checked before reading; `DefinitionCard` (the read-only definition) is in
+  the gallery; the package list refreshes on other tabs' changes and on focus; stage references no longer open the
+  Roadmap in the viewer.
+
 ## Verification (2026-10-28)
+
+After the review fixes: typecheck, lint, format check, `git diff --check`: clean. `npm test`: 494 passed in 48 files
+(6 new: forged packages refused, open runs closed by freezing, no job runner in a viewer session, provenance derived
+from the model, modeller listing and removal with the viewer layouts key, a full-storage save naming packages, and
+view versus model requests to the agent). `npm run test:e2e` on port 5180: 125 passed with 4 workers (the viewer spec
+now also removes a package from the modeller's dialog and checks the viewer has no permission modes).
+`npm run test:e2e:preview`: 4 passed.
+
+Before the review:
 
 - `npm run typecheck`, `npm run lint`, `npm run format:check`, `git diff --check`: clean.
 - `npm test`: 488 Vitest tests in 48 files passed (17 new: `src/server/handover.test.ts` covers what a package keeps

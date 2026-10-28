@@ -31,6 +31,7 @@ import {
 import {
   catalogSummaries,
   readHandoverCatalog,
+  viewerLayoutsKey,
   writeHandoverCatalog,
   type HandoverCatalog,
 } from './handoverCatalog.ts'
@@ -353,10 +354,16 @@ export function createMockServer(options: {
   }
 
   const unsubscribe = engine.store.subscribe(forward)
-  let stopJobs = startTaskSimulator(engine, {
-    scheduler: options.scheduler,
-    behaviour: () => jobBehaviour,
-  })
+  // A viewer session never runs jobs: the job runner executes on the engine
+  // directly, past the view-only refusal, so it is not started at all.
+  const startJobs = () =>
+    viewer
+      ? () => undefined
+      : startTaskSimulator(engine, {
+          scheduler: options.scheduler,
+          behaviour: () => jobBehaviour,
+        })
+  let stopJobs = startJobs()
 
   function activeTaskId(): string | null {
     const state = engine.getState()
@@ -429,10 +436,7 @@ export function createMockServer(options: {
       view,
     }
     engine.load(state ?? createInitialState(), operation)
-    stopJobs = startTaskSimulator(engine, {
-      scheduler: options.scheduler,
-      behaviour: () => jobBehaviour,
-    })
+    stopJobs = startJobs()
   }
 
   function ok(summary: string, data?: unknown): ServerReply {
@@ -458,23 +462,26 @@ export function createMockServer(options: {
     }
   }
 
-  const VIEWER_REQUESTS: ReadonlySet<ServerRequest['type']> = new Set([
+  const CATALOG_REQUESTS: ReadonlySet<ServerRequest['type']> = new Set([
     'handover.list',
     'handover.open',
     'handover.remove',
   ])
 
-  /** Requests a viewer session cannot make; a modeller cannot open packages. */
+  /**
+   * Requests a viewer session cannot make; the modeller lists and removes
+   * packages (to free storage) but opens none.
+   */
   function refusedForMode(request: ServerRequest): ServerReply | null {
     if (viewer) {
-      return VIEWER_REQUESTS.has(request.type) ||
+      return CATALOG_REQUESTS.has(request.type) ||
         request.type === 'project.close' ||
         // Commands reach the view-only refusal on the edit lock's path.
         request.type === 'command'
         ? null
         : { ok: false, ...viewOnlySession() }
     }
-    return VIEWER_REQUESTS.has(request.type)
+    return request.type === 'handover.open'
       ? {
           ok: false,
           ...serverError(
@@ -506,12 +513,12 @@ export function createMockServer(options: {
       now: now(),
     })
     const read = readHandoverCatalog(options.storage)
+    const next = { ...read.catalog, packages: [...read.catalog.packages, pkg] }
     const write = read.error
       ? { ok: false as const, full: false, message: read.error }
-      : writeHandoverCatalog(options.storage, {
-          ...read.catalog,
-          packages: [...read.catalog.packages, pkg],
-        })
+      : writeHandoverCatalog(options.storage, next)
+    // The dialog's list of packages in this browser follows.
+    setPackages(write.ok ? { catalog: next, error: null } : read)
     const summary = write.ok
       ? `Handed over "${pkg.name}" as a view-only package in this browser's handover catalog. Open it on the viewer page or download it as a file.`
       : `Handed over "${pkg.name}", but the package was not kept in the handover catalog: ${write.message}`
@@ -632,7 +639,15 @@ export function createMockServer(options: {
     }
     const written = writeHandoverCatalog(options.storage, next)
     if (!written.ok) return { ok: false, ...serverError(written.message, 503) }
+    // The viewer's personal layouts for it go too; they fit no other package.
+    try {
+      options.storage?.removeItem(viewerLayoutsKey(request.packageId))
+    } catch {
+      // Blocked storage: the layouts stay, harmless and unreachable.
+    }
     setPackages({ catalog: next, error: null })
+    // A modeller session reports it as an update, so its dialog lists follow.
+    emit([])
     const summary = `Removed the handover package "${found.name}" from this browser. Downloaded copies are unchanged.`
     engine.record({
       type: request.type,

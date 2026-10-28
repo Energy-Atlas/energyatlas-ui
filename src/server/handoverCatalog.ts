@@ -4,13 +4,18 @@ import {
   type HandoverPackage,
   type PackageSummary,
 } from './handover.ts'
+import {
+  HANDOVER_CATALOG_KEY,
+  isQuotaError,
+  viewerLayoutsKey,
+} from './storageQuota.ts'
+
+export { HANDOVER_CATALOG_KEY, viewerLayoutsKey }
 
 // The browser catalog of handover packages (decision 0032, stage 5): "Hand
 // over" in the modeller adds a package, and the viewer page lists and opens
 // them. Like the project catalog, a stored value that cannot be read is never
 // overwritten silently, and single unreadable entries are kept as stored.
-
-export const HANDOVER_CATALOG_KEY = 'eaui.handovers.v1'
 
 export type HandoverCatalog = {
   packages: HandoverPackage[]
@@ -52,15 +57,6 @@ export function readHandoverCatalog(storage: Storage | null): {
 export type CatalogWrite =
   { ok: true } | { ok: false; full: boolean; message: string }
 
-function isQuotaError(error: unknown): boolean {
-  return (
-    error instanceof DOMException &&
-    (error.name === 'QuotaExceededError' ||
-      error.name === 'NS_ERROR_DOM_QUOTA_REACHED' ||
-      error.code === 22)
-  )
-}
-
 export function writeHandoverCatalog(
   storage: Storage | null,
   catalog: HandoverCatalog,
@@ -81,7 +77,7 @@ export function writeHandoverCatalog(
         ok: false,
         full: true,
         message:
-          'Browser storage is full, so the package was not kept in the handover catalog. Download it as a file instead, or remove older packages in the viewer.',
+          'Browser storage is full, so the package was not kept in the handover catalog. Download it as a file instead, or remove older packages from File > Hand over… or the viewer page.',
       }
     }
     return {

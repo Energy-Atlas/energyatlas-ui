@@ -196,6 +196,10 @@ test('hands over, lists, opens, and explores a package view only', async ({
     .click()
   const transcript = agent.getByRole('log', { name: 'Agent transcript' })
   await expect(transcript).toContainText('view-only handover')
+  // Permission modes govern model changes, which the viewer never makes.
+  await expect(
+    agent.getByRole('button', { name: /^Permission mode/ }),
+  ).toHaveCount(0)
   await agent
     .getByRole('button', {
       name: 'Start session: Explain the published results',
@@ -221,6 +225,18 @@ test('opens a downloaded package file and refuses invalid files', async ({
   )
   const path = await download.path()
   const text = await readFile(path, 'utf8')
+
+  // The modeller can remove packages to free storage; the file stays usable.
+  const kept = done.getByRole('listbox', {
+    name: 'Handover packages in this browser',
+  })
+  await expect(kept.getByRole('option')).toHaveCount(1)
+  await done
+    .getByRole('button', { name: /^Remove the handover package/ })
+    .click()
+  await expect(done.getByRole('button', { name: 'Keep it' })).toBeFocused()
+  await done.getByRole('button', { name: 'Remove package' }).click()
+  await expect(done).toContainText('No packages kept here yet.')
 
   await page.goto('/viewer.html')
   const input = page.locator('#viewer-package-file')

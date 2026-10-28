@@ -17,7 +17,11 @@ import { createViewStore } from '../view/viewStore.ts'
 import { createHandoverService } from '../handover/handoverService.ts'
 import { readHandoverCatalog } from '../../server/handoverCatalog.ts'
 import { createScriptedAgent } from './scriptedAgent.ts'
-import { VIEW_ONLY_ANSWER } from './sessions.ts'
+import {
+  asksForModelChange,
+  VIEW_ONLY_ANSWER,
+  VIEWER_UNMATCHED_ANSWER,
+} from './sessions.ts'
 import {
   command,
   describeAgentTools,
@@ -130,6 +134,32 @@ describe("the viewer's agent tools", () => {
       markdown: VIEW_ONLY_ANSWER,
     })
     expect(agent.store.getState().status).toBe('idle')
+  })
+
+  it('tells view changes from model changes', async () => {
+    for (const text of [
+      'add a heat layer to the map',
+      'set the season to winter',
+      'remove that layer',
+      'save my layout',
+      'colour the buildings by floors',
+    ])
+      expect(asksForModelChange(text), text).toBe(false)
+    for (const text of [
+      'Rerun the baseline',
+      'adopt the calibrated variant',
+      'change the archetype of building 3',
+      'delete the heat pump measure',
+      'set adoption to 40%',
+    ])
+      expect(asksForModelChange(text), text).toBe(true)
+    const { agent, manual } = viewerSetup()
+    agent.send('add a heat layer to the map')
+    await manual.settle()
+    expect(agent.store.getState().transcript.at(-1)).toMatchObject({
+      kind: 'agent',
+      markdown: VIEWER_UNMATCHED_ANSWER,
+    })
   })
 
   it('explains missing data instead of offering to run stages', async () => {

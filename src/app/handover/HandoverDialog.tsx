@@ -14,6 +14,7 @@ import { cx } from '../cx.ts'
 import { DialogFrame } from '../shell/HelpDialogs.tsx'
 import shellStyles from '../shell/shell.module.css'
 import { viewerUrl } from './handoverService.ts'
+import { CatalogPackages } from './CatalogPackages.tsx'
 import styles from './handover.module.css'
 
 /**
@@ -139,6 +140,7 @@ export function HandoverDialog() {
           </div>
         </>
       )}
+      <CatalogPackages />
     </DialogFrame>
   )
 }

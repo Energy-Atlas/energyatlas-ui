@@ -39,6 +39,7 @@ import {
   ViewOnlyBadge,
 } from '../components/HandoverSummary.tsx'
 import type { HandoverProvenance } from '../../server/handover.ts'
+import { DefinitionCard } from '../properties/ReadOnlyDefinition.tsx'
 import { PropertyList } from '../components/PropertyList.tsx'
 import { Section } from '../components/Section.tsx'
 import { SegmentedFilter } from '../components/SegmentedFilter.tsx'
@@ -895,6 +896,26 @@ export default function ComponentGallery() {
             warnings={[
               'This package has no published results: Baseline model setup had not published a baseline when it was handed over.',
             ]}
+          />
+        </section>
+
+        <section className={styles.cell}>
+          <h2>Read-only definition</h2>
+          <DefinitionCard
+            eyebrow="Archetype"
+            title="Office, 1950 to 1979"
+            note="As handed over. Definitions are edited in the modeller."
+            facts={[
+              { label: 'Construction', value: 'Masonry, uninsulated' },
+              { label: 'Systems', value: 'Gas boiler' },
+              { label: 'Space loads', value: 'Office' },
+              { label: 'External loads', value: 'None' },
+            ]}
+          />
+          <DefinitionCard
+            eyebrow="Library measure"
+            title="Air-source heat pump"
+            facts={[]}
           />
         </section>
 

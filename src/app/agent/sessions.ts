@@ -1125,13 +1125,37 @@ export function matchViewerSession(text: string): ScriptedSession | null {
   )
 }
 
-/** Requests the viewer turns down: they would change the model or run work. */
-const MODEL_CHANGE =
-  /\b(run|rerun|re-run|change|edit|modify|add|create|delete|remove|adopt|calibrate|fit|apply|save|assign|import|update|retry|cancel|set)\b/
+/** Work only the modeller can start. */
+const MODEL_ACTIONS =
+  /\b(rerun|re-run|adopt|calibrate|recalibrate|retry|import|fuse)\b/
+const CHANGE_VERBS =
+  /\b(run|change|edit|modify|add|create|delete|remove|set|save|apply|assign|update|fit|cancel)\b/
+/** What the model is made of, as people name it. */
+const MODEL_OBJECTS =
+  /\b(stages?|baseline|measures?|scenarios?|archetypes?|parts?|rules?|schedules?|adoption|floors?|buildings?|datasets?|mapping|model|project|calibration|jobs?)\b/
+/** What a viewer may change: how things are shown. */
+const VIEW_WORDS =
+  /\b(layers?|map|colou?rs?|styles?|layouts?|table|columns?|filters?|sort|season|camera|zoom|charts?|view|panels?|light|lighting|terrain|3d|basemap|search)\b/
 
+/**
+ * Whether a message asks the viewer for a model change (decision 0032, stage
+ * 5): work only the modeller starts, or a change verb on a model object that
+ * is not about how things are shown. A keyword heuristic of the scripted
+ * agent; "add a layer" or "save my layout" are view changes and pass.
+ */
 export function asksForModelChange(text: string): boolean {
-  return MODEL_CHANGE.test(text.toLowerCase())
+  const normalized = text.toLowerCase()
+  if (MODEL_ACTIONS.test(normalized)) return true
+  return (
+    CHANGE_VERBS.test(normalized) &&
+    MODEL_OBJECTS.test(normalized) &&
+    !VIEW_WORDS.test(normalized)
+  )
 }
 
 export const VIEW_ONLY_ANSWER =
-  'This is a **view-only handover**, so I cannot change the model, run or cancel stages, or save anything here; the server refuses such changes from the viewer. I can explain the published results, select and point out buildings, and change how the map, table, dashboard, and results are shown. For model changes, ask the modeller for a new handover.'
+  'This is a **view-only handover**, so I cannot change the model, run or cancel stages, or change the handed-over layouts; the server refuses model changes from the viewer. I can explain the published results, select and point out buildings, change how the map, table, dashboard, and results are shown, and keep your own personal layouts. For model changes, ask the modeller for a new handover.'
+
+/** The viewer's answer when no prepared session matches a message. */
+export const VIEWER_UNMATCHED_ANSWER =
+  "I am a **scripted agent** in this prototype and can only run the prepared sessions offered below, so I did not act on this message. You can change views yourself: map layers, colours, seasons, and lighting in the map's Properties, table columns and filters on the Table page, and your personal layouts in View > Layouts."

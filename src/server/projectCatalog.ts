@@ -1,6 +1,7 @@
 import type { WorkbenchState } from '../domain/types.ts'
 import { loadProject } from './persistence.ts'
 import { projectStateSchema, savedViewSchema } from './projectSchema.ts'
+import { isQuotaError, storageFullMessage } from './storageQuota.ts'
 
 export const CATALOG_KEY = 'eaui.projects.v1'
 export type ProjectSummary = {
@@ -147,6 +148,13 @@ export function writeProjectCatalog(
     )
     return { ok: true }
   } catch (error) {
+    // Handover packages share this storage (decision 0032, stage 5).
+    if (isQuotaError(error)) {
+      return {
+        ok: false,
+        message: storageFullMessage('the project was not saved', storage),
+      }
+    }
     return {
       ok: false,
       message: `Saving failed: ${error instanceof Error ? error.message : String(error)}`,

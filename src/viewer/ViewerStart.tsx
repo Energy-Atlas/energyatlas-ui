@@ -18,6 +18,7 @@ import { Ribbon } from '../app/shell/Ribbon.tsx'
 import { ShellDialogHost } from '../app/shell/ShellDialogHost.tsx'
 import { useShellDialogs } from '../app/shell/useShellDialogs.ts'
 import { useShortcuts } from '../app/useShortcuts.ts'
+import { HANDOVER_CATALOG_KEY } from '../server/handoverCatalog.ts'
 import { forViewerStart, useViewerActions } from './viewerActions.ts'
 import { openPackage, pickPackageFile, viewerStore } from './viewerStore.ts'
 import styles from './viewer.module.css'
@@ -70,6 +71,24 @@ export function ViewerStart() {
         })
       }
     })
+  }, [client])
+
+  // A package handed over in another tab appears without a reload.
+  useEffect(() => {
+    const refresh = () => {
+      if (client.store.getState().pending.length === 0) {
+        void client.listPackages()
+      }
+    }
+    const onStorage = (event: StorageEvent) => {
+      if (event.key === null || event.key === HANDOVER_CATALOG_KEY) refresh()
+    }
+    window.addEventListener('storage', onStorage)
+    window.addEventListener('focus', refresh)
+    return () => {
+      window.removeEventListener('storage', onStorage)
+      window.removeEventListener('focus', refresh)
+    }
   }, [client])
 
   const loading =
