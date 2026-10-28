@@ -7,8 +7,12 @@ import {
   TabNode,
   TabSetNode,
   type Action,
+  type IJsonBorderNode,
   type IJsonModel,
+  type IJsonRowNode,
+  type IJsonTabGroupNode,
   type IJsonTabNode,
+  type IJsonTabSetNode,
 } from 'flexlayout-react'
 import type { CommandSource } from '../../domain/types.ts'
 import type { Workbench } from '../../domain/workbench.ts'
@@ -169,6 +173,214 @@ export function createDefaultLayout(): IJsonModel {
   }
 }
 
+type JsonObject = Record<string, unknown>
+
+function isObject(value: unknown): value is JsonObject {
+  return typeof value === 'object' && value !== null && !Array.isArray(value)
+}
+
+/** Each known component id and the tab id it always has. */
+const KNOWN_TABS = new Map<string, string>([
+  ...(Object.keys(PAGES) as PageId[]).map((page): [string, string] => [
+    PAGES[page].component,
+    pageTabId(page),
+  ]),
+  ...(Object.keys(PANELS) as PanelId[]).map((panel): [string, string] => [
+    PANELS[panel].component,
+    panelTabId(panel),
+  ]),
+])
+
+export type PreparedArrangement =
+  | { ok: true; json: IJsonModel; dropped: string[] }
+  | { ok: false; message: string }
+
+const DEFAULT_BORDER_SIZE: Record<'left' | 'right', number> = {
+  left: 280,
+  right: 320,
+}
+
+/**
+ * Makes a stored arrangement safe to load (decision 0032): tabs this version
+ * does not have, unreadable nodes, and repeated tabs are dropped and named;
+ * empty tab groups go; selections are kept in range; both side containers
+ * exist so panels can dock back; the app's global settings always win; and
+ * the side containers take the window's current docking mode. An arrangement
+ * with no tab group for pages is refused rather than shown blank.
+ */
+export function prepareArrangement(
+  raw: unknown,
+  compact = false,
+): PreparedArrangement {
+  if (!isObject(raw) || !isObject(raw.layout)) {
+    return { ok: false, message: 'The layout has no panel arrangement.' }
+  }
+  const dropped: string[] = []
+  const seen = new Set<string>()
+  let tabsets = 0
+
+  const keepTab = (node: unknown): IJsonTabNode | null => {
+    if (!isObject(node) || node.type !== 'tab') {
+      dropped.push('an unreadable tab')
+      return null
+    }
+    const component = typeof node.component === 'string' ? node.component : ''
+    const id = KNOWN_TABS.get(component)
+    if (!id) {
+      const name =
+        typeof node.name === 'string' && node.name ? node.name : component
+      dropped.push(name ? `"${name}"` : 'an unnamed tab')
+      return null
+    }
+    if (seen.has(id)) return null
+    seen.add(id)
+    return { ...(node as IJsonTabNode), id, type: 'tab' }
+  }
+
+  const tabChildren = (
+    children: unknown,
+  ): (IJsonTabNode | IJsonTabGroupNode)[] => {
+    if (!Array.isArray(children)) return []
+    const kept: (IJsonTabNode | IJsonTabGroupNode)[] = []
+    for (const child of children) {
+      if (isObject(child) && child.type === 'tabgroup') {
+        const tabs = (Array.isArray(child.children) ? child.children : [])
+          .map(keepTab)
+          .filter((tab): tab is IJsonTabNode => tab !== null)
+        if (tabs.length > 0) {
+          kept.push({ ...(child as IJsonTabGroupNode), children: tabs })
+        }
+      } else {
+        const tab = keepTab(child)
+        if (tab) kept.push(tab)
+      }
+    }
+    return kept
+  }
+
+  const inRange = (selected: unknown, length: number): number =>
+    typeof selected === 'number' && selected >= 0 && selected < length
+      ? selected
+      : length > 0
+        ? 0
+        : -1
+
+  const visit = (node: unknown): IJsonRowNode | IJsonTabSetNode | null => {
+    if (!isObject(node)) {
+      dropped.push('an unreadable tab group')
+      return null
+    }
+    if (node.type === 'row') {
+      const children = (Array.isArray(node.children) ? node.children : [])
+        .map(visit)
+        .filter((child): child is IJsonRowNode | IJsonTabSetNode =>
+          Boolean(child),
+        )
+      return children.length > 0
+        ? { ...(node as IJsonRowNode), children }
+        : null
+    }
+    if (node.type === 'tabset') {
+      const children = tabChildren(node.children)
+      if (children.length === 0 && node.id !== MAIN_TABSET_ID) return null
+      tabsets += 1
+      const rest: JsonObject = { ...node }
+      delete rest.active
+      return {
+        ...(rest as IJsonTabSetNode),
+        children,
+        selected: inRange(node.selected, children.length),
+      }
+    }
+    dropped.push('an unreadable tab group')
+    return null
+  }
+
+  const root = visit({ ...raw.layout, type: 'row' })
+  if (!root || tabsets === 0) {
+    return {
+      ok: false,
+      message:
+        'The layout has no tab group for pages that this version can show.',
+    }
+  }
+
+  const borderType = compact ? 'overlay' : 'split'
+  const borders: IJsonBorderNode[] = []
+  const locations = new Set<string>()
+  for (const border of Array.isArray(raw.borders) ? raw.borders : []) {
+    if (!isObject(border)) continue
+    const location = border.location
+    if (
+      typeof location !== 'string' ||
+      !['left', 'right', 'top', 'bottom'].includes(location) ||
+      locations.has(location)
+    ) {
+      continue
+    }
+    locations.add(location)
+    const children = tabChildren(border.children)
+    const selected =
+      typeof border.selected === 'number' && border.selected < children.length
+        ? border.selected
+        : -1
+    borders.push({
+      ...(border as unknown as IJsonBorderNode),
+      children,
+      borderType,
+      // An overlay must not cover the pages on arrival.
+      selected: compact ? -1 : selected,
+    })
+  }
+  for (const location of ['left', 'right'] as const) {
+    if (!locations.has(location)) {
+      borders.push({
+        type: 'border',
+        location,
+        size: DEFAULT_BORDER_SIZE[location],
+        selected: -1,
+        borderType,
+        children: [],
+      })
+    }
+  }
+
+  return {
+    ok: true,
+    json: {
+      global: {
+        ...(isObject(raw.global) ? raw.global : {}),
+        ...createDefaultLayout().global,
+      },
+      borders,
+      layout: root,
+    },
+    dropped,
+  }
+}
+
+/**
+ * An arrangement as layouts keep and compare it: without the active tab
+ * group, which moves on every click, and without the docking mode, which
+ * follows the window width.
+ */
+export function normalizeArrangement(json: IJsonModel): JsonObject {
+  const copy = structuredClone(json) as unknown as JsonObject
+  const strip = (node: unknown) => {
+    if (!isObject(node)) return
+    delete node.active
+    delete node.borderType
+    if (Array.isArray(node.children)) node.children.forEach(strip)
+  }
+  strip(copy.layout)
+  if (Array.isArray(copy.borders)) copy.borders.forEach(strip)
+  return copy
+}
+
+export type ArrangementResult =
+  | { status: 'applied'; dropped: string[] }
+  | { status: 'rejected'; message: string }
+
 export type LayoutController = {
   getModel: () => Model
   /** Increments on every layout change, for useSyncExternalStore. */
@@ -187,6 +399,13 @@ export type LayoutController = {
   /** Narrow windows open side panels as overlays so pages keep their width. */
   setCompact: (compact: boolean, source?: CommandSource) => void
   reset: (source?: CommandSource) => void
+  /** The current arrangement as saved layouts keep it (decision 0032). */
+  getArrangement: () => JsonObject
+  /**
+   * Replaces the arrangement with a saved one, after `prepareArrangement`.
+   * Not logged: the saved-layout operation that calls it records one entry.
+   */
+  loadArrangement: (raw: unknown) => ArrangementResult
   /** Places a page in a new tab group beside another page, opening either if needed. */
   placePage: (
     page: PageId,
@@ -239,9 +458,11 @@ function restoreModel(storage: Storage | null): Model {
   try {
     const raw = storage?.getItem(LAYOUT_KEY)
     if (raw) {
-      return withCurrentPanelNames(
-        Model.fromJson(JSON.parse(raw) as IJsonModel),
-      )
+      // Tabs a later version removed are dropped rather than shown unknown.
+      const prepared = prepareArrangement(JSON.parse(raw))
+      if (prepared.ok) {
+        return withCurrentPanelNames(Model.fromJson(prepared.json))
+      }
     }
   } catch {
     // Unreadable or incompatible saved layout: fall back to the default.
@@ -256,6 +477,8 @@ export function createLayoutController(
   let version = 0
   const listeners = new Set<() => void>()
   let model = restoreModel(storage)
+  /** The docking mode setCompact last chose, for arrangements loaded later. */
+  let compactMode = false
 
   // A splitter drag changes the model on every pointer move, so the layout is
   // written once the changes settle rather than serialized on each one.
@@ -606,6 +829,7 @@ export function createLayoutController(
     },
 
     setCompact: (compact, source = 'system') => {
+      compactMode = compact
       const borderType = compact ? 'overlay' : 'split'
       const changing = panelBorders().filter(
         (border) => border.getBorderType() !== borderType,
@@ -641,6 +865,27 @@ export function createLayoutController(
         'Restored the default workbench layout.',
         source,
       )
+    },
+
+    getArrangement: () => normalizeArrangement(model.toJson()),
+
+    loadArrangement: (raw) => {
+      const prepared = prepareArrangement(raw, compactMode)
+      if (!prepared.ok) return { status: 'rejected', message: prepared.message }
+      let next: Model
+      try {
+        next = withCurrentPanelNames(Model.fromJson(prepared.json))
+      } catch {
+        return {
+          status: 'rejected',
+          message: 'The panel arrangement could not be read.',
+        }
+      }
+      model.removeChangeListener(handleChange)
+      model = next
+      model.addChangeListener(handleChange)
+      handleChange()
+      return { status: 'applied', dropped: prepared.dropped }
     },
 
     placePage: (page, beside, side = 'right', source = 'manual') => {

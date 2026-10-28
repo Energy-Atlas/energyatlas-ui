@@ -49,6 +49,7 @@ import { useShortcuts } from '../useShortcuts.ts'
 import { openDemoPanel } from './demoSwitchStore.ts'
 import { Ribbon } from './Ribbon.tsx'
 import { ShellDialogHost } from './ShellDialogHost.tsx'
+import { LayoutsDialog } from '../layouts/LayoutsDialog.tsx'
 import { StatusBar } from './StatusBar.tsx'
 import { ToastHost } from './ToastHost.tsx'
 import { useShellDialogs } from './useShellDialogs.ts'
@@ -189,6 +190,7 @@ export function WorkbenchShell() {
           if (!layout.isPanelOpen('messages')) layout.togglePanel('messages')
         }}
       />
+      <LayoutsDialog />
       <ShellDialogHost
         open={open}
         onOpenChange={onOpenChange}

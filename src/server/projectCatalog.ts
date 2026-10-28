@@ -1,6 +1,6 @@
 import type { WorkbenchState } from '../domain/types.ts'
 import { loadProject } from './persistence.ts'
-import { projectStateSchema } from './projectSchema.ts'
+import { projectStateSchema, savedViewSchema } from './projectSchema.ts'
 
 export const CATALOG_KEY = 'eaui.projects.v1'
 export type ProjectSummary = {
@@ -10,15 +10,18 @@ export type ProjectSummary = {
   lastOpenedAt: string | null
 }
 /**
- * How the project's views were arranged when it was saved, kept with the
- * project (decision 0028): table settings by table id. The UI validates them
- * when it applies them, so the server keeps them as given.
+ * What the project keeps of its views: table arrangements (decision 0029),
+ * the map's layer stack (decision 0031), and its saved layouts with the one
+ * it opens with (decision 0032). The UI validates them when it applies them,
+ * so the server keeps them as given; projects saved before a field existed
+ * simply lack it.
  */
-/**
- * What the project keeps of its views: table arrangements (decision 0029)
- * and the map's layer stack (decision 0031), read by the client.
- */
-export type SavedView = { tables: Record<string, unknown>; layers?: unknown[] }
+export type SavedView = {
+  tables: Record<string, unknown>
+  layers?: unknown[]
+  layouts?: unknown[]
+  defaultLayoutId?: string | null
+}
 export type CatalogEntry = ProjectSummary & {
   state: WorkbenchState
   /** Absent for projects saved before views were saved with them. */
@@ -27,14 +30,14 @@ export type CatalogEntry = ProjectSummary & {
 
 /** A saved view, or null when the value is not one. */
 export function parseSavedView(value: unknown): SavedView | null {
-  if (!value || typeof value !== 'object') return null
-  const { tables, layers } = value as { tables?: unknown; layers?: unknown }
-  if (!tables || typeof tables !== 'object' || Array.isArray(tables)) {
-    return null
-  }
+  const parsed = savedViewSchema.safeParse(value)
+  if (!parsed.success) return null
+  const { tables, layers, layouts, defaultLayoutId } = parsed.data
   return {
-    tables: tables as Record<string, unknown>,
-    ...(Array.isArray(layers) ? { layers: layers as unknown[] } : {}),
+    tables,
+    ...(layers ? { layers } : {}),
+    ...(layouts ? { layouts } : {}),
+    ...(defaultLayoutId !== undefined ? { defaultLayoutId } : {}),
   }
 }
 export type ProjectCatalog = { projects: CatalogEntry[] }

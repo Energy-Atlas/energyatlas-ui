@@ -1,5 +1,7 @@
+import { GROUP } from '../../domain/assets.ts'
 import type { Asset, AssetKind, WorkflowState } from '../../domain/types.ts'
 import type { PageId } from '../layout/layoutController.ts'
+import type { SavedLayout } from '../layouts/savedLayout.ts'
 
 export type AssetTreeNode = {
   id: string
@@ -82,4 +84,43 @@ export function describeProvenance(
     case 'operation':
       return `Created by a ${provenance.source} action (operation ${provenance.operationId}).`
   }
+}
+
+/** Asset ids of project layouts shown in the tree, which are view state. */
+export const LAYOUT_ASSET_PREFIX = 'layout-asset:'
+
+/**
+ * The project's saved layouts as View assets under View > Layouts (decision
+ * 0032). They are view state saved beside the model, not model assets, so
+ * the tree adds them for display; choosing one opens the Layouts dialog.
+ */
+export function withLayoutAssets(
+  assets: Record<string, Asset>,
+  layouts: SavedLayout[],
+  defaultId: string | null,
+): Record<string, Asset> {
+  const group = assets[GROUP.layouts]
+  if (!group || layouts.length === 0) return assets
+  const merged = { ...assets }
+  const ids = layouts.map((layout) => `${LAYOUT_ASSET_PREFIX}${layout.id}`)
+  merged[GROUP.layouts] = { ...group, childIds: [...group.childIds, ...ids] }
+  layouts.forEach((layout, index) => {
+    const id = ids[index] ?? ''
+    merged[id] = {
+      id,
+      kind: 'view',
+      name: layout.id === defaultId ? `${layout.name} (default)` : layout.name,
+      parentId: GROUP.layouts,
+      childIds: [],
+      provenance: {
+        kind: 'operation',
+        source: layout.createdBy,
+        operationId: '',
+      },
+      capability: null,
+      summary: `Saved layout, updated ${layout.updatedAt}.`,
+      entityIds: [],
+    }
+  })
+  return merged
 }

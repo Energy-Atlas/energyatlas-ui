@@ -66,6 +66,7 @@ export function createScriptedAgent(
     lifecycle: options.lifecycle,
     view: options.view,
     layout: options.layout,
+    layouts: options.layouts,
   }
   const store = createStore<AgentSnapshot>()(() => ({
     status: 'idle',

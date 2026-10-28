@@ -231,8 +231,9 @@ export const capabilities = {
   },
   'layout.saveAsView': {
     label: 'Saved layouts',
-    status: 'planned',
-    explanation: 'Saving a workbench layout as a View asset is planned.',
+    status: 'working',
+    explanation:
+      'Project layouts are saved with the project and shown here as View assets; personal layouts stay in this browser for every project.',
   },
   'settings.modelProvider': {
     label: 'Model provider',

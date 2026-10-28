@@ -61,6 +61,11 @@ import {
   type PropertiesService,
 } from './properties/propertiesService.ts'
 import { forgetUnsavedEdits } from './properties/useEdits.ts'
+import {
+  createLayoutLibrary,
+  type LayoutLibrary,
+  type LayoutLibrarySnapshot,
+} from './layouts/layoutLibrary.ts'
 import { layersDiffer } from './pages/mapLayers.ts'
 import { parseStoredTables, tablesDiffer } from './tables/tableSettings.ts'
 import type { ViewState } from './view/viewOperations.ts'
@@ -86,6 +91,8 @@ type CoreServices = {
   messages: MessageCenter
   /** A definition being created in the Properties panel (decision 0028). */
   properties: PropertiesService
+  /** Project and personal saved layouts (decision 0032). */
+  layouts: LayoutLibrary
 }
 
 /**
@@ -179,16 +186,42 @@ function createCoreServices(): CoreServices {
   }
   const layout = createLayoutController(workbench, storage)
   const view = createViewStore(workbench)
-  // Table arrangements are saved with the project (decision 0028).
+  // Messages are created after the agent, which needs the layouts service.
+  let messageCenter: MessageCenter | null = null
+  const layouts = createLayoutLibrary({
+    workbench,
+    layout,
+    view,
+    storage,
+    warn: (text, operationId, source) => {
+      messageCenter?.post({
+        tone: 'warning',
+        source: 'workspace',
+        actor: source,
+        projectId: workbench.getState().project.id,
+        text,
+        operationId,
+        toast: true,
+      })
+    },
+  })
+  // Table arrangements (decision 0029), map layers (decision 0031), and
+  // project layouts (decision 0032) are saved with the project.
   client.attachView(() => ({
     tables: view.getState().tables,
     layers: view.getState().map.layers,
+    ...layouts.forSave(),
   }))
   const lifecycle = createProjectLifecycle({
     workbench,
     client,
     viewUnsaved: () =>
-      viewUnsaved(view.getState(), client.store.getState().meta),
+      viewUnsaved(
+        view.getState(),
+        client.store.getState(),
+        layouts.store.getState(),
+        layouts,
+      ),
   })
   const agent = createScriptedAgent({
     workbench,
@@ -196,6 +229,7 @@ function createCoreServices(): CoreServices {
     lifecycle,
     layout,
     view,
+    layouts,
     scheduler: browserScheduler,
   })
   const properties = createPropertiesService(workbench)
@@ -224,6 +258,17 @@ function createCoreServices(): CoreServices {
     },
     agent: agent.store,
   })
+  messageCenter = messages
+  // After the message center's own session handling, so a warning about the
+  // default layout stays on screen in the project it belongs to.
+  client.store.subscribe((snapshot, previous) => {
+    if (snapshot.projectGeneration !== previous.projectGeneration) {
+      layouts.resetForProject(
+        snapshot.meta.view,
+        sessionKey(snapshot.projectGeneration, snapshot.meta.savedAt),
+      )
+    }
+  })
   return {
     storage,
     workbench,
@@ -234,7 +279,13 @@ function createCoreServices(): CoreServices {
     agent,
     messages,
     properties,
+    layouts,
   }
+}
+
+/** Names a project session and its last save, for the views it opened with. */
+function sessionKey(generation: number, savedAt: string | null): string {
+  return `${generation}:${savedAt ?? ''}`
 }
 
 export function WorkbenchProvider({ children }: { children: ReactNode }) {
@@ -369,27 +420,53 @@ export function useStageStates() {
   return useMemo(() => deriveStageStates(workflow, tasks), [workflow, tasks])
 }
 
-/** Whether the tables are arranged differently from how the project saved them. */
+/**
+ * Whether the views differ from what the project saved: table arrangements,
+ * map layers, and project layouts. A default layout applied on opening sets
+ * the views the project opened with, until the project is saved again.
+ */
 function viewUnsaved(
   view: Pick<ViewState, 'tables' | 'map'>,
-  meta: ClientSnapshot['meta'],
+  client: Pick<ClientSnapshot, 'meta' | 'projectGeneration'>,
+  library: LayoutLibrarySnapshot,
+  layouts: Pick<LayoutLibrary, 'projectDiffers'>,
 ): boolean {
+  const { meta } = client
+  const opened =
+    library.openedView?.key ===
+    sessionKey(client.projectGeneration, meta.savedAt)
+      ? library.openedView
+      : null
+  const tables = opened
+    ? opened.tables
+    : parseStoredTables(meta.view?.tables ?? {})
   return (
-    tablesDiffer(view.tables, parseStoredTables(meta.view?.tables ?? {})) ||
-    layersDiffer(view.map.layers, meta.view?.layers)
+    tablesDiffer(view.tables, tables) ||
+    (opened
+      ? JSON.stringify(view.map.layers) !== JSON.stringify(opened.layers)
+      : layersDiffer(view.map.layers, meta.view?.layers)) ||
+    layouts.projectDiffers(meta.view)
   )
 }
 
 /**
  * Whether the open project has changes not saved in this browser: model
- * changes the server tracks, or table arrangements and map layers, which are
- * saved with the project (decisions 0029 and 0031).
+ * changes the server tracks, or table arrangements, map layers, and project
+ * layouts, which are saved with the project (decisions 0029, 0031, 0032).
  */
 export function useUnsavedChanges(): boolean {
+  const { layouts } = useServices()
   const meta = useClientSnapshot((snapshot) => snapshot.meta)
+  const projectGeneration = useClientSnapshot(
+    (snapshot) => snapshot.projectGeneration,
+  )
+  const library = useStore(layouts.store)
   const tables = useViewState((view) => view.tables)
   const map = useViewState((view) => view.map)
-  return meta.dirty || viewUnsaved({ tables, map }, meta)
+  return (
+    meta.dirty ||
+    viewUnsaved({ tables, map }, { meta, projectGeneration }, library, layouts)
+  )
 }
 
 /** Re-renders the caller whenever the FlexLayout model changes. */

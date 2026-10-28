@@ -32,9 +32,13 @@ import { useServices, useWorkbenchSnapshot } from '../WorkbenchContext.tsx'
 import { CapabilityBadge, StatusTag } from '../components/CapabilityBadge.tsx'
 import { PanelHeader } from '../components/PanelHeader.tsx'
 import { cx } from '../cx.ts'
+import { useStore } from 'zustand'
+import { openLayoutsDialog } from '../layouts/layoutsDialogStore.ts'
 import {
   buildAssetTree,
+  LAYOUT_ASSET_PREFIX,
   relatedPages,
+  withLayoutAssets,
   type AssetTreeNode,
 } from './assetTree.ts'
 import styles from './panels.module.css'
@@ -68,13 +72,33 @@ const KIND_ICONS: Record<AssetKind, LucideIcon> = {
  */
 export function AssetsPanel() {
   const headingId = useId()
-  const { layout, workbench, showInspection } = useServices()
+  const { layout, workbench, showInspection, layouts } = useServices()
+  const projectLayouts = useStore(layouts.store, (snapshot) => snapshot.project)
+  const defaultLayoutId = useStore(
+    layouts.store,
+    (snapshot) => snapshot.defaultId,
+  )
   const assets = useWorkbenchSnapshot((snapshot) => snapshot.state.assets)
   const rootIds = useWorkbenchSnapshot(
     (snapshot) => snapshot.state.rootAssetIds,
   )
   const selection = useWorkbenchSnapshot((snapshot) => snapshot.state.selection)
-  const tree = useMemo(() => buildAssetTree(assets, rootIds), [assets, rootIds])
+  const tree = useMemo(
+    () =>
+      buildAssetTree(
+        withLayoutAssets(assets, projectLayouts.layouts, defaultLayoutId),
+        rootIds,
+      ),
+    [assets, rootIds, projectLayouts, defaultLayoutId],
+  )
+  /** A project layout in the tree opens the Layouts dialog on it. */
+  const openLayout = (key: string): boolean => {
+    if (!key.startsWith(LAYOUT_ASSET_PREFIX)) return false
+    openLayoutsDialog({
+      focus: { scope: 'project', id: key.slice(LAYOUT_ASSET_PREFIX.length) },
+    })
+    return true
+  }
   // Groups start expanded so outputs appear where stages put them.
   const [expandedKeys, setExpandedKeys] = useState<Set<Key>>(
     () =>
@@ -110,6 +134,7 @@ export function AssetsPanel() {
         onSelectionChange={(keys) => {
           if (keys === 'all') return
           const [first] = [...keys]
+          if (first !== undefined && openLayout(String(first))) return
           if (first === undefined) {
             if (selectedId) {
               workbench.execute({ type: 'selection.clear', input: {} })
@@ -124,7 +149,9 @@ export function AssetsPanel() {
         }}
         expandedKeys={expandedKeys}
         onExpandedChange={setExpandedKeys}
-        onAction={(key) => openFirstRelatedPage(String(key))}
+        onAction={(key) => {
+          if (!openLayout(String(key))) openFirstRelatedPage(String(key))
+        }}
       >
         {function renderItem(node: AssetTreeNode) {
           const Icon = KIND_ICONS[node.asset.kind]

@@ -106,10 +106,15 @@ const layerSchema = z.object({
  * saved one cannot be read (decision 0031).
  */
 export function parseStoredLayers(value: unknown): MapLayer[] {
+  return readStoredLayers(value) ?? defaultLayers()
+}
+
+/** A stored stack, or null when it cannot be read (saved layouts note this). */
+export function readStoredLayers(value: unknown): MapLayer[] | null {
   const parsed = z.array(layerSchema).safeParse(value)
-  if (!parsed.success) return defaultLayers()
+  if (!parsed.success) return null
   const ids = new Set(parsed.data.map((layer) => layer.id))
-  return ids.size === parsed.data.length ? parsed.data : defaultLayers()
+  return ids.size === parsed.data.length ? parsed.data : null
 }
 
 /** Whether a stack differs from what the project saved (none: the defaults). */

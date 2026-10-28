@@ -27,6 +27,7 @@ import {
   MAX_EXAGGERATION,
   MIN_EXAGGERATION,
 } from '../pages/terrain.ts'
+import { applyViewSnapshot } from '../layouts/savedLayout.ts'
 import { describeTableChange, tableChangeIssue } from '../tables/tableChange.ts'
 import { registeredTable, registeredTableIds } from '../tables/tableRegistry.ts'
 import {
@@ -126,13 +127,23 @@ export function createInitialViewState(
 }
 
 export type ViewOutcome =
-  | { status: 'applied'; summary: string }
+  | {
+      status: 'applied'
+      summary: string
+      /** What could not be applied, such as parts of a saved layout. */
+      notes?: string[]
+    }
   | { status: 'rejected'; issues: ValidationIssue[] }
 
 type ViewOperationDefinition<Schema extends z.ZodType> = {
   title: string
   /** Written for agent tool descriptions. */
   description: string
+  /**
+   * Run only by another operation that records its own entry, such as
+   * applying a saved layout; left out of the agent's tool catalog.
+   */
+  internal?: boolean
   input: Schema
   run: (
     view: ViewState,
@@ -191,6 +202,24 @@ export const viewOperationDefinitions = {
         ),
       )
       return applied('Reset project-specific views for the new session.')
+    },
+  }),
+  'view.applyLayout': defineViewOperation({
+    title: 'Apply layout view settings',
+    description:
+      'Apply the view settings of a saved layout. Saved-layout operations run it; call layouts.apply instead.',
+    internal: true,
+    input: z.object({
+      name: z.string().min(1),
+      view: z.record(z.string(), z.unknown()),
+    }),
+    run(view, input, project) {
+      const notes = applyViewSnapshot(view, input.view, project)
+      return {
+        status: 'applied',
+        summary: `Applied the view settings of "${input.name}".`,
+        notes,
+      }
     },
   }),
   'map.setMetric': defineViewOperation({
@@ -783,8 +812,12 @@ export type ViewOperationDescription = {
 
 /** View operation catalog with JSON Schema inputs, for agent tool definitions. */
 export function describeViewOperations(): ViewOperationDescription[] {
-  return (Object.keys(viewOperationDefinitions) as ViewOperationType[]).map(
-    (type) => {
+  return (Object.keys(viewOperationDefinitions) as ViewOperationType[])
+    .filter(
+      (type) =>
+        !(viewOperationDefinitions[type] as { internal?: boolean }).internal,
+    )
+    .map((type) => {
       const definition = viewOperationDefinitions[type]
       return {
         type,
@@ -792,6 +825,5 @@ export function describeViewOperations(): ViewOperationDescription[] {
         description: definition.description,
         inputSchema: z.toJSONSchema(definition.input, { io: 'input' }),
       }
-    },
-  )
+    })
 }

@@ -3,12 +3,14 @@ import {
   Ban,
   Bell,
   BellDot,
+  BookmarkPlus,
   Columns2,
   Command,
   FilePlus,
   FolderTree,
   FlaskConical,
   Info,
+  LayoutTemplate,
   ListChecks,
   LogOut,
   Maximize,
@@ -52,6 +54,8 @@ import {
 } from './pages/jobs/jobView.ts'
 import { DEFAULT_PAGES, PAGES, type PageId } from './layout/layoutController.ts'
 import { inScope } from './messages/messageCenter.ts'
+import { openLayoutsDialog } from './layouts/layoutsDialogStore.ts'
+import { SCOPE_LABELS } from './layouts/savedLayout.ts'
 
 // One registry of app actions drives the ribbon menus, quick buttons, command
 // palette, and keyboard shortcuts, so they cannot drift apart. A disabled or
@@ -116,6 +120,7 @@ export function useAppActions(dialogs: ShellDialogs): AppAction[] {
     setAppearance,
     showInspection,
     messages,
+    layouts,
   } = useServices()
   const snapshot = useWorkbenchSnapshot((current) => current)
   const pending = useClientSnapshot((current) => current.pending)
@@ -129,6 +134,7 @@ export function useAppActions(dialogs: ShellDialogs): AppAction[] {
   const layoutVersion = useLayoutVersion()
   const view = useServices().view
   const jobsView = useViewState((current) => current.jobs)
+  const library = useStore(layouts.store)
   const toastsShown = useStore(messages.store, (current) => {
     const projectId = snapshot.state.project.id
     return current.toasts.filter((id) => {
@@ -382,6 +388,56 @@ export function useAppActions(dialogs: ShellDialogs): AppAction[] {
         disabledReason: null,
         perform: () => layout.reset(),
       },
+      {
+        id: 'view.layouts',
+        label: 'Layouts…',
+        group: 'View',
+        menuPath: ['Layouts'],
+        icon: LayoutTemplate,
+        shortcut: 'Ctrl+Alt+L',
+        disabledReason: null,
+        perform: () => openLayoutsDialog(),
+      },
+      {
+        id: 'view.saveLayout',
+        label: 'Save current layout…',
+        group: 'View',
+        menuPath: ['Layouts'],
+        icon: BookmarkPlus,
+        disabledReason:
+          layouts.saveBlocker('project') && layouts.saveBlocker('personal'),
+        perform: () => openLayoutsDialog({ saving: true }),
+      },
+      {
+        id: 'view.resetToLayout',
+        label: library.applied
+          ? `Reset to layout "${library.applied.name}"`
+          : 'Reset to layout',
+        group: 'View',
+        menuPath: ['Layouts'],
+        icon: RotateCcw,
+        disabledReason: layouts.resetBlocker(),
+        perform: () => {
+          layouts.resetToApplied()
+        },
+      },
+      ...(['project', 'personal'] as const).flatMap((scope) =>
+        (scope === 'project' ? library.project : library.personal).layouts.map(
+          (saved): AppAction => ({
+            id: `view.layout.${scope}.${saved.id}`,
+            label: `Apply ${SCOPE_LABELS[scope].toLowerCase()} layout "${saved.name}"`,
+            group: 'View',
+            menuPath: ['Layouts'],
+            pressed:
+              library.applied?.ref.scope === scope &&
+              library.applied.ref.id === saved.id,
+            disabledReason: null,
+            perform: () => {
+              layouts.apply({ scope, id: saved.id })
+            },
+          }),
+        ),
+      ),
       {
         id: 'view.placeMapBesideTable',
         label: 'Place Map beside Table',
@@ -645,6 +701,8 @@ export function useAppActions(dialogs: ShellDialogs): AppAction[] {
     view,
     jobsView,
     toastsShown,
+    layouts,
+    library,
   ])
 }
 

@@ -16,8 +16,16 @@ export type ViewResult = { operationId: string; outcome: ViewOutcome }
 export type ViewStore = {
   store: StoreApi<ViewState>
   getState: () => ViewState
-  /** Validates and applies a view operation, and records it in the operation log. */
-  execute: (operation: ViewOperation, source?: CommandSource) => ViewResult
+  /**
+   * Validates and applies a view operation, and records it in the operation
+   * log. `record: false` is for an operation that records one entry of its
+   * own around it, such as applying a saved layout (decision 0032).
+   */
+  execute: (
+    operation: ViewOperation,
+    source?: CommandSource,
+    options?: { record?: boolean },
+  ) => ViewResult
 }
 
 // Definitions differ per operation, so the registry entry is used through this
@@ -39,6 +47,7 @@ export function createViewStore(workbench: Workbench): ViewStore {
   function execute(
     operation: ViewOperation,
     source: CommandSource = 'manual',
+    options: { record?: boolean } = {},
   ): ViewResult {
     const definition = viewOperationDefinitions[
       operation.type
@@ -73,6 +82,7 @@ export function createViewStore(workbench: Workbench): ViewStore {
     }
 
     const { outcome } = result
+    if (options.record === false) return { operationId: '', outcome }
     const operationId = workbench.record({
       type: operation.type,
       title: definition.title,

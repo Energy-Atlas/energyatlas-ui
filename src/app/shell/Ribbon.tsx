@@ -35,6 +35,7 @@ const QUICK_ACTION_IDS = [
   'view.toggleRightSide',
   'view.toggleMaximize',
   'view.resetLayout',
+  'view.layouts',
   'view.fullScreen',
   'help.comments',
 ]

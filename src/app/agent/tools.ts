@@ -22,6 +22,8 @@ import type {
   ProjectLifecycle,
 } from '../service/projectLifecycle.ts'
 import type { ViewStore } from '../view/viewStore.ts'
+import type { LayoutLibrary } from '../layouts/layoutLibrary.ts'
+import { SCOPE_LABELS, type LayoutScope } from '../layouts/savedLayout.ts'
 
 // Agent tool calls go through the same paths as manual controls: project
 // commands through the project client (the server, decision 0023), view
@@ -36,11 +38,36 @@ export type LayoutToolOperation =
   | { type: 'layout.openPage'; input: { page: PageId } }
   | { type: 'layout.reset'; input: Record<string, never> }
 
+/** Saved layouts (decision 0032), through the same service as the menus. */
+export type LayoutsToolOperation =
+  | { type: 'layouts.list'; input: Record<string, never> }
+  | { type: 'layouts.save'; input: { name: string; scope: LayoutScope } }
+  | { type: 'layouts.apply'; input: { scope: LayoutScope; layoutId: string } }
+  | {
+      type: 'layouts.update'
+      input: { scope: LayoutScope; layoutId: string }
+    }
+  | {
+      type: 'layouts.rename'
+      input: { scope: LayoutScope; layoutId: string; name: string }
+    }
+  | {
+      type: 'layouts.duplicate'
+      input: { scope: LayoutScope; layoutId: string; toScope?: LayoutScope }
+    }
+  | {
+      type: 'layouts.delete'
+      input: { scope: LayoutScope; layoutId: string }
+    }
+  | { type: 'layouts.setDefault'; input: { layoutId: string | null } }
+  | { type: 'layouts.reset'; input: Record<string, never> }
+
 export type ToolCall =
   | { kind: 'project'; intent: ProjectIntent }
   | { kind: 'command'; command: Command }
   | { kind: 'view'; operation: ViewOperation }
   | { kind: 'layout'; operation: LayoutToolOperation }
+  | { kind: 'layouts'; operation: LayoutsToolOperation }
 
 export type ToolResult = {
   status: 'applied' | 'rejected'
@@ -57,6 +84,8 @@ export type ToolDeps = {
   lifecycle?: ProjectLifecycle
   view: ViewStore
   layout: LayoutController
+  /** Saved layouts; absent in tests that do not use them. */
+  layouts?: LayoutLibrary
 }
 
 export function command(value: Command): ToolCall {
@@ -69,6 +98,10 @@ export function viewCall(operation: ViewOperation): ToolCall {
 
 export function layoutCall(operation: LayoutToolOperation): ToolCall {
   return { kind: 'layout', operation }
+}
+
+export function layoutsCall(operation: LayoutsToolOperation): ToolCall {
+  return { kind: 'layouts', operation }
 }
 
 export function toolTypeOf(call: ToolCall): string {
@@ -103,6 +136,8 @@ function isRunnerCommand(type: string): boolean {
 /** Tool calls that run, retry, or cancel jobs or change the project model wait for approval. */
 export function requiresApproval(call: ToolCall): boolean {
   if (call.kind === 'project') return call.intent.type !== 'list'
+  // Deleting a saved layout cannot be undone.
+  if (call.kind === 'layouts') return call.operation.type === 'layouts.delete'
   if (call.kind !== 'command') return false
   return (
     JOB_COMMANDS.has(call.command.type) ||
@@ -146,6 +181,8 @@ export async function executeToolCall(
         : {}),
     }
   }
+
+  if (call.kind === 'layouts') return runLayoutsTool(deps, call.operation)
 
   switch (call.kind) {
     case 'view':
@@ -193,6 +230,82 @@ export async function executeToolCall(
   }
 }
 
+/** Runs a saved-layout tool through the layouts service, with source "agent". */
+function runLayoutsTool(
+  deps: ToolDeps,
+  operation: LayoutsToolOperation,
+): ToolResult {
+  const library = deps.layouts
+  if (!library) {
+    return {
+      status: 'rejected',
+      summary: null,
+      issues: [
+        { path: '', message: 'Saved layouts are unavailable in this session.' },
+      ],
+      operationIds: [],
+    }
+  }
+  if (operation.type === 'layouts.list') {
+    const { project, personal, defaultId, applied } = library.store.getState()
+    const describe = (scope: LayoutScope) =>
+      (scope === 'project' ? project : personal).layouts.map((layout) => ({
+        layoutId: layout.id,
+        name: layout.name,
+        scope,
+        updatedAt: layout.updatedAt,
+        isDefault: scope === 'project' && layout.id === defaultId,
+        isApplied: applied?.ref.scope === scope && applied.ref.id === layout.id,
+      }))
+    const layouts = [...describe('project'), ...describe('personal')]
+    return {
+      status: 'applied',
+      summary: `Found ${project.layouts.length} ${SCOPE_LABELS.project.toLowerCase()} and ${personal.layouts.length} ${SCOPE_LABELS.personal.toLowerCase()} layout(s).`,
+      issues: [],
+      operationIds: [],
+      data: { layouts },
+    }
+  }
+  const outcome = (() => {
+    switch (operation.type) {
+      case 'layouts.save':
+        return library.save(operation.input, 'agent')
+      case 'layouts.apply':
+        return library.apply(refOf(operation.input), 'agent')
+      case 'layouts.update':
+        return library.update(refOf(operation.input), 'agent')
+      case 'layouts.rename':
+        return library.rename(
+          refOf(operation.input),
+          operation.input.name,
+          'agent',
+        )
+      case 'layouts.duplicate':
+        return library.duplicate(
+          refOf(operation.input),
+          'agent',
+          operation.input.toScope,
+        )
+      case 'layouts.delete':
+        return library.remove(refOf(operation.input), 'agent')
+      case 'layouts.setDefault':
+        return library.setDefault(operation.input.layoutId, 'agent')
+      case 'layouts.reset':
+        return library.resetToApplied('agent')
+    }
+  })()
+  return {
+    status: outcome.status,
+    summary: outcome.status === 'applied' ? outcome.summary : null,
+    issues: outcome.status === 'rejected' ? outcome.issues : [],
+    operationIds: [outcome.operationId],
+  }
+}
+
+function refOf(input: { scope: LayoutScope; layoutId: string }) {
+  return { scope: input.scope, id: input.layoutId }
+}
+
 const PAGE_IDS = Object.keys(PAGES) as [PageId, ...PageId[]]
 
 const LAYOUT_TOOLS = [
@@ -217,6 +330,73 @@ const LAYOUT_TOOLS = [
     name: 'layout.reset',
     title: 'Reset layout',
     description: 'Restore the default workbench layout.',
+    input: z.object({}),
+  },
+]
+
+const scope = z.enum(['project', 'personal'])
+const layoutRef = { scope, layoutId: z.string().min(1) }
+
+const LAYOUTS_TOOLS = [
+  {
+    name: 'layouts.list',
+    title: 'List saved layouts',
+    description:
+      'List the project layouts (saved with the project) and personal layouts (kept in this browser for every project), with which one the project opens with and which was applied last.',
+    input: z.object({}),
+  },
+  {
+    name: 'layouts.save',
+    title: 'Save layout',
+    description:
+      'Save the current panel arrangement and view settings (table arrangements, map layers and 3D, terrain, and lighting settings, the Table, Jobs, Dashboard, and Results choices) as a new named layout. Scope "project" saves it with the project once the project is saved; "personal" keeps it in this browser.',
+    input: z.object({ name: z.string().min(1).max(60), scope }),
+  },
+  {
+    name: 'layouts.apply',
+    title: 'Apply layout',
+    description:
+      'Apply a saved layout: its panel arrangement and its view settings. Tabs or results this project lacks are left out and reported.',
+    input: z.object(layoutRef),
+  },
+  {
+    name: 'layouts.update',
+    title: 'Update layout',
+    description:
+      'Replace a saved layout with the current panel arrangement and view settings.',
+    input: z.object(layoutRef),
+  },
+  {
+    name: 'layouts.rename',
+    title: 'Rename layout',
+    description: 'Rename a saved layout; names are unique within a scope.',
+    input: z.object({ ...layoutRef, name: z.string().min(1).max(60) }),
+  },
+  {
+    name: 'layouts.duplicate',
+    title: 'Duplicate layout',
+    description:
+      'Copy a saved layout, in the same scope or into the other one (toScope), for example a project layout into the personal layouts.',
+    input: z.object({ ...layoutRef, toScope: scope.optional() }),
+  },
+  {
+    name: 'layouts.delete',
+    title: 'Delete layout',
+    description: 'Delete a saved layout. This cannot be undone.',
+    input: z.object(layoutRef),
+  },
+  {
+    name: 'layouts.setDefault',
+    title: 'Set default layout',
+    description:
+      'Choose the project layout the project opens with, or null for none. Saved with the project.',
+    input: z.object({ layoutId: z.string().min(1).nullable() }),
+  },
+  {
+    name: 'layouts.reset',
+    title: 'Reset to layout',
+    description:
+      'Return the panels and view settings to the layout applied last, as it is saved now.',
     input: z.object({}),
   },
 ]
@@ -284,6 +464,14 @@ export function describeAgentTools(): AgentToolDescription[] {
       title: tool.title,
       description: tool.description,
       requiresApproval: false,
+      inputSchema: z.toJSONSchema(tool.input, { io: 'input' }),
+    })),
+    ...LAYOUTS_TOOLS.map((tool) => ({
+      name: tool.name,
+      kind: 'layouts' as const,
+      title: tool.title,
+      description: tool.description,
+      requiresApproval: tool.name === 'layouts.delete',
       inputSchema: z.toJSONSchema(tool.input, { io: 'input' }),
     })),
   ]
