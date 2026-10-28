@@ -5,7 +5,7 @@
 - [Unified panel components](ui-component-system.md): proposal after the owner's 2026-10-26 review, the status and verification of each of its five steps and of the decision 0028 review fixes, and their integration into local `master` on 2026-10-27.
 - [Results plan and status](results.md): roadmap step 8 as built: published results, drill-down, series, provenance, CSV export.
 - [Calibration plan and status](calibration.md): roadmap step 7 as built: meter validation, fit jobs, calibrated variants, explicit adoption.
-- [Measures and scenarios plan and status](measures-scenarios.md): roadmap step 6 as built: measure library, editing, composition rule, comparison sets, modeled comparison.
+- [Measures and scenarios plan and status](measures-scenarios.md): roadmap step 6 as built: measure library, editing, composition rule, comparison sets, modeled comparison. Composition, "applies to", and adoption are superseded by [scenario rules](scenario-rules.md) on `claude/next-stages`.
 - [Archetypes and schedules plan and status](archetypes-schedules.md): roadmap step 5 as built: definitions, schedules, library, coverage, assignment jobs.
 - [Data intake plan and status](data-intake.md): roadmap step 4 as built: synthetic datasets, mapping, validation, stable-ID fusion jobs.
 - [RC observations for slices 4–8](roadmap-rc-observations.md): read-only reference facts at `7464c140` for data intake, archetypes, scenarios, calibration, and results.
@@ -29,6 +29,7 @@
 - [Package selection proposal](package-selection.md): researched package recommendations, fallbacks, constraints, spikes, and rejected candidates.
 - [Saved layouts plan and status](saved-layouts.md): next stage 1 of decision 0032 as built on `claude/next-stages` (not merged): project and personal layouts with the panel arrangement and view settings, the default layout, reset, decisions taken for review, verification.
 - [Archetype assignment rules plan and status](assignment-rules.md): next stage 2 of decision 0032 as built on `claude/next-stages` (not merged): RC's four archetype parts assigned by ordered rules with per-part first match, manual parts, the preview, the shared rule editor, migration, decisions taken for review, verification.
+- [Scenario rules plan and status](scenario-rules.md): next stage 3 of decision 0032 as built on `claude/next-stages` (not merged): RC-shaped scenario rules with at most one measure per category, alternative versions, seeded adoption applied when results are aggregated (no rerun), the preview, migration of "applies to", decisions taken for review, verification.
 - [Next stages discussion](next-stages-discussion.md): the owner's four proposed features (floors and zones, schema matching and assignment rules, result versions, a viewer page for handover, saved layouts), read-only RC observations, directions, a suggested order, and open questions.
 - [Pre-connection roadmap](pre-connection-roadmap.md): the UI work to build and test before real backend connections, which are built inside RCEnergySimulator later (decision 0022).
 - [Decision records](decisions/README.md): accepted constraints and future product/technical decisions.

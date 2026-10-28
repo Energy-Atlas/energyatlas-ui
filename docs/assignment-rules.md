@@ -1,8 +1,8 @@
 # Archetype assignment rules with RC's four parts: plan and status
 
 Date: 2026-10-28. Stage 2 of 6 of [decision 0032](decisions/0032-next-stages-directions.md), built on
-`claude/next-stages`; not merged into `master`, not pushed. Stage 3 (scenario assignment rules) will extend this
-document and reuse the shared rule editor described here.
+`claude/next-stages`; not merged into `master`, not pushed. Stage 3 reuses the shared rule engine and editor described
+here for scenario rules: see [scenario rules](scenario-rules.md).
 
 ## The owner's decision
 

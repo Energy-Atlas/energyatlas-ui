@@ -50,7 +50,8 @@ questions.
 1. Saved layouts, personal and project. Built on `claude/next-stages`, not merged ([status](../saved-layouts.md)).
 2. Archetype assignment rules with four parts, on a shared rule editor. Built on `claude/next-stages`, not merged
    ([status](../assignment-rules.md)).
-3. Scenario assignment rules on the same editor.
+3. Scenario assignment rules on the same editor. Built on `claude/next-stages`, not merged
+   ([status](../scenario-rules.md)).
 4. Schema matching as a real mapping review, sharing the mapping component with Data intake.
 5. The viewer page and handover package.
 6. Floors and zones.

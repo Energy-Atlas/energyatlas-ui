@@ -10,6 +10,8 @@ Updated 2026-10-28 for saved layouts, next stage 1 of [decision 0032](decisions/
 
 Updated 2026-10-28 for archetype assignment rules with RC's four parts, next stage 2 of decision 0032, built on `claude/next-stages` and not merged ([plan and status](assignment-rules.md)).
 
+Updated 2026-10-28 for scenario rules with adoption applied at aggregation, next stage 3 of decision 0032, built on `claude/next-stages` and not merged ([plan and status](scenario-rules.md)).
+
 This guide is for a developer or agent taking over without the original conversation. It describes the code as built, how to extend it without breaking the accepted rules, how it is tested, and what is still missing. Product intent and accepted choices live in the [decision records](decisions/README.md); evidence lives in the [first-slice implementation status](first-slice-proposal.md#implementation-status) and the [design alignment record](design-alignment.md#implementation-status).
 
 ## Reading order
@@ -186,15 +188,25 @@ controls that have the whole state use it. Saves from before parts are migrated 
 (`src/server/migrateArchetypes.ts`) before `projectSchema.ts` checks them. Stage 3 reuses `conditions.ts`,
 `RuleList`, and `ConditionBuilder` for scenario rules with measure categories as the slots.
 
-### Measures and scenarios
+### Measures, scenario rules, and adoption
 
-Measures carry `source` provenance and come from the Creator forms or the synthetic library
-(`src/domain/scenarios/library.ts`). `compositionConflict`, `previewScenario`, and `compareScenarios` in
-`src/domain/scenarios/comparison.ts` are the shared rules: at most one measure of each kind per scenario, previews
-with the modeling formula, and the comparison with currentness. Scenario modeling is an item stage over included
-scenarios; `publishScenarioResults` replaces the published set at once and withdraws results of scenarios left out.
-Input signatures record upstream `editRevision`s too (`ancestorEdits`), so edits to definitions owned by an upstream
-stage invalidate queued or running work even before that stage runs again.
+Measures carry `source` provenance and come from the Properties forms or the synthetic library
+(`src/domain/scenarios/library.ts`); since stage 3 of decision 0032 ([scenario rules](scenario-rules.md)) they have
+no "applies to". A scenario orders its rules (`Scenario.ruleIds` into `state.scenarioRules`, each with its
+`scenarioId`); each rule sets at most one measure per category (`MEASURE_KINDS`), and `src/domain/scenarios/rules.ts`
+runs the shared engine with per-category first match (`prepareScenarioRules`, `assignMeasures`). Scenario modeling is
+an item stage over included scenarios: each item holds `ScenarioVersions` (every modeled building's baseline demand,
+each affected building's alternative demand and measures), and `publishScenarioResults` in
+`src/domain/scenarios/modeling.ts` writes `results.scenarioVersions` and the aggregated `results.scenarios` at once,
+withdrawing scenarios left out. Adoption is applied only by `aggregateScenario` (a seeded per-building hash,
+`isAdopted`); `scenario.setAdoption` and `scenario.update` re-aggregate through `reaggregateScenario` without
+touching any stage revision, so read `results.scenarios` for values and `publishedAggregation` for how they were
+sampled. `previewScenarioRules` is the one preview for the page, Properties, the `scenarios.setPreviewScenario` view
+operation, and the agent, and its estimate equals what modeling and aggregation publish. Rule, measure, name, and
+inclusion changes bump Scenario definitions' `editRevision`. Input signatures record upstream `editRevision`s too
+(`ancestorEdits`), so edits to definitions owned by an upstream stage invalidate queued or running work even before
+that stage runs again. Saves from before scenario rules are migrated by `migrateScenarioRules`
+(`src/server/migrateScenarios.ts`), after `migrateArchetypeParts`.
 
 ### Calibration
 
@@ -364,7 +376,8 @@ End-to-end specs:
 - `e2e/results.spec.ts`: provenance and currentness, drill-down into a building, the typical-weekday profile, a real CSV download with its header, scenario savings, and light and dark rendering with axe.
 - `e2e/messages.spec.ts`: toasts for a refusal and a finished job (no focus taken, Ctrl+Alt+N, keyboard dismissal, hover holding a success), the unread counter, and the Messages panel (read on view, tone and source filters, actions from the history, Clear, axe). Specs find toasts with `notifications` and `toast` from `e2e/test.ts`.
 - `e2e/calibration.spec.ts`: series validation, unit choice and warning, a fit job with a notice, a published variant that leaves the working baseline alone, Adopt with outdated dependents, Revert, and light, dark, and 900 px rendering with axe.
-- `e2e/scenarios.spec.ts`: library copies, the one-measure-per-kind rule before sending, the live preview, editing inclusion, modeling a comparison set, the comparison table, and light and dark rendering with axe.
+- `e2e/scenarios.spec.ts`: library copies, the one-measure-per-category first rule before sending, the live preview, editing inclusion, modeling a comparison set, the comparison table, and six appearances and 900 px with axe.
+- `e2e/scenario-rules.spec.ts`: adoption saved in Properties re-aggregating without a run (still current), a rule built in Properties with typed conditions and a measure, per-field refusals, the preview counts, modeling from the page, Results naming the aggregation and per-building adoption, rules and adoption kept through Save and reopen, a scenario without rules before a baseline, a refused seed and a server refusal on their fields, duplicating, moving, and switching rules, with axe.
 - `e2e/archetypes.spec.ts`: library copy, default rules generated again for it, assignment as a job with a notice, per-field archetype (parts) and schedule validation, and rendering in six appearances and at 900 px with axe.
 - `e2e/assignment-rules.spec.ts`: a rule built in Properties with typed conditions and a refused value, the preview counts and the preview part view operation, selecting matched buildings, reordering with Move buttons and keyboard drag and drop, switching a rule off, a manual part set in the Table winning with its provenance, running Archetype modeling, rules kept through Save and reopen, a blank-condition warning, and a server refusal on its field, with axe.
 - `e2e/intake.spec.ts`: suggested mapping, row validation, ambiguity and unmatched rejection, the schema-wide block and its explained Apply, fusion as a job with a notice, held records with failed-record retry, and light, dark, and 900 px rendering with axe.
@@ -375,7 +388,7 @@ End-to-end specs:
 - `e2e/map-table.spec.ts`: empty states, validated pending table edits, table-map shared selection, basemap credits, the fallback and retry when the basemap cannot load, the Settings toggle persisting across reloads, the 2D/3D switch with its missing-heights note, legend rows, and keyboard hint, and the Terrain switch with its exaggeration slider, legend row, credits, and flat fallback with retry; since decision 0030 those switches are in the map's Properties (`openMapProperties`), whose order (Layers, Basemap, Sun position, Light and haze) and basemap switch are checked, and the Map has no selection bar; since decision 0031 a layer test adds, renames, colors, moves (buttons and keyboard drag and drop), and hides layers, checks the legend, and saves and reopens the stack.
 - `e2e/test.ts`: not a spec. It exports `test` and `expect` with an automatic fixture that answers OpenFreeMap requests with a stand-in style and empty tiles, plus `blockBasemap` and `serveBasemapStub`. It also stores the demo condition "no delay" in the session before each page loads, unless a test set conditions already, so the mock server answers at once in tests.
 - `e2e/demo-conditions.spec.ts`: the Demo conditions dialog and its status-bar chip, an offline request, a held request shown as pending until released, rejected input on its field and the edit lock, fixtures loaded from the URL and the dialog, and a job failing partway with its log.
-- `e2e/dashboard.spec.ts`: full manual path to scenario results, preview, apply, outdated notice, data table.
+- `e2e/dashboard.spec.ts`: full manual path to scenario results, what-if adoption, Apply re-aggregating without outdating any stage, data table.
 - `e2e/appearance.spec.ts`: Geist loads, appearance switching persists, axe in all six appearances.
 - `e2e/context.spec.ts`: Inspection follows the shared selection, and the Inspect selection action opens it.
 - `e2e/agent.spec.ts`: the layout session with an approved stage run and a layout restore, a rejected model change, the answer to unmatched free text, and the data representation session with an added chart.
@@ -436,6 +449,7 @@ Behavior promised by the plan or decisions but not built yet:
 - **Chart specs:** charts the agent adds use validated specifications (decision 0011); the Dashboard's built-in charts still build ECharts options directly in `dashboardCharts.ts`.
 - **Table:** no Zones view (zone counts are a Buildings column).
 - **Assignment rules** ([status](assignment-rules.md)): RC's custom formula rules and numeric priorities are not modeled (list order is the priority), library parts arrive only with library archetypes, parts and archetypes cannot be deleted, and the map cannot colour buildings by rule or part (Select matched buildings instead).
+- **Scenario rules** ([status](scenario-rules.md)): four measure categories instead of RC's seven, rules per scenario rather than shared measure packages, a demo hash instead of RC's SHA-256 (the same seed picks other buildings than RC), a noisy realized adoption share at district size, no per-building version assignments or phasing, and no map colouring by rule or adoption.
 - **Fixture variants:** Help > Demo conditions loads New, Partway, Failed stage, and Complete fixtures (decision 0023). Fixture provenance uses historical `fixture-…` operation IDs; the operations that built the fixture are not imported into the current UI log.
 - **Layout:** at 1280 px with both side panels open, the Settings tab moves into FlexLayout's overflow menu. Layout changes are logged but not undoable. Saved layouts do not keep the map camera, which is not view state, and two tabs changing the same personal layout at once keep the later change ([saved layouts](saved-layouts.md#known-issues-and-limits)).
 - **Accessibility:** the map canvas is not screen-reader accessible (the Table page is the equivalent); automated axe runs cover 1280x800 only.

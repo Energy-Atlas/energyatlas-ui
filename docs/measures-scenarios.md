@@ -1,6 +1,13 @@
 # Measures and scenarios (roadmap slice 6): plan and status
 
 Date: 2026-10-26. Branch: `claude/slice-6-scenarios`, from local `master` at `081f25e` (Archetypes merged).
+
+Superseded in part on 2026-10-28 by [scenario rules](scenario-rules.md) (decision 0032, stage 3, on
+`claude/next-stages`): a scenario now holds ordered rules that give buildings at most one measure per category; the
+measure's "applies to" became rule conditions; Scenario modeling publishes alternative versions; and adoption samples
+buildings with a seed when results are aggregated, so changing it no longer outdates Scenario definitions. The
+comparison set, held per-scenario results, and set publication below still hold.
+
 Authority: [rollout plan](jobs-rollout-plan.md) slice 6, [decision 0026](decisions/0026-autonomous-roadmap-through-results.md).
 Read-only RC facts: [RC observations](roadmap-rc-observations.md#measures-and-scenarios-slice-6).
 
