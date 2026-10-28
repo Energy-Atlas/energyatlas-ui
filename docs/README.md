@@ -28,6 +28,7 @@
 - [First-slice plan and status](first-slice-proposal.md): layout details, state model, workflow stages, working/simulated/planned boundary, per-stage implementation status with verification evidence, deviations, and next steps.
 - [Package selection proposal](package-selection.md): researched package recommendations, fallbacks, constraints, spikes, and rejected candidates.
 - [Saved layouts plan and status](saved-layouts.md): next stage 1 of decision 0032 as built on `claude/next-stages` (not merged): project and personal layouts with the panel arrangement and view settings, the default layout, reset, decisions taken for review, verification.
+- [Archetype assignment rules plan and status](assignment-rules.md): next stage 2 of decision 0032 as built on `claude/next-stages` (not merged): RC's four archetype parts assigned by ordered rules with per-part first match, manual parts, the preview, the shared rule editor, migration, decisions taken for review, verification.
 - [Next stages discussion](next-stages-discussion.md): the owner's four proposed features (floors and zones, schema matching and assignment rules, result versions, a viewer page for handover, saved layouts), read-only RC observations, directions, a suggested order, and open questions.
 - [Pre-connection roadmap](pre-connection-roadmap.md): the UI work to build and test before real backend connections, which are built inside RCEnergySimulator later (decision 0022).
 - [Decision records](decisions/README.md): accepted constraints and future product/technical decisions.

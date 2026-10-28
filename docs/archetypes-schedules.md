@@ -1,5 +1,11 @@
 # Archetypes and schedules (roadmap slice 5): plan and status
 
+> **Superseded in part (2026-10-28):** stage 2 of decision 0032 replaced matching by use and year range with
+> ordered assignment rules over RC's four archetype parts, moved schedules from archetypes to space-loads parts, and
+> replaced the single energy use intensity with a synthetic formula over the parts. See
+> [assignment rules](assignment-rules.md). The schedule editor, library copies, and assignment as an item job below
+> still apply.
+
 Date: 2026-10-26. Branch: `claude/slice-5-archetypes`, from local `master` at `a9be786` (Data intake merged).
 Authority: [rollout plan](jobs-rollout-plan.md) slice 5, [decision 0026](decisions/0026-autonomous-roadmap-through-results.md).
 Read-only RC facts: [RC observations](roadmap-rc-observations.md#archetypes-and-schedules-slice-5).
