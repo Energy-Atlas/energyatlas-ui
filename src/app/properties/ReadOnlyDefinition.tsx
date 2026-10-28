@@ -30,6 +30,8 @@ const KIND_LABELS: Record<SelectableEntity, string> = {
   archetypePart: 'Archetype part',
   assignmentRule: 'Assignment rule',
   scenarioRule: 'Scenario rule',
+  floor: 'Floor',
+  zone: 'Zone',
 }
 
 const yesNo = (value: boolean) => (value ? 'Yes' : 'No')

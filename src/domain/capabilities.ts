@@ -70,6 +70,18 @@ export const capabilities = {
     explanation:
       'Per-building and per-scenario results with provenance and currentness come from published synthetic results; monthly and typical-weekday series are derived, not simulated hour by hour.',
   },
+  'zoning.floorsZones': {
+    label: 'Floors and zones',
+    status: 'working',
+    explanation:
+      "Floors are sliced uniformly from each building's height and storeys, and zones follow RC's three zoning modes with the demo's own perimeter inset, falling back to one zone per floor where the inset fails; zones are display only.",
+  },
+  'results.zoneBreakdown': {
+    label: 'Floor and zone results',
+    status: 'simulated',
+    explanation:
+      "A building's published demand split over its floors and zones by floor-area share; no zone is simulated on its own, and the building total is unchanged.",
+  },
   'results.csv': {
     label: 'CSV export',
     status: 'working',

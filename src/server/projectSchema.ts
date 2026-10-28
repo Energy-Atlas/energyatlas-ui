@@ -14,6 +14,12 @@ import {
   SELECTABLE_ENTITIES,
   type WorkbenchState,
 } from '../domain/types.ts'
+import {
+  MAX_PERIMETER_DEPTH_M,
+  MIN_PERIMETER_DEPTH_M,
+  ZONING_MODES,
+  initialZoning,
+} from '../domain/zoning/zoning.ts'
 import { migrateArchetypeParts } from './migrateArchetypes.ts'
 import { migrateScenarioRules } from './migrateScenarios.ts'
 import { migrateSchemaMatching } from './migrateSchemaMatching.ts'
@@ -203,6 +209,18 @@ const schemaMatching = z.object({
       warnings: z.array(mappingWarning),
     })
     .nullable(),
+})
+// The zoning setting (decision 0032, stage 6). Projects and handover packages
+// saved before it get RC's default, one zone per building, and no published
+// zoning: their zone counts came from an estimate by floor area, so their zones
+// are shown again only after Geospatial preprocessing runs.
+const zoningSetting = {
+  mode: z.enum(ZONING_MODES),
+  perimeterDepthM: number.min(MIN_PERIMETER_DEPTH_M).max(MAX_PERIMETER_DEPTH_M),
+}
+const zoning = z.object({
+  ...zoningSetting,
+  published: z.object({ ...zoningSetting, runId: id }).nullable(),
 })
 // Saves from before archetype parts are migrated first (migrateArchetypes.ts).
 const archetype = z.object({
@@ -576,6 +594,7 @@ const savedState = z
       }),
     ).default({}),
     schemaMatching,
+    zoning: zoning.default(initialZoning),
     issues: z.array(
       z.object({
         id,

@@ -108,6 +108,22 @@ describe('handover package', () => {
     )
   })
 
+  test('opens a package made before zoning with the default setting (decision 0032, stage 6)', () => {
+    const pkg = JSON.parse(JSON.stringify(packageOf())) as {
+      model: Record<string, unknown>
+    }
+    delete pkg.model.zoning
+    const read = readHandoverText(JSON.stringify(pkg))
+    expect(read.ok).toBe(true)
+    if (read.ok) {
+      expect(read.package.model.zoning).toEqual({
+        mode: 'single',
+        perimeterDepthM: 4.5,
+        published: null,
+      })
+    }
+  })
+
   test('round-trips through a file and is read like a saved project', () => {
     const pkg = packageOf()
     const read = readHandoverText(JSON.stringify(pkg))

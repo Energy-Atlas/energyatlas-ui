@@ -21,6 +21,14 @@ import type {
 } from './types.ts'
 import { PART_KINDS } from './types.ts'
 import { STAGE_IDS } from './workflow.ts'
+import {
+  describeZoning,
+  fallbackWarnings,
+  initialZoning,
+  zoneCountFor,
+  zoningFallbacks,
+  type ZoningSetting,
+} from './zoning/zoning.ts'
 
 // Deterministic stand-ins for the engineering stages of decision 0005.
 // Nothing here is a physical calculation: values are synthetic, seeded by
@@ -348,10 +356,14 @@ function enrichFootprints(
   }
 }
 
-/** One building's geospatial preprocessing, as a held item output; null when it lacks floors. */
+/**
+ * One building's geospatial preprocessing, as a held item output; null when
+ * it lacks floors. Its zones follow the zoning setting (decision 0032, stage 6).
+ */
 export function preprocessBuilding(
   building: Building,
   mapped: { heightM?: number; floorAreaM2?: number } = {},
+  zoning: ZoningSetting = initialZoning(),
 ): HeldPreprocessingOutput | null {
   if (building.floors === null) return null
   const floors = building.floors
@@ -359,10 +371,11 @@ export function preprocessBuilding(
   const floorAreaM2 = round(
     mapped.floorAreaM2 ?? building.footprintAreaM2 * floors,
   )
+  const heightM = round(mapped.heightM ?? floors * 3.2, 1)
   return {
-    heightM: round(mapped.heightM ?? floors * 3.2, 1),
+    heightM,
     floorAreaM2,
-    zoneCount: Math.max(1, Math.round(floorAreaM2 / 450)),
+    zoneCount: zoneCountFor({ ...building, heightM }, zoning) ?? 1,
   }
 }
 
@@ -408,6 +421,22 @@ export function publishPreprocessing(
     building.zoneCount = output.zoneCount
     zones += output.zoneCount
   }
+  // The run's input signature includes the stage's edit revision, which the
+  // zoning setting bumps, so the setting now is the one the items used.
+  const zoning: ZoningSetting = {
+    mode: state.zoning.mode,
+    perimeterDepthM: state.zoning.perimeterDepthM,
+  }
+  state.zoning.published = { ...zoning, runId: context.runId }
+  const fallbacks = fallbackWarnings(
+    zoningFallbacks(
+      membership.flatMap((id) => {
+        const building = state.buildings[id]
+        return building ? [building] : []
+      }),
+      zoning,
+    ),
+  )
   const provenance = fromStage(STAGE_IDS.preprocessing, context)
   upsertAsset(state, {
     id: 'asset:buildings',
@@ -425,12 +454,12 @@ export function publishPreprocessing(
     parentId: 'asset:buildings',
     provenance,
     capability: 'workflow.stageRuns',
-    summary: `${zones} zones`,
+    summary: `${zones} zones, ${describeZoning(zoning).toLowerCase()}`,
   })
   return {
     ok: true,
-    summary: `Derived heights, floor areas, and ${zones} thermal zones for ${membership.length} buildings.`,
-    warnings: [],
+    summary: `Derived heights, floor areas, and ${zones} thermal zones (${describeZoning(zoning).toLowerCase()}) for ${membership.length} buildings.`,
+    warnings: fallbacks.map((warning) => warning.message),
   }
 }
 

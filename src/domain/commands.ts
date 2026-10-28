@@ -124,7 +124,15 @@ import {
   SELECTABLE_ENTITIES,
   type SelectableEntity,
 } from './types.ts'
-import { selectableCollection } from './selection.ts'
+import { selectableExists } from './selection.ts'
+import {
+  MAX_PERIMETER_DEPTH_M,
+  MIN_PERIMETER_DEPTH_M,
+  ZONING_MODES,
+  ZONING_MODE_LABELS,
+  describeZoning,
+  sameZoning,
+} from './zoning/zoning.ts'
 import {
   STAGE_IDS,
   hasActiveTask,
@@ -245,6 +253,8 @@ const SELECTION_NOUNS: Record<SelectableEntity, string> = {
   archetypePart: 'archetype part(s)',
   assignmentRule: 'assignment rule(s)',
   scenarioRule: 'scenario rule(s)',
+  floor: 'floor(s)',
+  zone: 'zone(s)',
 }
 
 const JOB_STATUS_WORDS: Record<Task['status'], string> = {
@@ -390,6 +400,7 @@ function stageItem(
   const output = preprocessBuilding(
     building,
     computedOverrides(state, building),
+    state.zoning,
   )
   return { output, missing: output ? null : 'The floor count is missing.' }
 }
@@ -2202,6 +2213,68 @@ export const commandDefinitions = {
     },
   }),
 
+  'zoning.set': defineCommand({
+    title: 'Set zoning',
+    description: `Set how "Geospatial preprocessing" divides buildings into thermal zones, in RC's three modes: single (${ZONING_MODE_LABELS.single.toLowerCase()}), floors (${ZONING_MODE_LABELS.floors.toLowerCase()}), or perimeterCore (a core and one perimeter zone per footprint edge on every floor; short edges join the zone before them). perimeterDepthM, ${MIN_PERIMETER_DEPTH_M} to ${MAX_PERIMETER_DEPTH_M} m, is the perimeter band's depth and is kept for perimeterCore. Buildings whose footprint cannot be inset fall back to one zone per floor with a warning. Geospatial preprocessing and every later stage become outdated until it runs again; zones are display only.`,
+    input: z.object({
+      mode: z.enum(ZONING_MODES, {
+        error: 'Choose single, floors, or perimeterCore.',
+      }),
+      perimeterDepthM: z
+        .number({ error: 'Enter a depth in metres.' })
+        .min(
+          MIN_PERIMETER_DEPTH_M,
+          `Use a depth from ${MIN_PERIMETER_DEPTH_M} to ${MAX_PERIMETER_DEPTH_M} m.`,
+        )
+        .max(
+          MAX_PERIMETER_DEPTH_M,
+          `Use a depth from ${MIN_PERIMETER_DEPTH_M} to ${MAX_PERIMETER_DEPTH_M} m.`,
+        )
+        .optional(),
+    }),
+    undoable: true,
+    run(state, { mode, perimeterDepthM }) {
+      const stage = state.workflow.stages[STAGE_IDS.preprocessing]
+      if (!stage) {
+        return rejected('The workflow has no "Geospatial preprocessing" stage.')
+      }
+      if (hasActiveTask(state.tasks, stage.id)) {
+        return rejected(
+          `"${stage.name}" is running. Wait for it to finish before changing the zoning.`,
+        )
+      }
+      const next = {
+        mode,
+        perimeterDepthM:
+          perimeterDepthM === undefined
+            ? state.zoning.perimeterDepthM
+            : Math.round(perimeterDepthM * 10) / 10,
+      }
+      if (
+        next.mode === state.zoning.mode &&
+        next.perimeterDepthM === state.zoning.perimeterDepthM
+      ) {
+        return rejected(
+          `The zoning is already ${describeZoning(next).toLowerCase()}.`,
+          perimeterDepthM === undefined ? 'mode' : 'perimeterDepthM',
+        )
+      }
+      const zonesChange = !sameZoning(next, state.zoning)
+      state.zoning.mode = next.mode
+      state.zoning.perimeterDepthM = next.perimeterDepthM
+      if (!zonesChange) {
+        // A depth kept for perimeter and core changes no zone today.
+        return applied(
+          `Perimeter depth set to ${next.perimeterDepthM} m for perimeter and core zoning; the current zoning, ${describeZoning(next).toLowerCase()}, does not use it.`,
+        )
+      }
+      stage.editRevision = nextRevision(state)
+      return applied(
+        `Zoning set to ${describeZoning(next).toLowerCase()}. "${stage.name}" and the stages after it are outdated until it runs again.`,
+      )
+    },
+  }),
+
   'workflow.insertStage': defineCommand({
     title: 'Insert custom stage',
     description:
@@ -2661,15 +2734,16 @@ export const commandDefinitions = {
   'selection.set': defineCommand({
     title: 'Select',
     description:
-      'Replace the shared selection with buildings, grid elements, or one definition (archetype, schedule, measure, scenario, or asset) for the Properties panel, or one entry of the synthetic archetype, schedule, or measure library to show read-only. Unknown ids are rejected.',
+      'Replace the shared selection with buildings, grid elements, floors (ids <building>:F<n>) or zones (ids <building>:Z1 or <building>:F<n>:Z<k>, core first) of the published zoning, or one definition (archetype, schedule, measure, scenario, or asset) for the Properties panel, or one entry of the synthetic archetype, schedule, or measure library to show read-only. Unknown ids are rejected.',
     input: z.object({
       entityType: z.enum(SELECTABLE_ENTITIES),
       ids: z.array(z.string().min(1)).max(10_000),
     }),
     undoable: false,
     run(state, { entityType, ids }) {
-      const collection = selectableCollection(state, entityType)
-      const unknown = ids.filter((id) => !(id in collection))
+      const unknown = ids.filter(
+        (id) => !selectableExists(state, entityType, id),
+      )
       if (unknown.length > 0) {
         return rejected(
           `Unknown ${entityType} id(s): ${unknown.slice(0, 5).join(', ')}.`,

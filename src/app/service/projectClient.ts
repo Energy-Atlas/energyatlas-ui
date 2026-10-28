@@ -4,7 +4,7 @@ import {
   type Command,
   type ValidationIssue,
 } from '../../domain/commands.ts'
-import { selectableCollection } from '../../domain/selection.ts'
+import { selectableExists } from '../../domain/selection.ts'
 import type { SavedView } from '../../server/projectCatalog.ts'
 import type { CommandSource, WorkbenchState } from '../../domain/types.ts'
 import { createInitialState } from '../../domain/initialState.ts'
@@ -158,10 +158,10 @@ export function mergeServerState(
   local: WorkbenchState,
 ): WorkbenchState {
   const { selection } = local
-  const collection = selection.entityType
-    ? selectableCollection(server, selection.entityType)
-    : {}
-  const ids = selection.ids.filter((id) => id in collection)
+  const entityType = selection.entityType
+  const ids = entityType
+    ? selection.ids.filter((id) => selectableExists(server, entityType, id))
+    : []
   const pendingEdits = Object.fromEntries(
     Object.entries(local.pendingEdits).filter(
       ([, edit]) => edit.entityId in server.buildings,

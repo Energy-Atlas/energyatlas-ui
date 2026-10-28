@@ -2,6 +2,7 @@ import { createAssetSkeleton } from './assets.ts'
 import { createSchemaMatching } from './schema/registry.ts'
 import type { WorkbenchState } from './types.ts'
 import { createDefaultWorkflow } from './workflow.ts'
+import { initialZoning } from './zoning/zoning.ts'
 
 /** An empty synthetic project: the asset skeleton and the default workflow, nothing run yet. */
 export function createInitialState(): WorkbenchState {
@@ -37,6 +38,7 @@ export function createInitialState(): WorkbenchState {
     sourceRecordIds: [],
     datasets: {},
     schemaMatching: createSchemaMatching(),
+    zoning: initialZoning(),
     calibration: {
       variants: {},
       variantIds: [],

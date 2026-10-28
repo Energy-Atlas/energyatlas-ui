@@ -1,4 +1,5 @@
 import type { CapabilityId } from './capabilities.ts'
+import type { ZoningState } from './zoning/zoning.ts'
 
 export type CommandSource = 'manual' | 'agent' | 'system'
 
@@ -717,6 +718,8 @@ export type SelectableEntity =
   | 'archetypePart'
   | 'assignmentRule'
   | 'scenarioRule'
+  | 'floor'
+  | 'zone'
 
 export const SELECTABLE_ENTITIES = [
   'building',
@@ -733,6 +736,8 @@ export const SELECTABLE_ENTITIES = [
   'archetypePart',
   'assignmentRule',
   'scenarioRule',
+  'floor',
+  'zone',
 ] as const satisfies readonly SelectableEntity[]
 
 export type Selection = {
@@ -804,6 +809,12 @@ export type WorkbenchState = {
   datasets: Record<string, AppliedDataset>
   /** The Schema matching mapping and what its last run applied (decision 0032, stage 4). */
   schemaMatching: SchemaMatchingState
+  /**
+   * How Geospatial preprocessing divides buildings into thermal zones, and
+   * what its last run applied (decision 0032, stage 6). Floors and zones are
+   * derived from it, never stored.
+   */
+  zoning: ZoningState
   calibration: CalibrationState
   issues: Issue[]
   selection: Selection
