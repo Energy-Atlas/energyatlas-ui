@@ -54,7 +54,8 @@ questions.
    ([status](../scenario-rules.md)).
 4. Schema matching as a real mapping review, sharing the mapping component with Data intake. Built on
    `claude/next-stages`, not merged ([status](../schema-matching.md)).
-5. The viewer page and handover package.
+5. The viewer page and handover package. Built on `claude/next-stages`, not merged
+   ([status](../viewer-handover.md)).
 6. Floors and zones.
 
 Each stage states what is real, mocked, and deferred before it is built, as `AGENTS.md` requires.
