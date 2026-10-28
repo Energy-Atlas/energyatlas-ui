@@ -8,9 +8,9 @@ import {
   type Page,
 } from './test.ts'
 
-// Measures and scenarios (jobs rollout plan, slice 6): library, editing,
-// one measure of each kind per scenario, previews, the comparison set, and the
-// modeled comparison.
+// Measures and scenarios (jobs rollout plan, slice 6; decision 0032, stage
+// 3): library, editing, a first rule with one measure of each category,
+// previews, the comparison set, and the modeled comparison.
 
 function workflowPanel(page: Page) {
   return page.getByRole('region', { name: 'Workflow' })
@@ -80,11 +80,13 @@ test('composes, previews, edits, and compares scenarios as one modeled set', asy
 
   const scenarioForm = await startNew(page, 'scenario')
   await scenarioForm.getByRole('textbox', { name: 'Name' }).fill('Lighting')
-  const measures = scenarioForm.getByRole('group', { name: 'Measures' })
+  const measures = scenarioForm.getByRole('group', {
+    name: 'First rule: measures for every building',
+  })
   await measures.getByRole('checkbox', { name: /^LED lighting/ }).focus()
   await page.keyboard.press('Space')
   await expect(scenarioForm).toContainText(
-    /Affects \d+ modeled buildings; estimated [\d.]+% lower annual demand/,
+    /\d+ of \d+ buildings take a measure; \d+ adopt at 50% adoption\. Estimated [\d.]+% lower annual demand/,
   )
   // Two envelope measures in one scenario are refused before sending.
   await measures

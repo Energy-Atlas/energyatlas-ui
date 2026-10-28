@@ -99,12 +99,16 @@ test('dashboard compares a modeled scenario and previews adoption before applyin
   await page
     .getByRole('button', { name: 'Apply 60% adoption to Half retrofitted' })
     .click()
+  // Adoption is applied when results are aggregated: the published result is
+  // re-aggregated from the same versions, and nothing becomes outdated.
   await expect(page.getByTestId('status-notice')).toContainText(
-    'Set adoption for "Half retrofitted" from 50% to 60%.',
+    'Set adoption for "Half retrofitted" from 50% to 60%; its published result was re-aggregated without modeling again.',
   )
-  await expect(page.getByText(/Scenario results are outdated/)).toBeVisible()
+  await expect(page.getByText('Preview, not saved')).toHaveCount(0)
+  await expect(page.getByText('Saved: 60%, seed 42')).toBeVisible()
+  await expect(page.getByText(/Scenario results are outdated/)).toHaveCount(0)
   await expect(workflowItem(page, 'Scenario modeling')).toContainText(
-    'Outdated',
+    'Complete',
   )
 
   await page.getByText('Show monthly data table').click()

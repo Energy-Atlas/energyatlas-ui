@@ -80,10 +80,12 @@ test('measures and scenarios are created in Properties through commands', async 
   await scenarioForm
     .getByRole('textbox', { name: 'Name' })
     .fill('Half retrofitted')
+  await scenarioForm.getByRole('textbox', { name: 'Name' }).fill('')
   await scenarioForm.getByRole('button', { name: 'Create scenario' }).click()
-  await expect(
-    scenarioForm.getByText('Choose at least one measure.'),
-  ).toBeVisible()
+  await expect(scenarioForm.getByText('Enter a name.')).toBeVisible()
+  await scenarioForm
+    .getByRole('textbox', { name: 'Name' })
+    .fill('Half retrofitted')
 
   // React Aria keeps the native checkbox visually hidden; use the keyboard.
 
