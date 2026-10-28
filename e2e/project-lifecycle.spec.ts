@@ -253,12 +253,14 @@ test('held creation and closing can recover through Demo conditions', async ({
   await expect(page.getByRole('main', { name: 'Projects' })).toBeVisible()
 })
 
-test('start and creation render in every appearance, desktop size, and narrow layout', async ({
-  page,
-}) => {
-  test.setTimeout(120_000)
-  await page.goto('/')
-  for (const width of [1280, 1600, 900]) {
+// One test per width, so each stays well inside its timeout when the suite
+// runs on 4 workers.
+for (const width of [1280, 1600, 900]) {
+  test(`start and creation render in every appearance at ${width} px`, async ({
+    page,
+  }) => {
+    test.setTimeout(120_000)
+    await page.goto('/')
     await page.setViewportSize({
       width,
       height: width === 900 ? 700 : width === 1600 ? 1000 : 800,
@@ -330,5 +332,5 @@ test('start and creation render in every appearance, desktop size, and narrow la
         .click()
       await expect(page.getByRole('main', { name: 'Projects' })).toBeVisible()
     }
-  }
-})
+  })
+}
