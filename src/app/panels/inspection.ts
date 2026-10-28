@@ -8,7 +8,10 @@ import {
   FOOTPRINT_TAGS,
   footprintTags,
 } from '../../domain/schema/footprintTags.ts'
-import { mappedValuesFor } from '../../domain/schema/matching.ts'
+import {
+  mappedValuesFor,
+  preprocessingUsedPublished,
+} from '../../domain/schema/matching.ts'
 import { customTargetId } from '../../domain/schema/registry.ts'
 import { MEASURE_KINDS, PART_KINDS } from '../../domain/types.ts'
 import type {
@@ -200,6 +203,7 @@ export function attributeSources(
   building: Building,
 ): Fact[] {
   const published = state.schemaMatching.published
+  const usedPublished = preprocessingUsedPublished(state)
   const mapped = mappedValuesFor(building, published)
   const tags = footprintTags(building)
   const fused = Object.values(state.sourceRecords).find(
@@ -226,12 +230,11 @@ export function attributeSources(
     const source = mapped.sources[id]
     if (source && published) {
       const raw = tags?.[source] ?? ''
-      const value = mapped[id]
+      // Preprocessing reads mapped heights and areas only when it runs
+      // after the Schema matching run that published them.
       const applied =
         id === 'heightM' || id === 'floorAreaM2'
-          ? building[id] !== null &&
-            typeof value === 'number' &&
-            Math.abs((building[id] ?? 0) - value) < 0.5
+          ? building[id] !== null && usedPublished
           : true
       return {
         label,

@@ -826,9 +826,26 @@ export const viewOperationDefinitions = {
           'targets',
         )
       }
+      const labels: string[] = []
+      const skipped: string[] = []
       for (const target of chosen) {
         const suggestion = view.intake.suggestions[target]
         delete view.intake.suggestions[target]
+        // A field mapped by hand to another model field stays there.
+        const current = suggestion
+          ? (view.intake.mapping[suggestion.source] ?? null)
+          : null
+        if (
+          decision === 'accept' &&
+          suggestion &&
+          current !== null &&
+          current !== target
+        ) {
+          skipped.push(
+            `${TARGET_FIELDS[target].label} (its suggested "${suggestion.source}" already feeds ${TARGET_FIELDS[current].label})`,
+          )
+          continue
+        }
         if (decision === 'accept' && suggestion) {
           view.intake.mapping = withTarget(
             view.intake.mapping,
@@ -836,10 +853,11 @@ export const viewOperationDefinitions = {
             suggestion.source,
           )
         }
+        labels.push(TARGET_FIELDS[target].label)
       }
-      const labels = chosen.map((target) => TARGET_FIELDS[target].label)
+      const verb = decision === 'accept' ? 'Accepted' : 'Rejected'
       return applied(
-        `${decision === 'accept' ? 'Accepted' : 'Rejected'} ${chosen.length} suggestion${chosen.length === 1 ? '' : 's'}: ${labels.join(', ')}.`,
+        `${verb} ${labels.length} suggestion${labels.length === 1 ? '' : 's'}${labels.length > 0 ? `: ${labels.join(', ')}` : ''}.${skipped.length > 0 ? ` Dropped ${skipped.length}: ${skipped.join('; ')}.` : ''}`,
       )
     },
   }),

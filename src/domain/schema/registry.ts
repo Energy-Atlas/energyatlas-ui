@@ -121,6 +121,30 @@ export function copyValueMaps(
   )
 }
 
+function canonical(value: unknown): string {
+  if (Array.isArray(value)) return `[${value.map(canonical).join(',')}]`
+  if (value && typeof value === 'object') {
+    return `{${Object.entries(value)
+      .filter(([, item]) => item !== undefined)
+      .sort(([a], [b]) => a.localeCompare(b))
+      .map(([key, item]) => `${JSON.stringify(key)}:${canonical(item)}`)
+      .join(',')}}`
+  }
+  return JSON.stringify(value)
+}
+
+/** Whether two mappings apply the same targets, custom targets, and value maps. */
+export function sameMappingConfig(
+  a: Pick<SchemaMatchingState, 'mapping' | 'customTargets' | 'valueMaps'>,
+  b: Pick<SchemaMatchingState, 'mapping' | 'customTargets' | 'valueMaps'>,
+): boolean {
+  return (
+    canonical(a.mapping) === canonical(b.mapping) &&
+    canonical(a.customTargets) === canonical(b.customTargets) &&
+    canonical(a.valueMaps) === canonical(b.valueMaps)
+  )
+}
+
 export const CUSTOM_PREFIX = 'custom:'
 
 export function customTargetId(name: string): string {
@@ -159,6 +183,29 @@ export function findSchemaTarget(
 
 /** Custom names: a letter first, then letters, digits, and _ : . -, up to 40. */
 export const CUSTOM_NAME = /^[A-Za-z][A-Za-z0-9_:.-]{0,39}$/
+
+/**
+ * Why a custom target cannot have this name, or null: the pattern, and no
+ * clash, ignoring case, with a model field or another custom target. Adding
+ * a target and loading a rule set share it.
+ */
+export function customNameIssue(
+  customTargets: readonly string[],
+  name: string,
+): string | null {
+  if (!CUSTOM_NAME.test(name)) {
+    return 'Start with a letter; use letters, digits, and _ : . - up to 40 characters.'
+  }
+  const lower = name.toLowerCase()
+  const taken =
+    customTargets.some((item) => item.toLowerCase() === lower) ||
+    SCHEMA_TARGETS.some(
+      (target) =>
+        target.id.toLowerCase() === lower ||
+        target.label.toLowerCase() === lower,
+    )
+  return taken ? `A target field named "${name}" already exists.` : null
+}
 
 /** The name of the built-in rule set every project starts from. */
 export const BUILT_IN_RULE_SET = 'OSM building tags (built in)'

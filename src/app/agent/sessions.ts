@@ -792,6 +792,16 @@ const schemaSession: ScriptedSession = {
       const yes = review.checks.use?.unrecognised.find(
         (entry) => entry.value === 'yes',
       )
+      // "yes" is generic: reading it as mixed use changes every building
+      // carrying it that is not mixed already, and says so.
+      const yesSource = state.schemaMatching.mapping.use
+      const changes = yesSource
+        ? review.collection.records.filter(
+            (record) =>
+              record.tags?.[yesSource] === 'yes' &&
+              state.buildings[record.buildingId]?.use !== 'mixed',
+          ).length
+        : 0
       const calls: TitledCall[] = []
       if (pending.length > 0) {
         calls.push({
@@ -818,11 +828,11 @@ const schemaSession: ScriptedSession = {
       }
       return [
         reason(
-          `${pending.map(([target, suggestion]) => `${target} from "${suggestion.source}"`).join(', ') || 'No suggestions'} ${pending.length === 1 ? 'is' : 'are'} pending.${yes ? ` ${yes.count} buildings carry the generic building value "yes", which is not a recognised use, so they keep their enriched use.` : ''}`,
+          `${pending.map(([target, suggestion]) => `${target} from "${suggestion.source}"`).join(', ') || 'No suggestions'} ${pending.length === 1 ? 'is' : 'are'} pending.${yes ? ` ${yes.count} buildings carry the generic building value "yes", which is not a recognised use, so they keep their enriched use for now. Reading "yes" as mixed use makes all of them mixed: ${changes} of them have another use today (mostly retail), so their archetypes and results will change.` : ''}`,
         ),
         propose(
           'Update the attribute mapping',
-          `${calls.map((call) => call.title).join(', then ')}. Schema matching and every later stage become outdated until Schema matching runs again.`,
+          `${calls.map((call) => call.title).join(', then ')}.${yes ? ` ${changes} buildings change to mixed use when the mapping is applied.` : ''} Schema matching and every later stage become outdated until Schema matching runs again.`,
           calls,
         ),
       ]

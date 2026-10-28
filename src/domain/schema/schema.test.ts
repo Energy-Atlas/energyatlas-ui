@@ -10,8 +10,13 @@ import {
   INTAKE_TARGETS,
   reviewDataset,
   suggestIntakeMatches,
+  suggestMapping,
 } from '../intake/fusion.ts'
-import { runStageNow } from '../jobs/runNow.ts'
+import { finishJobNow, runStageNow } from '../jobs/runNow.ts'
+import { retryBlocker } from '../jobs/runGroups.ts'
+import type { WorkbenchState } from '../types.ts'
+import { attributeSources } from '../../app/panels/inspection.ts'
+import { createTestProject } from '../../testing/testProject.ts'
 import {
   checkTarget,
   compulsoryBlocker,
@@ -26,6 +31,7 @@ import { STAGE_IDS, deriveStageStates } from '../workflow.ts'
 import { footprintTags, tagsAt } from './footprintTags.ts'
 import {
   mappedValuesFor,
+  preprocessingUsedPublished,
   reviewSchema,
   schemaRunBlocker,
   sourceCollection,
@@ -616,5 +622,138 @@ describe('Data intake on the shared mapping', () => {
     const use = INTAKE_TARGETS.find((item) => item.id === 'use')
     if (!use) throw new Error('Missing target')
     expect(checkTarget(use, 'x', ['RES', 'office', null]).valid).toBe(2)
+  })
+})
+
+describe('review findings', () => {
+  test('a mapping edit keeps a partly failed fusion retryable', () => {
+    const workbench = partway()
+    const dataset = findDataset('dataset:assessor')
+    if (!dataset) throw new Error('Missing dataset')
+    workbench.execute({
+      type: 'intake.applyDataset',
+      input: { datasetId: dataset.id, mapping: suggestMapping(dataset) },
+    })
+    const taskId = workbench.getState().taskIds.at(-1) ?? ''
+    const failing = workbench.getState().tasks[taskId]?.items?.ids[2] ?? ''
+    finishJobNow(workbench, taskId, { failures: { [failing]: 'Fault.' } })
+    workbench.execute({
+      type: 'schema.reviewSuggestions',
+      input: { targets: ['name'], decision: 'accept' },
+    })
+    expect(retryBlocker(workbench.getState(), taskId)).toBeNull()
+    workbench.execute({ type: 'job.retry', input: { taskId } })
+    finishJobNow(workbench, workbench.getState().taskIds.at(-1) ?? '')
+    const group =
+      workbench.getState().runGroups[
+        workbench.getState().tasks[taskId]?.groupId ?? ''
+      ]
+    expect(group?.status).toBe('published')
+  })
+
+  test('Properties credit mapped heights only after preprocessing reads the published mapping', () => {
+    const workbench = partway()
+    workbench.execute({
+      type: 'schema.reviewSuggestions',
+      input: { targets: ['heightM'], decision: 'accept' },
+    })
+    run(workbench, STAGE_IDS.schema)
+    const pick = (state: WorkbenchState) => {
+      const id =
+        state.buildingIds.find((candidate) => {
+          const building = state.buildings[candidate]
+          return (
+            building && /^\d+\.\d$/.test(footprintTags(building)?.height ?? '')
+          )
+        }) ?? ''
+      const building = state.buildings[id]
+      if (!building) throw new Error('Missing building')
+      return attributeSources(state, building).find(
+        (fact) => fact.label === 'Height',
+      )?.value
+    }
+    expect(preprocessingUsedPublished(workbench.getState())).toBe(false)
+    expect(pick(workbench.getState())).toMatch(
+      /^Computed; Schema matching maps/,
+    )
+    run(workbench, STAGE_IDS.preprocessing)
+    expect(preprocessingUsedPublished(workbench.getState())).toBe(true)
+    expect(pick(workbench.getState())).toMatch(/^Schema matching from "height"/)
+  })
+
+  test('Accept all in Data intake keeps a field mapped by hand', () => {
+    const workbench = partway()
+    const view = createViewStore(workbench)
+    view.execute({
+      type: 'intake.chooseDataset',
+      input: { datasetId: 'dataset:assessor' },
+    })
+    view.execute({
+      type: 'intake.mapTarget',
+      input: { target: 'name', field: 'osm_ref' },
+    })
+    const result = view.execute({
+      type: 'intake.reviewSuggestions',
+      input: { targets: [], decision: 'accept' },
+    })
+    expect(view.getState().intake.mapping.osm_ref).toBe('name')
+    expect(result.outcome.status).toBe('applied')
+    expect(
+      result.outcome.status === 'applied' ? result.outcome.summary : '',
+    ).toContain(
+      'Dropped 1: Source ID (its suggested "osm_ref" already feeds Name)',
+    )
+  })
+
+  test('loading a rule set checks custom names like adding one', () => {
+    const check = checkRuleSet(partway().getState(), {
+      mappings: [
+        { target: 'custom:Use', source: 'roof:shape' },
+        { target: 'custom:note', source: 'roof:shape' },
+        { target: 'custom:Note', source: 'name' },
+      ],
+    })
+    expect(check.customTargets).toEqual(['note'])
+    expect(check.skipped).toEqual([
+      'Custom target "Use": A target field named "Use" already exists.',
+      'Custom target "Note": A target field named "Note" already exists.',
+    ])
+  })
+
+  test('reloading the mapping already in place outdates nothing', () => {
+    const workbench = partway()
+    const revision =
+      workbench.getState().workflow.stages[STAGE_IDS.schema]?.editRevision
+    const result = workbench.execute({
+      type: 'schema.loadRuleSet',
+      input: { ruleSetId: 'ruleSet:builtin' },
+    })
+    expect(
+      result.outcome.status === 'applied' ? result.outcome.summary : '',
+    ).toContain('nothing is outdated')
+    const state = workbench.getState()
+    expect(state.workflow.stages[STAGE_IDS.schema]?.editRevision).toBe(revision)
+    expect(
+      deriveStageStates(state.workflow, state.tasks)[STAGE_IDS.schema],
+    ).toBe('executed')
+  })
+
+  test('the server refuses mapping changes while a job is queued or running', async () => {
+    const { client, manual } = createTestProject({ fixture: 'partway' })
+    void client.execute({
+      type: 'workflow.runStage',
+      input: { stageId: STAGE_IDS.shading },
+    })
+    await manual.flush()
+    const refused = client.execute({
+      type: 'schema.mapTarget',
+      input: { target: 'use', source: null },
+    })
+    await manual.settle(200)
+    const result = await refused
+    expect(result.outcome.status).toBe('rejected')
+    if (result.outcome.status === 'rejected') {
+      expect(result.outcome.issues[0]?.message).toMatch(/A run is in progress/)
+    }
   })
 })

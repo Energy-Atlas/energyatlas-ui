@@ -590,6 +590,14 @@ export function MappingReview({
                           className={formStyles.input}
                           value={customSource}
                           disabled={disabled}
+                          aria-invalid={
+                            issueOf('custom.source') ? true : undefined
+                          }
+                          aria-describedby={
+                            issueOf('custom.source')
+                              ? `${idPrefix}-custom-source-issue`
+                              : undefined
+                          }
                           onChange={(event) =>
                             setCustomSource(event.target.value)
                           }
@@ -602,7 +610,10 @@ export function MappingReview({
                           ))}
                         </select>
                         {issueOf('custom.source') ? (
-                          <span className={styles.issue}>
+                          <span
+                            id={`${idPrefix}-custom-source-issue`}
+                            className={styles.issue}
+                          >
                             {issueOf('custom.source')}
                           </span>
                         ) : null}

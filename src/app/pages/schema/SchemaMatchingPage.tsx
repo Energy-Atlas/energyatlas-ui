@@ -1,4 +1,5 @@
 import { Download, FolderOpen, Trash2, Upload } from 'lucide-react'
+import { FieldError, Input, Label, TextField } from 'react-aria-components'
 import { useId, useMemo, useRef, useState } from 'react'
 import {
   BUILT_IN_RULE_SET_ID,
@@ -37,6 +38,7 @@ import { CapabilityBadge } from '../../components/CapabilityBadge.tsx'
 import componentStyles from '../../components/components.module.css'
 import { EmptyState } from '../../components/EmptyState.tsx'
 import formStyles from '../../components/forms.module.css'
+import { cx } from '../../cx.ts'
 import { InlineAlert } from '../../components/InlineAlert.tsx'
 import { MappingReview } from '../../components/MappingReview.tsx'
 import { PanelHeader } from '../../components/PanelHeader.tsx'
@@ -85,6 +87,7 @@ export function SchemaMatchingPage() {
   const [issues, setIssues] = useState<ValidationIssue[]>([])
   const [notice, setNotice] = useState<Notice | null>(null)
   const [ruleSetName, setRuleSetName] = useState('')
+  const [nameError, setNameError] = useState<string | null>(null)
   const [chosenSet, setChosenSet] = useState<string>(BUILT_IN_RULE_SET_ID)
   const fileRef = useRef<HTMLInputElement>(null)
 
@@ -347,14 +350,24 @@ export function SchemaMatchingPage() {
               </InlineAlert>
             ) : null}
             <div className={styles.saveRow}>
-              <label htmlFor="schema-rule-set-name">Rule set name</label>
-              <input
-                id="schema-rule-set-name"
-                className={formStyles.input}
+              <TextField
+                className={cx(formStyles.field, styles.nameField)}
                 value={ruleSetName}
-                placeholder="Back Bay assessor tags"
-                onChange={(event) => setRuleSetName(event.target.value)}
-              />
+                isInvalid={Boolean(nameError)}
+                onChange={(value) => {
+                  setRuleSetName(value)
+                  setNameError(null)
+                }}
+              >
+                <Label className={formStyles.label}>Rule set name</Label>
+                <Input
+                  className={formStyles.input}
+                  placeholder="Back Bay assessor tags"
+                />
+                <FieldError className={formStyles.fieldError}>
+                  {nameError}
+                </FieldError>
+              </TextField>
               <ActionButton
                 label="Save the mapping as a rule set"
                 disabledReason={
@@ -374,13 +387,15 @@ export function SchemaMatchingPage() {
                           text: result.outcome.summary,
                         })
                         setRuleSetName('')
+                        setNameError(null)
                       } else {
-                        setNotice({
-                          tone: 'danger',
-                          text: result.outcome.issues
+                        // Refusals belong to the name field.
+                        setNotice(null)
+                        setNameError(
+                          result.outcome.issues
                             .map((issue) => issue.message)
                             .join(' '),
-                        })
+                        )
                       }
                     })
                 }

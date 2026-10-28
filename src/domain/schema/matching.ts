@@ -302,6 +302,24 @@ export function computedOverrides(
   }
 }
 
+/**
+ * Whether the buildings' heights and floor areas came from a Geospatial
+ * preprocessing run that read the published mapping: its last successful run
+ * consumed the Schema matching revision that published it.
+ */
+export function preprocessingUsedPublished(state: WorkbenchState): boolean {
+  const published = state.schemaMatching.published
+  const schema = state.workflow.stages[STAGE_IDS.schema]
+  const preprocessing = state.workflow.stages[STAGE_IDS.preprocessing]
+  if (!published || !schema?.lastRun || !preprocessing?.lastRun) return false
+  return (
+    schema.lastRun.outcome === 'succeeded' &&
+    schema.lastRun.runId === published.runId &&
+    preprocessing.lastRun.outcome === 'succeeded' &&
+    preprocessing.lastRun.inputRevisions[STAGE_IDS.schema] === schema.revision
+  )
+}
+
 /** The name a building has before any mapped or fused name. */
 export function baseName(building: Building): string {
   const index = footprintIndex(building)

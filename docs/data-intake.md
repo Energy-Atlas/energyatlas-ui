@@ -29,7 +29,8 @@ no longer be produced from the page (it is still rejected when sent to the comma
    setup's revision when buildings are added and Geospatial data enriching's when attributes change.
 4. Reruns: footprint capture rebuilds added buildings; enrichment applies synthetic values, then fused records,
    then manual overrides.
-5. UI and parity: Data intake page (`page.intake`), view operations `intake.chooseDataset` and `intake.mapField`,
+5. UI and parity: Data intake page (`page.intake`), view operations `intake.chooseDataset` and `intake.mapField` (since stage 4 of decision 0032: `intake.mapTarget`,
+   `intake.reviewSuggestions`, `intake.inspectField`),
    agent approval for `intake.applyDataset`, Workflow entry on Schema matching, Inspection provenance.
 6. Persistence: defaults for the new fields; cross-checks for source records and fusion groups.
 

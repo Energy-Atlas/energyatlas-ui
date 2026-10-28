@@ -43,8 +43,8 @@ import {
 } from './schema/matching.ts'
 import {
   BUILT_IN_RULE_SET,
-  CUSTOM_NAME,
-  SCHEMA_TARGETS,
+  customNameIssue,
+  sameMappingConfig,
   copyValueMaps,
   createSchemaMatching,
   customTargetId,
@@ -1448,13 +1448,7 @@ export const commandDefinitions = {
     description:
       "Schema matching: add a custom target field that copies a source attribute as text and keeps it with each building (RC's Custom tab). No model calculation reads it.",
     input: z.object({
-      name: z
-        .string()
-        .trim()
-        .regex(
-          CUSTOM_NAME,
-          'Start with a letter; use letters, digits, and _ : . - up to 40 characters.',
-        ),
+      name: z.string().trim().min(1, 'Name the custom target.'),
       source: z.string().min(1, 'Choose a source attribute.'),
     }),
     undoable: true,
@@ -1468,20 +1462,8 @@ export const commandDefinitions = {
           'source',
         )
       }
-      const lower = name.toLowerCase()
-      if (
-        matching.customTargets.some((item) => item.toLowerCase() === lower) ||
-        SCHEMA_TARGETS.some(
-          (target) =>
-            target.id.toLowerCase() === lower ||
-            target.label.toLowerCase() === lower,
-        )
-      ) {
-        return rejected(
-          `A target field named "${name}" already exists.`,
-          'name',
-        )
-      }
+      const nameIssue = customNameIssue(matching.customTargets, name)
+      if (nameIssue) return rejected(nameIssue, 'name')
       matching.customTargets.push(name)
       matching.mapping[customTargetId(name)] = source
       touchSchemaInputs(state)
@@ -1606,19 +1588,28 @@ export const commandDefinitions = {
           file ? 'file' : 'ruleSetId',
         )
       }
-      matching.mapping = Object.fromEntries(
-        check.applicable.map((entry) => [entry.target, entry.source]),
-      )
-      matching.customTargets = check.customTargets
-      matching.valueMaps = check.valueMaps
+      const next = {
+        mapping: Object.fromEntries(
+          check.applicable.map((entry) => [entry.target, entry.source]),
+        ),
+        customTargets: check.customTargets,
+        valueMaps: check.valueMaps,
+      }
+      // Loading what is already mapped outdates nothing.
+      const changed = !sameMappingConfig(matching, next)
+      matching.mapping = next.mapping
+      matching.customTargets = next.customTargets
+      matching.valueMaps = next.valueMaps
       matching.suggestions = {}
-      touchSchemaInputs(state)
+      if (changed) touchSchemaInputs(state)
       matching.loadedFrom = name
       const loaded = `Loaded "${name}": ${check.applicable.length} mapping${check.applicable.length === 1 ? '' : 's'}`
       return applied(
         check.skipped.length > 0
           ? `${loaded}; skipped ${check.skipped.length}: ${check.skipped.join(' ')}`
-          : `${loaded}. Run Schema matching to apply it.`,
+          : changed
+            ? `${loaded}. Run Schema matching to apply it.`
+            : `${loaded}; the mapping already matched it, so nothing is outdated.`,
       )
     },
   }),

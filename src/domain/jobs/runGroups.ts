@@ -99,7 +99,9 @@ export function captureSignature(
         .sort()
         .map((id) => [id, workflow.stages[id]?.editRevision ?? 0]),
     ),
-    editRevision: workflow.stages[stageId]?.editRevision ?? 0,
+    // A fusion's inputs are its dataset, mapping, and records, not the
+    // Schema matching mapping its stage owns (decision 0032, stage 4).
+    editRevision: fusion ? 0 : (workflow.stages[stageId]?.editRevision ?? 0),
     membership: fusion
       ? dataset
         ? prepareDataset(state, dataset, fusion.mapping).plans.map(

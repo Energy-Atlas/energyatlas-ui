@@ -8,9 +8,9 @@ import type {
 } from '../types.ts'
 import { sourceCollection } from './matching.ts'
 import {
-  CUSTOM_NAME,
   CUSTOM_PREFIX,
   SCHEMA_TARGETS,
+  customNameIssue,
   customTarget,
 } from './registry.ts'
 
@@ -122,7 +122,12 @@ export function checkRuleSet(
     )
     if (!target && entry.target.startsWith(CUSTOM_PREFIX)) {
       const name = entry.target.slice(CUSTOM_PREFIX.length)
-      if (CUSTOM_NAME.test(name)) target = customTarget(name)
+      const issue = customNameIssue(check.customTargets, name)
+      if (issue) {
+        check.skipped.push(`Custom target "${name}": ${issue}`)
+        continue
+      }
+      target = customTarget(name)
     }
     if (!target) {
       check.skipped.push(

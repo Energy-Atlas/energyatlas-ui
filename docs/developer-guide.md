@@ -184,10 +184,12 @@ values and aliases, synonyms), `profileSource` and `distribution`, `suggestMatch
 `src/domain/schema/footprintTags.ts` (deterministic per footprint, never stored). `state.schemaMatching` keeps the
 accepted mapping (target to source), pending suggestions, custom targets, value maps, rule sets, and the published
 mapping; the `schema.*` commands change it and bump Schema matching's `editRevision` when the applied mapping would
-change. `reviewSchema` is the one review for the page, the stage blocker (`stageSubmitBlocker` adds
+change (a fusion's input signature leaves that edit revision out, so mapping edits never invalidate held fusion
+results). `reviewSchema` is the one review for the page, the stage blocker (`stageSubmitBlocker` adds
 `schemaRunBlocker`), and the agent. `runSchemaMatching` publishes the mapping and calls `applyAttributeLayers`;
 Geospatial data enriching calls it too, and preprocessing reads mapped heights and floor areas through
-`computedOverrides`. Read a building's mapped values with `mappedValuesFor(building, published)`. `MappingReview`
+`computedOverrides`; `preprocessingUsedPublished` says whether the current heights came from the published mapping.
+Read a building's mapped values with `mappedValuesFor(building, published)`. `MappingReview`
 (`src/app/components/MappingReview.tsx`) takes targets, profiled sources, the mapping, suggestions, issues
 (`targets.<id>`, `custom.*`, or general), and checks, and reports changes through callbacks, so a host decides whether
 they are commands (Schema matching) or view operations (Data intake). Saves from before the mapping are migrated by

@@ -145,6 +145,8 @@ test('builds a rule with typed conditions, refuses invalid fields, and previews 
 test('reorders rules by keyboard and with Move buttons, and switches one off', async ({
   page,
 }) => {
+  // Keyboard drag and drop takes most of 30 s when four workers share the machine.
+  test.setTimeout(60_000)
   await openArchetypes(page)
   const list = ruleList(page)
   await list.getByRole('row').filter({ hasText: 'Office' }).first().click()

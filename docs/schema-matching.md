@@ -67,8 +67,8 @@ and Footprint (group Geometry) optional.
 Each captured footprint has seven tags: `osm_id`, `building`, `building:levels`, `start_date`, `height`, `name`, and
 `roof:shape`. They are synthetic and deterministic per footprint, never real OSM values, and they agree with the
 synthetic enrichment where both have a value: `building` writes the enriched use as `apartments`, `house`,
-`commercial`, `university`, or the generic `yes` part of the time; about 15% lack `building:levels`; about 22% lack a
-plain year (some read `c. 1925`); about 40% lack `height` and 5% give it in feet (`48 ft`); about 12% have a `name`;
+`commercial`, `university`, or the generic `yes` part of the time; about 15% lack `building:levels`; about 28% lack a
+plain year (22% have no date and 6% read `c. 1925`); about 40% lack `height` and 5% give it in feet (`48 ft`); about 12% have a `name`;
 `roof:shape` has no model target. Buildings a dataset added have no tags.
 
 ### Applying the mapping and precedence
@@ -153,6 +153,34 @@ later stage become outdated until it runs again. Fusion run groups stay under Sc
 13. **The distribution is a bar table** (value, count, share) for categories, integers, and number bins, with a
     Missing row; a map of the chosen attribute is deferred.
 
+## Review
+
+An independent review on 2026-10-28 found no serious defect and eight lower-severity items, all fixed:
+
+1. **Mapping edits discarded a partly failed fusion's held results.** Fusion run groups belong to Schema matching, so
+   their input signature held that stage's edit revision, which every mapping edit now bumps; Retry failed records was
+   refused. A fusion's signature now leaves the stage's edit revision out (`captureSignature` in
+   `src/domain/jobs/runGroups.ts`): its inputs are its dataset, mapping, and records.
+2. **Properties could credit a computed height to Schema matching** after a run that preprocessing had not followed
+   (the tags differ from the computed height by under 0.8 m). `preprocessingUsedPublished` now checks that
+   preprocessing's last run consumed the Schema matching revision that published the mapping.
+3. **Accept all in Data intake could undo a field mapped by hand**: a suggestion whose field already feeds another
+   model field is dropped and named in the summary.
+4. **Loading a rule set skipped the custom name checks**; `customNameIssue` in `src/domain/schema/registry.ts` is now
+   the one check for adding and loading (pattern, and no clash ignoring case with model fields or other custom
+   targets).
+5. **Loading the mapping already in place outdated every later stage**; `schema.loadRuleSet` now compares
+   (`sameMappingConfig`) and bumps only on a change.
+6. **Per-field errors**: the rule set name is a React Aria `TextField` with `isInvalid` and the refusal under it; the
+   custom target's source select has `aria-invalid` and `aria-describedby`.
+7. **The agent session understated "yes" as mixed use**: it now says how many buildings change use (the retail ones
+   tagged `yes`) and that their archetypes and results change.
+8. **Doc mismatches** in the year share and in [Data intake](data-intake.md)'s task plan.
+
+Added tests (`src/domain/schema/schema.test.ts`): a fusion retry after a mapping edit, height provenance before and
+after preprocessing, Accept all keeping a hand-mapped field, custom names on load, a reload that outdates nothing, and
+the server refusing a mapping change while a job is queued or running.
+
 ## Known issues and limits
 
 - The page shows one attribute's distribution at a time; numbers are binned in eight equal bins.
@@ -176,3 +204,9 @@ view operation, and Data intake's suggestions, mapping, and checks; plus one age
 clean. Screenshots of the Schema matching page at 1400 px (light), 1280 px (Dark engineering), and 900 px, and of the
 Data intake page, were reviewed from ignored `tmp/schema-*.png` and `tmp/intake-new-*.png`; the first review moved each
 target's values into a row under it so the "Read as" column fits a 740 px pane.
+
+After the review fixes (2026-10-28, same setup): typecheck, lint, and format clean; `npm test` 471 passed (adds 6 in
+`src/domain/schema/schema.test.ts`); `npm run test:e2e` 121 passed in a full run; `npm run test:e2e:preview` 3
+passed; `git diff --check` clean. In an earlier full run, `e2e/assignment-rules.spec.ts` "reorders rules by keyboard"
+(stage 2) timed out at 30 s under four workers and passed alone in two of three runs; it now has a 60 s timeout, and
+the spec passed three times in a row before the clean full run.
