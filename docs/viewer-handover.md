@@ -189,7 +189,9 @@ needs data the package lacks says so instead of offering a run.
 10. **Properties shows definitions read-only** with `ReadOnlyDefinition` (kind, name, a few facts, "Definitions are
     edited in the modeller") rather than the modeller's editors in a read-only state, which would show Save and Cancel
     disabled.
-11. **Personal layouts are keyed per package** (`eaui.viewer.layouts.v1:<package id>`): a new handover of the same
+11. *(Replaced by [decision 0033](decisions/0033-project-layouts-panel-and-scenarios-page.md): there are no personal
+    layouts; the viewer applies the handed-over layouts in the Layouts panel and can reset to the handed-over one.)*
+    **Personal layouts are keyed per package** (`eaui.viewer.layouts.v1:<package id>`): a new handover of the same
     project starts without the earlier package's personal layouts. Keying by project would carry them over; per
     package was chosen so a layout never meets views it was not made for.
 12. **Reset to handed-over layout** returns to the package's default layout, else to the viewer's default arrangement

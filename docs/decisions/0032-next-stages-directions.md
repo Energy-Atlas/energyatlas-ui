@@ -39,7 +39,8 @@ questions.
   - The mock server refuses every model change from a viewer session.
   - The viewer has the agent for questions, interpretations, and view changes, never model changes.
   - Features the viewer cannot use are left out of its page, not shown disabled.
-- **Saved layouts: project layouts and personal layouts (direction C).** A layout holds the panel arrangement and
+- **Saved layouts: project layouts and personal layouts (direction C).** *(Personal layouts were removed by
+  [decision 0033](0033-project-layouts-panel-and-scenarios-page.md) after the owner's review.)* A layout holds the panel arrangement and
   view settings (such as table settings, map layers and camera, filters, and chosen results). Project layouts are
   saved with the project and included in a handover; personal layouts stay in the browser. A viewer's changes are
   personal and never alter the handed-over layouts, so resetting always returns to them.

@@ -3,6 +3,17 @@
 Date: 2026-10-28. Stage 1 of 6 of [decision 0032](decisions/0032-next-stages-directions.md), built on
 `claude/next-stages`; not merged into `master`, not pushed.
 
+## Owner's review (2026-10-28): decision 0033
+
+[Decision 0033](decisions/0033-project-layouts-panel-and-scenarios-page.md) replaces parts of this stage. Personal
+layouts are removed: every layout is kept with the project. The Layouts dialog became the **Layouts panel** on the
+right border (`src/app/layouts/LayoutsPanel.tsx`), whose table holds each layout's details and its Apply, Update,
+Rename, Duplicate, and Delete actions; a layout is saved there by name, or from View > Layouts > Save layout…
+through a name prompt (`src/app/layouts/SaveLayoutPrompt.tsx`). `personalLayouts.ts`, `LayoutsDialog.tsx`, and
+`layoutsDialogStore.ts` are gone (`layoutsPanelStore.ts` holds the marked row and the prompt), the service addresses
+layouts by id, and agent tools no longer take a scope. Text below that mentions personal layouts, the dialog,
+Copy to personal, or unreadable personal storage describes the stage as first built.
+
 ## The owner's decision
 
 Saved layouts for the modeller and, later, the viewer: project layouts and personal layouts (direction C of the

@@ -33,5 +33,6 @@ Keep short dated records of accepted decisions: status, context, decision, ratio
 - [0030: The map's controls live in its Properties, and the Map has no selection bar](0030-map-properties-control-list.md)
 - [0031: A map layer stack with the project's own layers, saved with the project](0031-map-layer-stack.md)
 - [0032: Next stages: saved layouts, RC-shaped assignment rules, a viewer page, and floors and zones](0032-next-stages-directions.md)
+- [0033: Layouts kept with the project in a Layouts panel, and the Scenarios page](0033-project-layouts-panel-and-scenarios-page.md)
 
 Number 0020 is used on the unmerged `feature/agentic` branch.

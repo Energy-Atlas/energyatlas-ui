@@ -23,6 +23,18 @@ Earlier commits on the branch: `d61d4ea`, `b8b1f81`, `61e7f83`, `f2ba992` (discu
 
 All 29 commits carry the configured identity, Cheng Xuan Li, and no attribution trailers.
 
+## Owner's review (2026-10-28)
+
+The owner reviewed the saved layouts, the page name, and floors and zones, and will review the Scenarios,
+Archetypes, Schema matching, Calibration, and viewer panel content afterwards.
+
+- [Decision 0033](decisions/0033-project-layouts-panel-and-scenarios-page.md): layouts are kept with the project only
+  (no personal layouts), in a Layouts panel whose table holds each layout's details and actions; a layout is saved
+  from the panel by name or from View > Layouts > Save layout… through a name prompt. Measures and scenarios is
+  renamed Scenarios. Items 3 below and the saved-layouts scope choices are replaced.
+- Floors and zones in 3D on the map, with one case each of real zoning, each floor as a zone, and perimeter and
+  core: pending the owner's answers in the [discussion](floors-zones-3d-discussion.md).
+
 ## Review items for the owner
 
 Every stage document has a "Decisions taken for review" section, and those sections are the complete list. These
@@ -34,7 +46,7 @@ items change behaviour you already know or read your words in a particular way:
 2. **The viewer leaves out Roadmap** because every stage card has run controls; stage states appear in About this
    handover. **Demo conditions stay** on the viewer so its loading and error states can be shown, which differs
    from direction B. **The Dashboard's what-if adoption preview stays** without Apply (viewer decisions 7–9).
-3. **Viewer personal layouts are kept per package**, so a new handover of the same project starts without them
+3. *(Replaced by decision 0033: no personal layouts.)* **Viewer personal layouts are kept per package**, so a new handover of the same project starts without them
    (viewer decision 11).
 4. **Archetypes became bundles of RC's four parts**, and a fallback rule gives mixed-use buildings parts. The Complete
    fixture now models 464 buildings instead of 446; its baseline is 105,155 MWh instead of 105,173 MWh (assignment
