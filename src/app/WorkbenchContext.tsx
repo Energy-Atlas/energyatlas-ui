@@ -28,8 +28,16 @@ import {
 } from './appearance/appearances.ts'
 import {
   createLayoutController,
+  VIEWER_LAYOUT,
+  VIEWER_LAYOUT_KEY,
   type LayoutController,
 } from './layout/layoutController.ts'
+import { VIEW_ONLY_MESSAGE } from '../server/apiError.ts'
+import {
+  createHandoverService,
+  type HandoverService,
+} from './handover/handoverService.ts'
+import { viewerLayoutsKey } from './layouts/personalLayouts.ts'
 import { initialConditions } from '../server/conditions.ts'
 import { FIXTURES } from '../server/fixtures.ts'
 import { hasOutdatedProject } from '../server/persistence.ts'
@@ -75,7 +83,15 @@ import {
   type ProjectLifecycle,
 } from './service/projectLifecycle.ts'
 
+/** The modeller, or the view-only viewer page of decision 0032 (stage 5). */
+export type AppMode = 'modeller' | 'viewer'
+
 type CoreServices = {
+  /**
+   * The viewer page: model controls are left out of its pages, and its
+   * server session refuses every model change (decision 0032, stage 5).
+   */
+  viewOnly: boolean
   storage: Storage | null
   /** The UI's copy of the project; server commands go through `client`. */
   workbench: Workbench
@@ -93,6 +109,8 @@ type CoreServices = {
   properties: PropertiesService
   /** Project and personal saved layouts (decision 0032). */
   layouts: LayoutLibrary
+  /** Freezes the project into a view-only handover package (decision 0032, stage 5). */
+  handover: HandoverService
 }
 
 /**
@@ -129,7 +147,8 @@ function systemPrefersDark(): boolean {
   )
 }
 
-function createCoreServices(): CoreServices {
+function createCoreServices(mode: AppMode): CoreServices {
+  const viewOnly = mode === 'viewer'
   const storage = getBrowserStorage()
   const session = getSessionStorage()
   const { conditions, fixture } = initialConditions(
@@ -139,8 +158,10 @@ function createCoreServices(): CoreServices {
   const server = createMockServer({
     storage,
     scheduler: browserScheduler,
-    fixture,
+    // The viewer page opens handover packages only, never fixtures.
+    fixture: viewOnly ? null : fixture,
     startClosed: true,
+    mode,
   })
   const transport = createTransport(server, {
     scheduler: browserScheduler,
@@ -152,6 +173,10 @@ function createCoreServices(): CoreServices {
     initialState: initial.state ?? createInitialState(),
     isUndoable: (type) => DRAFT_COMMANDS.has(type),
     refuse: (type) =>
+      // Drafts are model edits waiting to be sent; a viewer makes none.
+      (viewOnly && (DRAFT_COMMANDS as ReadonlySet<string>).has(type)
+        ? VIEW_ONLY_MESSAGE
+        : null) ??
       refuseServerCommand(
         type,
         client.store.getState().pending,
@@ -160,7 +185,7 @@ function createCoreServices(): CoreServices {
       ),
   })
   const client = createProjectClient({ workbench, transport, session, initial })
-  if (fixture) {
+  if (fixture && !viewOnly) {
     workbench.record({
       type: 'project.replace',
       title: 'Load fixture',
@@ -184,7 +209,11 @@ function createCoreServices(): CoreServices {
       source: 'system',
     })
   }
-  const layout = createLayoutController(workbench, storage)
+  const layout = createLayoutController(
+    workbench,
+    storage,
+    viewOnly ? { shape: VIEWER_LAYOUT, storageKey: VIEWER_LAYOUT_KEY } : {},
+  )
   const view = createViewStore(workbench)
   // Messages are created after the agent, which needs the layouts service.
   let messageCenter: MessageCenter | null = null
@@ -193,6 +222,8 @@ function createCoreServices(): CoreServices {
     layout,
     view,
     storage,
+    // Handed-over layouts are read-only; a viewer's own are personal.
+    projectWritable: !viewOnly,
     warn: (text, operationId, source) => {
       messageCenter?.post({
         tone: 'warning',
@@ -216,6 +247,7 @@ function createCoreServices(): CoreServices {
     workbench,
     client,
     viewUnsaved: () =>
+      !viewOnly &&
       viewUnsaved(
         view.getState(),
         client.store.getState(),
@@ -223,6 +255,7 @@ function createCoreServices(): CoreServices {
         layouts,
       ),
   })
+  const handover = createHandoverService({ client, workbench })
   const agent = createScriptedAgent({
     workbench,
     client,
@@ -231,6 +264,8 @@ function createCoreServices(): CoreServices {
     view,
     layouts,
     scheduler: browserScheduler,
+    handover,
+    viewOnly,
   })
   const properties = createPropertiesService(workbench)
   client.store.subscribe((snapshot, previous) => {
@@ -263,6 +298,10 @@ function createCoreServices(): CoreServices {
   // default layout stays on screen in the project it belongs to.
   client.store.subscribe((snapshot, previous) => {
     if (snapshot.projectGeneration !== previous.projectGeneration) {
+      // A viewer's personal layouts belong to the package they were made in.
+      if (viewOnly && snapshot.meta.handover) {
+        layouts.setPersonalKey(viewerLayoutsKey(snapshot.meta.handover.id))
+      }
       layouts.resetForProject(
         snapshot.meta.view,
         sessionKey(snapshot.projectGeneration, snapshot.meta.savedAt),
@@ -270,6 +309,7 @@ function createCoreServices(): CoreServices {
     }
   })
   return {
+    viewOnly,
     storage,
     workbench,
     client,
@@ -280,6 +320,7 @@ function createCoreServices(): CoreServices {
     messages,
     properties,
     layouts,
+    handover,
   }
 }
 
@@ -288,8 +329,14 @@ function sessionKey(generation: number, savedAt: string | null): string {
   return `${generation}:${savedAt ?? ''}`
 }
 
-export function WorkbenchProvider({ children }: { children: ReactNode }) {
-  const [core] = useState(createCoreServices)
+export function WorkbenchProvider({
+  children,
+  mode = 'modeller',
+}: {
+  children: ReactNode
+  mode?: AppMode
+}) {
+  const [core] = useState(() => createCoreServices(mode))
   const [appearancePreference, setAppearancePreference] = useState(() =>
     readAppearancePreference(core.storage),
   )
@@ -384,6 +431,14 @@ export function useServices(): Services {
   return services
 }
 
+/**
+ * Whether this is the view-only viewer page (decision 0032, stage 5), whose
+ * pages leave model controls out rather than showing them disabled.
+ */
+export function useViewOnly(): boolean {
+  return useServices().viewOnly
+}
+
 /** The appearance actually shown, including its data palette for canvas renderers. */
 export function useAppearance(): Appearance {
   return useServices().appearance
@@ -455,7 +510,7 @@ function viewUnsaved(
  * layouts, which are saved with the project (decisions 0029, 0031, 0032).
  */
 export function useUnsavedChanges(): boolean {
-  const { layouts } = useServices()
+  const { layouts, viewOnly } = useServices()
   const meta = useClientSnapshot((snapshot) => snapshot.meta)
   const projectGeneration = useClientSnapshot(
     (snapshot) => snapshot.projectGeneration,
@@ -463,6 +518,8 @@ export function useUnsavedChanges(): boolean {
   const library = useStore(layouts.store)
   const tables = useViewState((view) => view.tables)
   const map = useViewState((view) => view.map)
+  // A viewer saves nothing; its view changes are its own (decision 0032).
+  if (viewOnly) return false
   return (
     meta.dirty ||
     viewUnsaved({ tables, map }, { meta, projectGeneration }, library, layouts)

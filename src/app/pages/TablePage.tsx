@@ -182,7 +182,7 @@ export function TablePage() {
 }
 
 function BuildingsTable() {
-  const { workbench, client, view } = useServices()
+  const { workbench, client, view, viewOnly } = useServices()
   const applyingEdits = usePendingReason(
     'edits.apply',
     'the edits are being applied',
@@ -405,7 +405,8 @@ function BuildingsTable() {
   const columnOptions = useMemo<Partial<Record<string, ColDef<BuildingRow>>>>(
     () => ({
       floors: {
-        editable: floorsEditable,
+        // The viewer edits nothing (decision 0032, stage 5).
+        editable: !viewOnly && floorsEditable,
         cellEditor: 'agNumberCellEditor',
         cellClassRules: {
           [PENDING_CELL_CLASS]: (params) =>
@@ -423,7 +424,10 @@ function BuildingsTable() {
           return [
             partColumn(kind),
             {
-              editable: applying === null && partIdsByKind[kind].length > 0,
+              editable:
+                !viewOnly &&
+                applying === null &&
+                partIdsByKind[kind].length > 0,
               valueGetter: (params) => params.data?.partIds[kind] ?? BY_RULES,
               valueFormatter: (params) =>
                 params.value === BY_RULES ? 'None' : name(params.value),
@@ -443,7 +447,7 @@ function BuildingsTable() {
         }),
       ),
     }),
-    [floorsEditable, applying, partIdsByKind, parts, pendingEdits],
+    [floorsEditable, applying, partIdsByKind, parts, pendingEdits, viewOnly],
   )
   const table = useWorkbenchTable({
     id: 'table.buildings',
@@ -464,47 +468,51 @@ function BuildingsTable() {
         role="group"
         aria-label="Building table actions"
       >
-        <span data-testid="pending-count">
-          {pendingCount} pending {pendingCount === 1 ? 'edit' : 'edits'}
-        </span>
-        <ActionButton
-          label="Apply pending edits"
-          variant="primary"
-          disabledReason={
-            pendingCount > 0 ? applying : 'There are no pending edits.'
-          }
-          onPress={() => {
-            setEditError(null)
-            void client
-              .execute({
-                type: 'edits.apply',
-                input: {},
-              })
-              .then((result) => {
-                if (result.outcome.status === 'rejected') {
-                  setEditError(
-                    result.outcome.issues
-                      .map((issue) => issue.message)
-                      .join(' '),
-                  )
-                }
-              })
-          }}
-        >
-          Apply
-        </ActionButton>
-        <ActionButton
-          label="Discard pending edits"
-          disabledReason={
-            pendingCount > 0 ? applying : 'There are no pending edits.'
-          }
-          onPress={() => {
-            workbench.execute({ type: 'edits.discard', input: {} })
-            setEditError(null)
-          }}
-        >
-          Discard
-        </ActionButton>
+        {viewOnly ? null : (
+          <>
+            <span data-testid="pending-count">
+              {pendingCount} pending {pendingCount === 1 ? 'edit' : 'edits'}
+            </span>
+            <ActionButton
+              label="Apply pending edits"
+              variant="primary"
+              disabledReason={
+                pendingCount > 0 ? applying : 'There are no pending edits.'
+              }
+              onPress={() => {
+                setEditError(null)
+                void client
+                  .execute({
+                    type: 'edits.apply',
+                    input: {},
+                  })
+                  .then((result) => {
+                    if (result.outcome.status === 'rejected') {
+                      setEditError(
+                        result.outcome.issues
+                          .map((issue) => issue.message)
+                          .join(' '),
+                      )
+                    }
+                  })
+              }}
+            >
+              Apply
+            </ActionButton>
+            <ActionButton
+              label="Discard pending edits"
+              disabledReason={
+                pendingCount > 0 ? applying : 'There are no pending edits.'
+              }
+              onPress={() => {
+                workbench.execute({ type: 'edits.discard', input: {} })
+                setEditError(null)
+              }}
+            >
+              Discard
+            </ActionButton>
+          </>
+        )}
         <span className={styles.selectionCount}>{selectedCount} selected</span>
         <ActionButton
           label="Clear selection"
@@ -516,7 +524,12 @@ function BuildingsTable() {
           Clear selection
         </ActionButton>
       </div>
-      {editError ? (
+      {viewOnly ? (
+        <p className={styles.hint}>
+          Values as handed over. The viewer is view only, so cells cannot be
+          edited; sort, filter, and arrange columns freely.
+        </p>
+      ) : editError ? (
         <InlineAlert tone="danger">{editError}</InlineAlert>
       ) : (
         <p className={styles.hint}>

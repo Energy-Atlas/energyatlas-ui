@@ -134,7 +134,8 @@ function clamp(
  * server acts on (decision 0023), never displayed states.
  */
 export function DemoSwitch() {
-  const { client, lifecycle } = useServices()
+  // The viewer opens handover packages, never fixtures (decision 0032, stage 5).
+  const { client, lifecycle, viewOnly } = useServices()
   const conditions = useClientSnapshot((snapshot) => snapshot.conditions)
   const currentProject = useClientSnapshot(
     (snapshot) => snapshot.meta.currentProject,
@@ -326,30 +327,37 @@ export function DemoSwitch() {
             last until this browser tab is closed.
           </p>
 
-          <h3 className={styles.section}>Project fixture</h3>
-          <OptionGroup
-            label="Fixture"
-            options={FIXTURE_IDS.map((id) => ({ value: id, ...FIXTURES[id] }))}
-            value={fixture}
-            onChange={setFixture}
-          />
-          {currentProject && dirty ? (
-            <InlineAlert tone="warning">
-              The project has unsaved changes. Loading a fixture replaces it;
-              the copy saved in this browser is unchanged.
-            </InlineAlert>
-          ) : null}
-          <div className={styles.actions}>
-            <Button
-              className={componentStyles.button}
-              isDisabled={loading !== null}
-              onPress={() =>
-                void lifecycle.request({ type: 'fixture', fixture })
-              }
-            >
-              {loading ? 'Loading…' : `Load "${FIXTURES[fixture].label}"`}
-            </Button>
-          </div>
+          {viewOnly ? null : (
+            <>
+              <h3 className={styles.section}>Project fixture</h3>
+              <OptionGroup
+                label="Fixture"
+                options={FIXTURE_IDS.map((id) => ({
+                  value: id,
+                  ...FIXTURES[id],
+                }))}
+                value={fixture}
+                onChange={setFixture}
+              />
+              {currentProject && dirty ? (
+                <InlineAlert tone="warning">
+                  The project has unsaved changes. Loading a fixture replaces
+                  it; the copy saved in this browser is unchanged.
+                </InlineAlert>
+              ) : null}
+              <div className={styles.actions}>
+                <Button
+                  className={componentStyles.button}
+                  isDisabled={loading !== null}
+                  onPress={() =>
+                    void lifecycle.request({ type: 'fixture', fixture })
+                  }
+                >
+                  {loading ? 'Loading…' : `Load "${FIXTURES[fixture].label}"`}
+                </Button>
+              </div>
+            </>
+          )}
 
           <h3 className={styles.section}>Server</h3>
           <OptionGroup

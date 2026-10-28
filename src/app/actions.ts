@@ -21,6 +21,7 @@ import {
   PanelLeftClose,
   PanelRight,
   PanelRightClose,
+  PackageCheck,
   Play,
   Redo2,
   RotateCcw,
@@ -121,6 +122,7 @@ export function useAppActions(dialogs: ShellDialogs): AppAction[] {
     showInspection,
     messages,
     layouts,
+    handover,
   } = useServices()
   const snapshot = useWorkbenchSnapshot((current) => current)
   const pending = useClientSnapshot((current) => current.pending)
@@ -196,6 +198,14 @@ export function useAppActions(dialogs: ShellDialogs): AppAction[] {
         shortcut: 'Ctrl+O',
         disabledReason: null,
         perform: () => lifecycle.openCatalog(),
+      },
+      {
+        id: 'file.handOver',
+        label: 'Hand over…',
+        group: 'File',
+        icon: PackageCheck,
+        disabledReason: handover.blocker(),
+        perform: () => handover.openDialog(),
       },
       {
         id: 'file.projects',
@@ -709,8 +719,58 @@ export function useAppActions(dialogs: ShellDialogs): AppAction[] {
     toastsShown,
     layouts,
     library,
+    handover,
   ])
 }
+
+/**
+ * What the viewer page keeps of the shared actions (decision 0032, stage 5):
+ * pages and panels it shows, docking, layouts, appearance, and help. Every
+ * action that changes the model, runs or cancels work, saves, or manages
+ * projects is left out rather than shown unavailable; `extras` adds the
+ * viewer's own (packages, file, handed-over layout).
+ */
+export function forViewer(
+  actions: AppAction[],
+  hasPage: (page: PageId) => boolean,
+  extras: AppAction[],
+): AppAction[] {
+  const kept = actions.filter((action) => {
+    if (action.id.startsWith('view.open.')) {
+      return hasPage(action.id.slice('view.open.'.length) as PageId)
+    }
+    return (
+      VIEWER_ACTION_IDS.has(action.id) ||
+      action.id.startsWith('view.appearance.') ||
+      action.id.startsWith('view.layout.')
+    )
+  })
+  return [...extras, ...kept]
+}
+
+const VIEWER_ACTION_IDS = new Set([
+  'view.toggleAssets',
+  'view.toggleReasoning',
+  'view.toggleInspection',
+  'view.toggleMessages',
+  'view.focusNotifications',
+  'view.toggleLeftSide',
+  'view.toggleRightSide',
+  'view.inspectSelection',
+  'view.toggleMaximize',
+  'view.resetLayout',
+  'view.layouts',
+  'view.saveLayout',
+  'view.resetToLayout',
+  'view.placeMapBesideTable',
+  'view.splitActiveTab',
+  'view.moveActiveTab',
+  'view.fullScreen',
+  'help.palette',
+  'help.shortcuts',
+  'help.capabilities',
+  'help.demoConditions',
+])
 
 /** What the start screen offers from the shared menus; the rest need a project. */
 const START_ACTION_IDS = new Set([

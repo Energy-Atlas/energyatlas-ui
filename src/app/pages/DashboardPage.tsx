@@ -286,7 +286,7 @@ export function DashboardPage() {
   const headingId = useId()
   const controlsHeadingId = useId()
   const addedChartsHeadingId = useId()
-  const { client, layout, view } = useServices()
+  const { client, layout, view, viewOnly } = useServices()
   const pending = useClientSnapshot((snapshot) => snapshot.pending)
   const state = useWorkbenchSnapshot((snapshot) => snapshot.state)
   const workflow = state.workflow
@@ -365,48 +365,68 @@ export function DashboardPage() {
           tone="warning"
           className={styles.staleNotice}
           actions={
-            <ActionButton
-              label={`Run ${staleStage.name}`}
-              disabledReason={
-                waitingReason(
-                  pending,
-                  'workflow.runStage',
-                  'the run was requested',
-                  forStage(staleStageId),
-                ) ?? stageSubmitBlocker(state, staleStageId)
-              }
-              onPress={() =>
-                void client.execute({
-                  type: 'workflow.runStage',
-                  input: { stageId: staleStageId },
-                })
-              }
-            >
-              Run {staleStage.name}
-            </ActionButton>
+            // The viewer runs nothing (decision 0032, stage 5).
+            viewOnly ? null : (
+              <ActionButton
+                label={`Run ${staleStage.name}`}
+                disabledReason={
+                  waitingReason(
+                    pending,
+                    'workflow.runStage',
+                    'the run was requested',
+                    forStage(staleStageId),
+                  ) ?? stageSubmitBlocker(state, staleStageId)
+                }
+                onPress={() =>
+                  void client.execute({
+                    type: 'workflow.runStage',
+                    input: { stageId: staleStageId },
+                  })
+                }
+              >
+                Run {staleStage.name}
+              </ActionButton>
+            )
           }
         >
-          Scenario results are outdated: scenario inputs changed after the last
-          run. Rerun &ldquo;{staleStage.name}&rdquo; and the stages after it.
+          {viewOnly ? (
+            <>
+              Scenario results are outdated: scenario inputs changed after the
+              last run of &ldquo;{staleStage.name}&rdquo;, before the project
+              was handed over.
+            </>
+          ) : (
+            <>
+              Scenario results are outdated: scenario inputs changed after the
+              last run. Rerun &ldquo;{staleStage.name}&rdquo; and the stages
+              after it.
+            </>
+          )}
         </InlineAlert>
       ) : null}
 
       <section className={styles.controls} aria-labelledby={controlsHeadingId}>
         <h3 id={controlsHeadingId}>Scenario controls</h3>
         {data.scenarios.length === 0 ? (
-          <div className={styles.controlEmpty}>
-            <span className={componentStyles.muted}>
-              No scenarios yet. Create a measure and a scenario, then run the
-              scenario stages.
-            </span>
-            <ActionButton
-              label="Open the Measures and scenarios page"
-              disabledReason={null}
-              onPress={() => layout.openPage('creator')}
-            >
-              Open Measures and scenarios
-            </ActionButton>
-          </div>
+          viewOnly ? (
+            <p className={componentStyles.muted}>
+              No scenarios were defined when this project was handed over.
+            </p>
+          ) : (
+            <div className={styles.controlEmpty}>
+              <span className={componentStyles.muted}>
+                No scenarios yet. Create a measure and a scenario, then run the
+                scenario stages.
+              </span>
+              <ActionButton
+                label="Open the Measures and scenarios page"
+                disabledReason={null}
+                onPress={() => layout.openPage('creator')}
+              >
+                Open Measures and scenarios
+              </ActionButton>
+            </div>
+          )
         ) : (
           data.scenarios.map((item) => {
             const { scenario } = item
@@ -484,39 +504,42 @@ export function DashboardPage() {
                 {isPreview ? (
                   <span className={styles.previewTag}>Preview, not saved</span>
                 ) : null}
-                <ActionButton
-                  label={`Apply ${adoption}% adoption to ${scenario.name}`}
-                  variant="primary"
-                  disabledReason={
-                    isPreview
-                      ? waitingReason(
-                          pending,
-                          'scenario.setAdoption',
-                          'the adoption is being applied',
-                          (input) =>
-                            (input as { scenarioId?: unknown }).scenarioId ===
-                            scenario.id,
-                        )
-                      : 'The preview matches the saved adoption.'
-                  }
-                  onPress={() => {
-                    void client
-                      .execute({
-                        type: 'scenario.setAdoption',
-                        input: {
-                          scenarioId: scenario.id,
-                          adoptionPercent: adoption,
-                        },
-                      })
-                      .then((result) => {
-                        if (result.outcome.status === 'applied') {
-                          setPreviews((current) => omit(current, scenario.id))
-                        }
-                      })
-                  }}
-                >
-                  Apply
-                </ActionButton>
+                {/* A viewer previews adoption but never saves it (decision 0032, stage 5). */}
+                {viewOnly ? null : (
+                  <ActionButton
+                    label={`Apply ${adoption}% adoption to ${scenario.name}`}
+                    variant="primary"
+                    disabledReason={
+                      isPreview
+                        ? waitingReason(
+                            pending,
+                            'scenario.setAdoption',
+                            'the adoption is being applied',
+                            (input) =>
+                              (input as { scenarioId?: unknown }).scenarioId ===
+                              scenario.id,
+                          )
+                        : 'The preview matches the saved adoption.'
+                    }
+                    onPress={() => {
+                      void client
+                        .execute({
+                          type: 'scenario.setAdoption',
+                          input: {
+                            scenarioId: scenario.id,
+                            adoptionPercent: adoption,
+                          },
+                        })
+                        .then((result) => {
+                          if (result.outcome.status === 'applied') {
+                            setPreviews((current) => omit(current, scenario.id))
+                          }
+                        })
+                    }}
+                  >
+                    Apply
+                  </ActionButton>
+                )}
                 <ActionButton
                   label={`Reset preview for ${scenario.name}`}
                   disabledReason={
@@ -542,8 +565,10 @@ export function DashboardPage() {
         {data.leftOut.length > 0 ? (
           <p className={componentStyles.muted}>
             Left out of the comparison set, so not charted:{' '}
-            {data.leftOut.join(', ')}. Include them in Measures and scenarios to
-            model and chart them.
+            {data.leftOut.join(', ')}.
+            {viewOnly
+              ? ''
+              : ' Include them in Measures and scenarios to model and chart them.'}
           </p>
         ) : null}
       </section>

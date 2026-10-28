@@ -76,6 +76,18 @@ export type LayoutLibrary = {
   store: StoreApi<LayoutLibrarySnapshot>
   /** Whether project layouts can be changed here; a viewer keeps them read-only. */
   projectWritable: boolean
+  /**
+   * Keeps personal layouts under another key from now on, such as one per
+   * handover package on the viewer page (decision 0032, stage 5).
+   */
+  setPersonalKey: (key: string) => void
+  /**
+   * The viewer's reset (decision 0032, stage 5): back to the layouts and
+   * views as handed over, the default layout when the package has one, else
+   * the default arrangement with the views saved in the package. Personal
+   * layouts and the handed-over layouts stay unchanged.
+   */
+  resetToHandedOver: (source?: CommandSource) => LayoutOutcome
   find: (ref: LayoutRef) => SavedLayout | null
   save: (
     input: { name: string; scope: LayoutScope },
@@ -155,12 +167,17 @@ export function createLayoutLibrary(options: {
   /** Posts a warning about parts of a layout that could not be applied. */
   warn?: (text: string, operationId: string, source: CommandSource) => void
   projectWritable?: boolean
+  /** Where personal layouts are kept; the modeller's key by default. */
+  personalKey?: string
   now?: () => Date
 }): LayoutLibrary {
   const { workbench, layout, view, storage } = options
   const projectWritable = options.projectWritable ?? true
   const now = options.now ?? (() => new Date())
-  const personal = readPersonalLayouts(storage)
+  let personalKey = options.personalKey ?? PERSONAL_LAYOUTS_KEY
+  /** The views the project session opened with, for the viewer's reset. */
+  let sessionView: SavedView | null = null
+  const personal = readPersonalLayouts(storage, personalKey)
   const store = createStore<LayoutLibrarySnapshot>()(() => ({
     project: { layouts: [], unreadable: [] },
     defaultId: null,
@@ -261,13 +278,13 @@ export function createLayoutLibrary(options: {
       store.setState({ project: change(store.getState().project), ...extra })
       return null
     }
-    const fresh = readPersonalLayouts(storage)
+    const fresh = readPersonalLayouts(storage, personalKey)
     if (fresh.status.kind !== 'ready') {
       store.setState({ personal: fresh.list, personalStatus: fresh.status })
       return fresh.status.message
     }
     const list = change(fresh.list)
-    const written = writePersonalLayouts(storage, list)
+    const written = writePersonalLayouts(storage, list, personalKey)
     if (!written.ok) return written.message
     store.setState({ personal: list, ...extra })
     return null
@@ -276,8 +293,8 @@ export function createLayoutLibrary(options: {
   // Another tab changed the personal layouts: show them as stored now.
   if (typeof window !== 'undefined' && storage) {
     window.addEventListener('storage', (event) => {
-      if (event.key !== null && event.key !== PERSONAL_LAYOUTS_KEY) return
-      const fresh = readPersonalLayouts(storage)
+      if (event.key !== null && event.key !== personalKey) return
+      const fresh = readPersonalLayouts(storage, personalKey)
       store.setState({ personal: fresh.list, personalStatus: fresh.status })
     })
   }
@@ -366,6 +383,49 @@ export function createLayoutLibrary(options: {
     store,
     projectWritable,
     find,
+
+    setPersonalKey: (key) => {
+      if (key === personalKey) return
+      personalKey = key
+      const fresh = readPersonalLayouts(storage, key)
+      const applied = store.getState().applied
+      store.setState({
+        personal: fresh.list,
+        personalStatus: fresh.status,
+        ...(applied?.ref.scope === 'personal' ? { applied: null } : {}),
+      })
+    },
+
+    resetToHandedOver: (source = 'manual') => {
+      const type = 'layouts.resetToHandover'
+      const title = 'Reset to handed-over layout'
+      const { defaultId } = store.getState()
+      if (defaultId && find({ scope: 'project', id: defaultId })) {
+        const outcome = applyLayout(
+          { scope: 'project', id: defaultId },
+          source,
+          'layouts.reset',
+        )
+        return outcome
+      }
+      layout.reset(source)
+      view.execute(
+        {
+          type: 'view.resetForProject',
+          input: { tables: sessionView?.tables, layers: sessionView?.layers },
+        },
+        source,
+        { record: false },
+      )
+      store.setState({ applied: null })
+      const summary =
+        'Reset the panels and views to the handed-over layout: the default arrangement with the table settings and map layers in the package.'
+      return {
+        status: 'applied',
+        summary,
+        operationId: record(type, title, {}, source, { summary }),
+      }
+    },
 
     save: ({ name, scope }, source = 'manual') => {
       const type = 'layouts.save'
@@ -690,11 +750,12 @@ export function createLayoutLibrary(options: {
       }
       const result =
         status.kind === 'unreadable'
-          ? removePersonalLayouts(storage)
-          : writePersonalLayouts(storage, {
-              ...store.getState().personal,
-              unreadable: [],
-            })
+          ? removePersonalLayouts(storage, personalKey)
+          : writePersonalLayouts(
+              storage,
+              { ...store.getState().personal, unreadable: [] },
+              personalKey,
+            )
       if (!result.ok) return rejectWith(type, title, {}, source, result.message)
       store.setState({
         personal: {
@@ -716,6 +777,7 @@ export function createLayoutLibrary(options: {
     },
 
     resetForProject: (saved, key) => {
+      sessionView = saved
       const project = parseLayoutList(saved?.layouts, 'project')
       const defaultId = defaultFrom(saved, project)
       store.setState({

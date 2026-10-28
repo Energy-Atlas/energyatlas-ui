@@ -1,0 +1,13 @@
+/* The Hand over dialog (decision 0032, stage 5). */
+.lead {
+  margin: 0 0 var(--space-2);
+  max-width: 36rem;
+}
+
+.facts {
+  display: grid;
+  gap: var(--space-1);
+  margin: 0 0 var(--space-2);
+  padding-left: var(--space-4);
+  max-width: 36rem;
+}

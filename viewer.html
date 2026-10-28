@@ -1,0 +1,41 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <!-- The view-only viewer page of decision 0032 (stage 5), a second entry
+         beside index.html. The EnergyAtlas mark (decision 0021, section 14);
+         Vite prefixes the base path. -->
+    <link rel="icon" href="/brand/favicon.svg" type="image/svg+xml" />
+    <link
+      rel="icon"
+      href="/brand/favicon-32.png"
+      type="image/png"
+      sizes="32x32"
+    />
+    <link rel="icon" href="/brand/favicon.ico" sizes="48x48" />
+    <link rel="apple-touch-icon" href="/brand/apple-touch-icon.png" />
+    <title>EnergyAtlas viewer (view only)</title>
+    <script>
+      // First frame (decision 0021): apply the stored appearance's scheme
+      // before the bundle runs, so a dark appearance does not paint light
+      // first. src/app/theme.ts writes the full tokens once the app starts.
+      try {
+        var stored = localStorage.getItem('eaui.theme')
+        var dark = { dark: 1, darkEngineering: 1 }
+        var light = { light: 1, monochrome: 1, lieflat: 1, cleanLight: 1 }
+        if (stored && (dark[stored] || light[stored])) {
+          document.documentElement.dataset.theme = dark[stored]
+            ? 'dark'
+            : 'light'
+        }
+      } catch {
+        // Storage is blocked; the system preference decides the first frame.
+      }
+    </script>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/src/viewer/main.tsx"></script>
+  </body>
+</html>

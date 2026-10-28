@@ -114,7 +114,10 @@ export function AssetsPanel() {
 
   const openFirstRelatedPage = (assetId: string) => {
     const asset = assets[assetId]
-    const page = asset ? relatedPages(asset.kind)[0] : undefined
+    // The viewer opens only the pages it shows (decision 0032, stage 5).
+    const page = asset
+      ? relatedPages(asset.kind).find((candidate) => layout.hasPage(candidate))
+      : undefined
     if (page) layout.openPage(page)
   }
 

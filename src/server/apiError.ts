@@ -93,3 +93,22 @@ export function issuesFromError(body: ApiErrorBody): ValidationIssue[] {
     ? fieldIssues
     : [{ path: '', message: body.message }]
 }
+
+export const VIEW_ONLY_MESSAGE =
+  'This is a view-only handover: the viewer cannot change the model, run or cancel jobs, or save. Ask the modeller for a new handover to see changes.'
+
+/**
+ * A 403 for a viewer session (decision 0032, stage 5): every model change is
+ * refused on the server, on the same command path as the edit lock.
+ */
+export function viewOnlySession(): ApiFailure {
+  return {
+    status: 403,
+    body: {
+      success: false,
+      message: VIEW_ONLY_MESSAGE,
+      code: 'view_only',
+      error: VIEW_ONLY_MESSAGE,
+    },
+  }
+}

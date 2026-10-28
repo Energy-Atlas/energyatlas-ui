@@ -16,6 +16,7 @@ import {
   type DemoConditions,
 } from '../../server/conditions.ts'
 import type { FixtureId } from '../../server/fixtures.ts'
+import type { HandoverPackage } from '../../server/handover.ts'
 import {
   SERVER_COMMANDS,
   type ServerMeta,
@@ -91,6 +92,14 @@ export type PendingRequest = {
   source: CommandSource
 }
 
+/** What Hand over returns: the package, and whether the catalog kept it. */
+export type HandoverResult = {
+  result: ExecuteResult
+  package: HandoverPackage | null
+  /** Why the browser catalog did not keep the package, or null. */
+  storeError: string | null
+}
+
 export type ClientSnapshot = {
   projectGeneration: number
   transitioning: boolean
@@ -125,6 +134,20 @@ export type ProjectClient = {
     source?: CommandSource,
   ) => Promise<ExecuteResult>
   closeProject: (source?: CommandSource) => Promise<ExecuteResult>
+  /** Freezes the open project into a handover package (decision 0032, stage 5). */
+  handOver: (source?: CommandSource) => Promise<HandoverResult>
+  /** Viewer page: reads the browser's handover catalog. */
+  listPackages: (source?: CommandSource) => Promise<ExecuteResult>
+  /** Viewer page: opens a package from the catalog or from a file's text. */
+  openPackage: (
+    from: { packageId: string } | { file: { name: string; text: string } },
+    source?: CommandSource,
+  ) => Promise<ExecuteResult>
+  /** Viewer page: removes a package from the browser's catalog. */
+  removePackage: (
+    packageId: string,
+    source?: CommandSource,
+  ) => Promise<ExecuteResult>
   setConditions: (conditions: DemoConditions) => void
   dispose: () => void
 }
@@ -247,6 +270,7 @@ export function createProjectClient(options: {
         summary: string
         operationId: string
         currentProject: boolean
+        data: unknown
       }
     | { ok: false; result: ExecuteResult }
   > {
@@ -297,6 +321,7 @@ export function createProjectClient(options: {
         summary: reply.summary,
         operationId: entry?.id ?? '',
         currentProject: reply.projectGeneration === projectGeneration,
+        data: reply.data,
       }
     } finally {
       store.setState({
@@ -453,6 +478,55 @@ export function createProjectClient(options: {
     },
     attachView(view) {
       viewOf = view
+    },
+    async handOver(source = 'manual') {
+      const sent = await send(
+        {
+          type: 'project.handover',
+          source,
+          view: viewOf?.(),
+          drafts: Object.keys(workbench.getState().pendingEdits).length,
+        },
+        'project.handover',
+        'Hand over project',
+        {},
+        source,
+      )
+      if (!sent.ok)
+        return { result: sent.result, package: null, storeError: null }
+      const data = sent.data as {
+        package: HandoverPackage
+        storeError: string | null
+      }
+      return {
+        result: {
+          operationId: sent.operationId,
+          outcome: { status: 'applied', summary: sent.summary },
+        },
+        package: data.package,
+        storeError: data.storeError,
+      }
+    },
+    listPackages(source = 'manual') {
+      return projectRequest(
+        { type: 'handover.list', source },
+        'List handover packages',
+        {},
+      )
+    },
+    openPackage(from, source = 'manual') {
+      return projectRequest(
+        { type: 'handover.open', source, ...from },
+        'Open handover package',
+        'file' in from ? { file: from.file.name } : from,
+      )
+    },
+    removePackage(packageId, source = 'manual') {
+      return projectRequest(
+        { type: 'handover.remove', source, packageId },
+        'Remove handover package',
+        { packageId },
+      )
     },
     async save(source = 'manual') {
       const savingGeneration = projectGeneration

@@ -80,6 +80,52 @@ export const DEFAULT_PAGES: PageId[] = [
   'settings',
 ]
 
+/**
+ * Which pages and panels a page of the app can show, and where its side
+ * panels start (decision 0032, stage 5: the viewer page shows fewer).
+ */
+export type LayoutShape = {
+  pages: readonly PageId[]
+  left: readonly PanelId[]
+  right: readonly PanelId[]
+}
+
+export const MODELLER_LAYOUT: LayoutShape = {
+  pages: Object.keys(PAGES) as PageId[],
+  left: ['assets', 'workflow'],
+  right: ['reasoning', 'inspection', 'messages'],
+}
+
+/** What the view-only viewer page shows (decision 0032, stage 5). */
+export const VIEWER_PAGES: readonly PageId[] = [
+  'map',
+  'table',
+  'dashboard',
+  'results',
+]
+
+export const VIEWER_LAYOUT: LayoutShape = {
+  pages: VIEWER_PAGES,
+  left: ['assets'],
+  right: ['reasoning', 'inspection', 'messages'],
+}
+
+/** The viewer keeps its own arrangement, apart from the modeller's. */
+export const VIEWER_LAYOUT_KEY = 'eaui.viewer.layout.v1'
+
+function shapePanels(shape: LayoutShape): PanelId[] {
+  return [...shape.left, ...shape.right]
+}
+
+/** The pages a fresh layout opens with: the default pages this shape has. */
+function shapeDefaultPages(shape: LayoutShape): PageId[] {
+  return shape === MODELLER_LAYOUT
+    ? DEFAULT_PAGES
+    : DEFAULT_PAGES.filter((page) => shape.pages.includes(page)).concat(
+        shape.pages.filter((page) => !DEFAULT_PAGES.includes(page)),
+      )
+}
+
 export const MAIN_TABSET_ID = 'tabset:main'
 // v2 splits the Context panel into Reasoning and Inspection (decision 0016);
 // a v1 layout has no Inspection tab, so it is not restored.
@@ -121,7 +167,9 @@ const PANEL_HOME: Record<PanelId, 'left' | 'right'> = {
   messages: 'right',
 }
 
-export function createDefaultLayout(): IJsonModel {
+export function createDefaultLayout(
+  shape: LayoutShape = MODELLER_LAYOUT,
+): IJsonModel {
   return {
     global: {
       // Keep panels mounted so maps and charts keep their state when hidden.
@@ -144,18 +192,14 @@ export function createDefaultLayout(): IJsonModel {
         location: 'left',
         size: 280,
         selected: 0,
-        children: [panelTab('assets'), panelTab('workflow')],
+        children: shape.left.map(panelTab),
       },
       {
         type: 'border',
         location: 'right',
         size: 320,
         selected: 0,
-        children: [
-          panelTab('reasoning'),
-          panelTab('inspection'),
-          panelTab('messages'),
-        ],
+        children: shape.right.map(panelTab),
       },
     ],
     layout: {
@@ -167,7 +211,7 @@ export function createDefaultLayout(): IJsonModel {
           weight: 100,
           selected: 0,
           enableDeleteWhenEmpty: false,
-          children: DEFAULT_PAGES.map(pageTab),
+          children: shapeDefaultPages(shape).map(pageTab),
         },
       ],
     },
@@ -180,17 +224,19 @@ function isObject(value: unknown): value is JsonObject {
   return typeof value === 'object' && value !== null && !Array.isArray(value)
 }
 
-/** Each known component id and the tab id it always has. */
-const KNOWN_TABS = new Map<string, string>([
-  ...(Object.keys(PAGES) as PageId[]).map((page): [string, string] => [
-    PAGES[page].component,
-    pageTabId(page),
-  ]),
-  ...(Object.keys(PANELS) as PanelId[]).map((panel): [string, string] => [
-    PANELS[panel].component,
-    panelTabId(panel),
-  ]),
-])
+/** Each component id a shape shows and the tab id it always has. */
+function knownTabs(shape: LayoutShape): Map<string, string> {
+  return new Map<string, string>([
+    ...shape.pages.map((page): [string, string] => [
+      PAGES[page].component,
+      pageTabId(page),
+    ]),
+    ...shapePanels(shape).map((panel): [string, string] => [
+      PANELS[panel].component,
+      panelTabId(panel),
+    ]),
+  ])
+}
 
 export type PreparedArrangement =
   | { ok: true; json: IJsonModel; dropped: string[] }
@@ -212,7 +258,12 @@ const DEFAULT_BORDER_SIZE: Record<'left' | 'right', number> = {
 export function prepareArrangement(
   raw: unknown,
   compact = false,
+  shape: LayoutShape = MODELLER_LAYOUT,
 ): PreparedArrangement {
+  const known = knownTabs(shape)
+  // Pages and panels this version has but this page of the app leaves out
+  // (the viewer's), which are dropped without a note.
+  const elsewhere = knownTabs(MODELLER_LAYOUT)
   if (!isObject(raw) || !isObject(raw.layout)) {
     return { ok: false, message: 'The layout has no panel arrangement.' }
   }
@@ -226,7 +277,8 @@ export function prepareArrangement(
       return null
     }
     const component = typeof node.component === 'string' ? node.component : ''
-    const id = KNOWN_TABS.get(component)
+    const id = known.get(component)
+    if (!id && elsewhere.has(component)) return null
     if (!id) {
       const name =
         typeof node.name === 'string' && node.name ? node.name : component
@@ -396,6 +448,9 @@ export type ArrangementResult =
 
 export type LayoutController = {
   getModel: () => Model
+  /** Whether this page of the app shows the page at all (the viewer shows fewer). */
+  hasPage: (page: PageId) => boolean
+  hasPanel: (panel: PanelId) => boolean
   /** Increments on every layout change, for useSyncExternalStore. */
   getVersion: () => number
   subscribe: (listener: () => void) => () => void
@@ -467,12 +522,16 @@ function withCurrentPanelNames(model: Model): Model {
   return model
 }
 
-function restoreModel(storage: Storage | null): Model {
+function restoreModel(
+  storage: Storage | null,
+  key: string,
+  shape: LayoutShape,
+): Model {
   try {
-    const raw = storage?.getItem(LAYOUT_KEY)
+    const raw = storage?.getItem(key)
     if (raw) {
       // Tabs a later version removed are dropped rather than shown unknown.
-      const prepared = prepareArrangement(JSON.parse(raw))
+      const prepared = prepareArrangement(JSON.parse(raw), false, shape)
       if (prepared.ok) {
         return withCurrentPanelNames(Model.fromJson(prepared.json))
       }
@@ -480,16 +539,25 @@ function restoreModel(storage: Storage | null): Model {
   } catch {
     // Unreadable or incompatible saved layout: fall back to the default.
   }
-  return Model.fromJson(createDefaultLayout())
+  return Model.fromJson(createDefaultLayout(shape))
 }
 
 export function createLayoutController(
   workbench: Workbench,
   storage: Storage | null,
+  options: {
+    /** The pages and panels this page shows; the modeller's by default. */
+    shape?: LayoutShape
+    /** Where the arrangement is kept; the viewer keeps its own. */
+    storageKey?: string
+  } = {},
 ): LayoutController {
+  const shape = options.shape ?? MODELLER_LAYOUT
+  const storageKey = options.storageKey ?? LAYOUT_KEY
+  const panels = shapePanels(shape)
   let version = 0
   const listeners = new Set<() => void>()
-  let model = restoreModel(storage)
+  let model = restoreModel(storage, storageKey, shape)
   /** The docking mode setCompact last chose, for arrangements loaded later. */
   let compactMode = false
 
@@ -499,7 +567,7 @@ export function createLayoutController(
   const save = () => {
     saveTimer = null
     try {
-      storage?.setItem(LAYOUT_KEY, JSON.stringify(model.toJson()))
+      storage?.setItem(storageKey, JSON.stringify(model.toJson()))
     } catch {
       // Storage is blocked; the layout persists for this session only.
     }
@@ -550,7 +618,7 @@ export function createLayoutController(
 
   const panelBorders = (): BorderLike[] => {
     const borders = new Map<string, BorderLike>()
-    for (const panel of Object.keys(PANELS) as PanelId[]) {
+    for (const panel of panels) {
       const parent = model.getNodeById(panelTabId(panel))?.getParent()
       if (parent?.getType() === 'border') {
         borders.set(parent.getId(), parent as unknown as BorderLike)
@@ -681,7 +749,20 @@ export function createLayoutController(
       }
     },
 
+    hasPage: (page) => shape.pages.includes(page),
+    hasPanel: (panel) => panels.includes(panel),
+
     openPage: (page, source = 'manual') => {
+      if (!shape.pages.includes(page)) {
+        reject(
+          'layout.openPage',
+          'Open page',
+          { page },
+          `The ${PAGES[page].name} page is not part of this view-only page.`,
+          source,
+        )
+        return
+      }
       const id = pageTabId(page)
       const existing = model.getNodeById(id)
       if (existing instanceof TabNode) {
@@ -721,6 +802,16 @@ export function createLayoutController(
     },
 
     togglePanel: (panel, source = 'manual') => {
+      if (!panels.includes(panel)) {
+        reject(
+          'layout.togglePanel',
+          'Toggle panel',
+          { panel },
+          `The ${PANELS[panel].name} panel is not part of this view-only page.`,
+          source,
+        )
+        return
+      }
       const id = panelTabId(panel)
       const node = model.getNodeById(id)
       if (!(node instanceof TabNode)) {
@@ -868,7 +959,7 @@ export function createLayoutController(
 
     reset: (source = 'manual') => {
       model.removeChangeListener(handleChange)
-      model = Model.fromJson(createDefaultLayout())
+      model = Model.fromJson(createDefaultLayout(shape))
       model.addChangeListener(handleChange)
       handleChange()
       log(
@@ -883,7 +974,7 @@ export function createLayoutController(
     getArrangement: () => normalizeArrangement(model.toJson()),
 
     loadArrangement: (raw) => {
-      const prepared = prepareArrangement(raw, compactMode)
+      const prepared = prepareArrangement(raw, compactMode, shape)
       if (!prepared.ok) return { status: 'rejected', message: prepared.message }
       let next: Model
       try {
@@ -904,6 +995,17 @@ export function createLayoutController(
     placePage: (page, beside, side = 'right', source = 'manual') => {
       const input = { page, beside, side }
       const title = 'Place page beside another'
+      const absent = [page, beside].find((id) => !shape.pages.includes(id))
+      if (absent) {
+        reject(
+          'layout.placePage',
+          title,
+          input,
+          `The ${PAGES[absent].name} page is not part of this view-only page.`,
+          source,
+        )
+        return
+      }
       if (page === beside) {
         reject(
           'layout.placePage',

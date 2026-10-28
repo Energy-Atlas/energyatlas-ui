@@ -11,6 +11,15 @@ import {
 
 export const PERSONAL_LAYOUTS_KEY = 'eaui.layouts.v1'
 
+/**
+ * A viewer's personal layouts for one handover package (decision 0032, stage
+ * 5): apart from the modeller's, and from other packages', so a layout made
+ * for one handover never appears over another.
+ */
+export function viewerLayoutsKey(packageId: string): string {
+  return `eaui.viewer.layouts.v1:${packageId}`
+}
+
 export type PersonalStatus =
   | { kind: 'ready' }
   /** Storage is blocked or unavailable; nothing can be kept here. */
@@ -24,7 +33,10 @@ export const STORAGE_UNAVAILABLE =
 export const STORAGE_UNREADABLE =
   'Personal layouts stored in this browser could not be read. They have not been changed; remove them to keep new personal layouts.'
 
-export function readPersonalLayouts(storage: Storage | null): {
+export function readPersonalLayouts(
+  storage: Storage | null,
+  key: string = PERSONAL_LAYOUTS_KEY,
+): {
   list: LayoutList
   status: PersonalStatus
 } {
@@ -36,7 +48,7 @@ export function readPersonalLayouts(storage: Storage | null): {
     }
   }
   try {
-    const raw = storage.getItem(PERSONAL_LAYOUTS_KEY)
+    const raw = storage.getItem(key)
     if (raw === null) return { list: empty, status: { kind: 'ready' } }
     const parsed = JSON.parse(raw) as { version?: unknown; layouts?: unknown }
     if (parsed?.version !== 1 || !Array.isArray(parsed.layouts)) {
@@ -60,11 +72,12 @@ export function readPersonalLayouts(storage: Storage | null): {
 export function writePersonalLayouts(
   storage: Storage | null,
   list: LayoutList,
+  key: string = PERSONAL_LAYOUTS_KEY,
 ): { ok: true } | { ok: false; message: string } {
   if (!storage) return { ok: false, message: STORAGE_UNAVAILABLE }
   try {
     storage.setItem(
-      PERSONAL_LAYOUTS_KEY,
+      key,
       JSON.stringify({ version: 1, layouts: storedLayouts(list) }),
     )
     return { ok: true }
@@ -79,10 +92,11 @@ export function writePersonalLayouts(
 /** Removes an unreadable stored value, the only way past it. */
 export function removePersonalLayouts(
   storage: Storage | null,
+  key: string = PERSONAL_LAYOUTS_KEY,
 ): { ok: true } | { ok: false; message: string } {
   if (!storage) return { ok: false, message: STORAGE_UNAVAILABLE }
   try {
-    storage.removeItem(PERSONAL_LAYOUTS_KEY)
+    storage.removeItem(key)
     return { ok: true }
   } catch (error) {
     return {

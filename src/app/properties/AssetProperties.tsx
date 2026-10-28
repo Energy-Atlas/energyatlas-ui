@@ -23,7 +23,8 @@ export function AssetProperties({ asset }: { asset: Asset }) {
     (snapshot) => snapshot.state.workflow.stages,
   )
   const capability = asset.capability ? capabilities[asset.capability] : null
-  const pages = relatedPages(asset.kind)
+  // The viewer links only to the pages it shows (decision 0032, stage 5).
+  const pages = relatedPages(asset.kind).filter((page) => layout.hasPage(page))
   return (
     <section className={styles.definition} aria-label={`Asset ${asset.name}`}>
       <header className={styles.header}>

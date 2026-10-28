@@ -52,6 +52,7 @@ import { openDemoPanel } from './demoSwitchStore.ts'
 import { Ribbon } from './Ribbon.tsx'
 import { ShellDialogHost } from './ShellDialogHost.tsx'
 import { LayoutsDialog } from '../layouts/LayoutsDialog.tsx'
+import { HandoverDialog } from '../handover/HandoverDialog.tsx'
 import { StatusBar } from './StatusBar.tsx'
 import { ToastHost } from './ToastHost.tsx'
 import { useShellDialogs } from './useShellDialogs.ts'
@@ -196,6 +197,7 @@ export function WorkbenchShell() {
         }}
       />
       <LayoutsDialog />
+      <HandoverDialog />
       <ShellDialogHost
         open={open}
         onOpenChange={onOpenChange}

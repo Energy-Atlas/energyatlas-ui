@@ -27,6 +27,8 @@ export function createTestProject(
     storage?: Storage | null
     initialState?: WorkbenchState
     startClosed?: boolean
+    /** "viewer" serves the view-only viewer page (decision 0032, stage 5). */
+    mode?: 'modeller' | 'viewer'
   } = {},
 ) {
   const manual = manualScheduler()
@@ -35,6 +37,7 @@ export function createTestProject(
     scheduler: manual.scheduler,
     fixture: options.fixture ?? null,
     startClosed: options.startClosed,
+    mode: options.mode,
   })
   const transport = createTransport(server, {
     scheduler: manual.scheduler,

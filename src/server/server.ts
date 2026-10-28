@@ -15,8 +15,25 @@ import {
   invalidRequest,
   runInProgress,
   serverError,
+  viewOnlySession,
   type ApiFailure,
 } from './apiError.ts'
+import {
+  buildHandoverPackage,
+  handoverBlocker,
+  MAX_PACKAGE_BYTES,
+  packageWarnings,
+  readHandoverText,
+  type HandoverPackage,
+  type HandoverProvenance,
+  type PackageSummary,
+} from './handover.ts'
+import {
+  catalogSummaries,
+  readHandoverCatalog,
+  writeHandoverCatalog,
+  type HandoverCatalog,
+} from './handoverCatalog.ts'
 import { FIXTURES, buildFixture, type FixtureId } from './fixtures.ts'
 import { projectNameSchema } from './projectValidation.ts'
 import {
@@ -134,6 +151,35 @@ export type ServerRequest =
   | { type: 'project.create'; name: string; source: CommandSource }
   | { type: 'project.open'; projectId: string; source: CommandSource }
   | { type: 'project.close'; source: CommandSource }
+  | {
+      /** Freezes the project into a handover package (decision 0032, stage 5). */
+      type: 'project.handover'
+      source: CommandSource
+      view?: SavedView
+      /** Unsent drafts the UI holds, which the package leaves out. */
+      drafts: number
+    }
+  | { type: 'handover.list'; source: CommandSource }
+  | {
+      /** Opens a package from the catalog by id, or from a file's text. */
+      type: 'handover.open'
+      source: CommandSource
+      packageId?: string
+      file?: { name: string; text: string }
+    }
+  | { type: 'handover.remove'; source: CommandSource; packageId: string }
+
+/** The package a viewer session has open. */
+export type OpenHandover = {
+  id: string
+  name: string
+  createdAt: string
+  provenance: HandoverProvenance
+  warnings: string[]
+  /** Opened from the browser catalog or from a file. */
+  from: 'catalog' | 'file'
+  fileName: string | null
+}
 
 export type ServerMeta = {
   /** The project differs from the copy saved in this browser. */
@@ -149,6 +195,19 @@ export type ServerMeta = {
    * none were saved.
    */
   view: SavedView | null
+  /**
+   * A viewer session (decision 0032, stage 5): every model change, run, and
+   * save is refused, on the same command path as the edit lock.
+   */
+  viewOnly: boolean
+  /** The handover package a viewer session has open. */
+  handover: OpenHandover | null
+  /** The browser's handover catalog, as the viewer lists it. */
+  packages: PackageSummary[]
+  packagesReady: boolean
+  packagesError: string | null
+  /** Stored catalog entries this version cannot read, kept unchanged. */
+  unreadablePackages: number
 }
 
 /** Everything the UI needs to follow the server: state, what changed it, and meta. */
@@ -161,7 +220,14 @@ export type ServerUpdate = {
 }
 
 export type ServerReply =
-  | { ok: true; summary: string; sequence: number; projectGeneration: number }
+  | {
+      ok: true
+      summary: string
+      sequence: number
+      projectGeneration: number
+      /** What the request returns besides its summary, such as a handover package. */
+      data?: unknown
+    }
   | ({ ok: false } & ApiFailure)
 
 export type MockServer = {
@@ -183,7 +249,13 @@ export function createMockServer(options: {
   /** Starts from this fixture instead of the saved project. */
   fixture?: FixtureId | null
   startClosed?: boolean
+  /**
+   * "viewer" serves the view-only viewer page (decision 0032, stage 5): it
+   * opens handover packages and refuses every model change.
+   */
+  mode?: 'modeller' | 'viewer'
 }): MockServer {
+  const viewer = options.mode === 'viewer'
   const now = options.now ?? (() => new Date())
   const read = readProjectCatalog(options.storage)
   let catalog = read.catalog
@@ -215,6 +287,12 @@ export function createMockServer(options: {
     catalogReady: !options.startClosed,
     catalogError: read.error,
     view: saved?.view ?? null,
+    viewOnly: viewer,
+    handover: null,
+    packages: [],
+    packagesReady: false,
+    packagesError: null,
+    unreadablePackages: 0,
   }
   let sequence = 0
   let projectGeneration = 0
@@ -262,6 +340,10 @@ export function createMockServer(options: {
             'project.list',
             'project.open',
             'project.close',
+            'project.handover',
+            'handover.list',
+            'handover.open',
+            'handover.remove',
           ].includes(operation.type),
       )
     ) {
@@ -304,6 +386,9 @@ export function createMockServer(options: {
         ),
       }
     }
+    // A viewer session refuses every model change, run, and cancel here, on
+    // the edit lock's path, so none reaches the engine even if a UI sends one.
+    if (meta.viewOnly) return { ok: false, ...viewOnlySession() }
     if (MODEL_COMMANDS.has(command.type)) {
       const running = activeTaskId()
       if (running) return { ok: false, ...runInProgress(running, 'stage') }
@@ -350,8 +435,213 @@ export function createMockServer(options: {
     })
   }
 
-  function ok(summary: string): ServerReply {
-    return { ok: true, summary, sequence, projectGeneration }
+  function ok(summary: string, data?: unknown): ServerReply {
+    return {
+      ok: true,
+      summary,
+      sequence,
+      projectGeneration,
+      ...(data === undefined ? {} : { data }),
+    }
+  }
+
+  function setPackages(read: {
+    catalog: HandoverCatalog
+    error: string | null
+  }) {
+    meta = {
+      ...meta,
+      packages: catalogSummaries(read.catalog),
+      packagesReady: true,
+      packagesError: read.error,
+      unreadablePackages: read.catalog.unreadable.length,
+    }
+  }
+
+  const VIEWER_REQUESTS: ReadonlySet<ServerRequest['type']> = new Set([
+    'handover.list',
+    'handover.open',
+    'handover.remove',
+  ])
+
+  /** Requests a viewer session cannot make; a modeller cannot open packages. */
+  function refusedForMode(request: ServerRequest): ServerReply | null {
+    if (viewer) {
+      return VIEWER_REQUESTS.has(request.type) ||
+        request.type === 'project.close' ||
+        // Commands reach the view-only refusal on the edit lock's path.
+        request.type === 'command'
+        ? null
+        : { ok: false, ...viewOnlySession() }
+    }
+    return VIEWER_REQUESTS.has(request.type)
+      ? {
+          ok: false,
+          ...serverError(
+            'Handover packages are opened on the viewer page, not in the modeller.',
+            400,
+          ),
+        }
+      : null
+  }
+
+  function handOver(
+    request: Extract<ServerRequest, { type: 'project.handover' }>,
+  ): ServerReply {
+    if (!meta.currentProject)
+      return {
+        ok: false,
+        ...serverError('Open or create a project first.', 409),
+      }
+    const state = engine.getState()
+    const blocker = handoverBlocker(state)
+    if (blocker) return { ok: false, ...serverError(blocker, 409) }
+    const pkg = buildHandoverPackage({
+      state,
+      view: request.view ?? meta.view,
+      savedAt: meta.savedAt,
+      unsavedChanges: meta.dirty,
+      drafts: request.drafts,
+      source: request.source,
+      now: now(),
+    })
+    const read = readHandoverCatalog(options.storage)
+    const write = read.error
+      ? { ok: false as const, full: false, message: read.error }
+      : writeHandoverCatalog(options.storage, {
+          ...read.catalog,
+          packages: [...read.catalog.packages, pkg],
+        })
+    const summary = write.ok
+      ? `Handed over "${pkg.name}" as a view-only package in this browser's handover catalog. Open it on the viewer page or download it as a file.`
+      : `Handed over "${pkg.name}", but the package was not kept in the handover catalog: ${write.message}`
+    engine.record({
+      type: 'project.handover',
+      title: 'Hand over project',
+      input: { packageId: pkg.id },
+      source: request.source,
+      summary,
+    })
+    return ok(summary, {
+      package: pkg,
+      stored: write.ok,
+      storeError: write.ok ? null : write.message,
+    })
+  }
+
+  function openPackage(
+    request: Extract<ServerRequest, { type: 'handover.open' }>,
+  ): ServerReply {
+    let pkg: HandoverPackage
+    if (request.file) {
+      if (request.file.text.length > MAX_PACKAGE_BYTES) {
+        return {
+          ok: false,
+          ...invalidRequest([
+            {
+              path: 'file',
+              message: `"${request.file.name}" is larger than ${MAX_PACKAGE_BYTES / 1024 / 1024} MB, too large for a handover package.`,
+            },
+          ]),
+        }
+      }
+      const read = readHandoverText(request.file.text)
+      if (!read.ok) {
+        return {
+          ok: false,
+          ...invalidRequest([
+            {
+              path: 'file',
+              message: `"${request.file.name}": ${read.message}`,
+            },
+          ]),
+        }
+      }
+      pkg = read.package
+    } else {
+      const read = readHandoverCatalog(options.storage)
+      setPackages(read)
+      const found = read.catalog.packages.find(
+        (entry) => entry.id === request.packageId,
+      )
+      if (!found) {
+        emit([])
+        return {
+          ok: false,
+          ...serverError(
+            read.error ??
+              'This package is no longer in the handover catalog. Refresh the list, or open the package from a file.',
+            404,
+          ),
+        }
+      }
+      pkg = found
+    }
+    const warnings = packageWarnings(pkg)
+    const summary = `Opened the handover package "${pkg.name}", handed over ${new Date(pkg.createdAt).toLocaleString()}. It is view only.`
+    const handover: OpenHandover = {
+      id: pkg.id,
+      name: pkg.name,
+      createdAt: pkg.createdAt,
+      provenance: pkg.provenance,
+      warnings,
+      from: request.file ? 'file' : 'catalog',
+      fileName: request.file?.name ?? null,
+    }
+    meta = { ...meta, handover }
+    replaceSession(
+      structuredClone(pkg.model),
+      {
+        type: 'handover.open',
+        title: 'Open handover package',
+        input: request.file
+          ? { file: request.file.name }
+          : { packageId: pkg.id },
+        source: request.source,
+        summary,
+      },
+      null,
+      pkg.view,
+    )
+    return ok(summary, { warnings })
+  }
+
+  function removePackage(
+    request: Extract<ServerRequest, { type: 'handover.remove' }>,
+  ): ServerReply {
+    const read = readHandoverCatalog(options.storage)
+    const found = read.catalog.packages.find(
+      (entry) => entry.id === request.packageId,
+    )
+    if (read.error || !found) {
+      setPackages(read)
+      emit([])
+      return {
+        ok: false,
+        ...serverError(
+          read.error ?? 'This package is no longer in the handover catalog.',
+          read.error ? 503 : 404,
+        ),
+      }
+    }
+    const next = {
+      ...read.catalog,
+      packages: read.catalog.packages.filter(
+        (entry) => entry.id !== request.packageId,
+      ),
+    }
+    const written = writeHandoverCatalog(options.storage, next)
+    if (!written.ok) return { ok: false, ...serverError(written.message, 503) }
+    setPackages({ catalog: next, error: null })
+    const summary = `Removed the handover package "${found.name}" from this browser. Downloaded copies are unchanged.`
+    engine.record({
+      type: request.type,
+      title: 'Remove handover package',
+      input: { packageId: request.packageId },
+      source: request.source,
+      summary,
+    })
+    return ok(summary)
   }
 
   return {
@@ -368,9 +658,33 @@ export function createMockServer(options: {
           },
         }
       }
+      const refused = refusedForMode(request)
+      if (refused) return refused
       switch (request.type) {
         case 'command':
           return handleCommand(request)
+        case 'project.handover':
+          return handOver(request)
+        case 'handover.list': {
+          const read = readHandoverCatalog(options.storage)
+          setPackages(read)
+          if (read.error) {
+            emit([])
+            return { ok: false, ...serverError(read.error, 503) }
+          }
+          const summary = `Found ${meta.packages.length} handover package(s) in this browser.`
+          engine.record({
+            type: request.type,
+            title: 'List handover packages',
+            source: request.source,
+            summary,
+          })
+          return ok(summary)
+        }
+        case 'handover.open':
+          return openPackage(request)
+        case 'handover.remove':
+          return removePackage(request)
         case 'project.save': {
           if (!meta.currentProject)
             return {
@@ -546,8 +860,10 @@ export function createMockServer(options: {
         case 'project.close': {
           const running = activeTaskId()
           if (running) return { ok: false, ...runInProgress(running, 'stage') }
-          const summary =
-            'Closed the project. Saved projects remain in this browser.'
+          const summary = viewer
+            ? 'Closed the handover package. Packages remain in this browser.'
+            : 'Closed the project. Saved projects remain in this browser.'
+          meta = { ...meta, handover: null }
           replaceSession(
             null,
             {

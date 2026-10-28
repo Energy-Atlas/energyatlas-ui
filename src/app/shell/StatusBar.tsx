@@ -21,7 +21,7 @@ import {
 import { StatusTag } from '../components/CapabilityBadge.tsx'
 import { StateBadge } from '../components/StateBadge.tsx'
 import { cx } from '../cx.ts'
-import { formatTime } from '../format.ts'
+import { formatDateTime, formatTime } from '../format.ts'
 import type { PageId } from '../layout/layoutController.ts'
 import {
   inScope,
@@ -46,7 +46,8 @@ export function StatusBar({
   onOpenDemoConditions: () => void
   onOpenMessages: () => void
 }) {
-  const { messages } = useServices()
+  const { messages, viewOnly } = useServices()
+  const handover = useClientSnapshot((snapshot) => snapshot.meta.handover)
   const state = useWorkbenchSnapshot((snapshot) => snapshot.state)
   const pending = useClientSnapshot((snapshot) => snapshot.pending)
   const dirty = useUnsavedChanges()
@@ -105,13 +106,22 @@ export function StatusBar({
         {state.project.location ? '' : ' · no location yet'}
         {dirty ? ' · unsaved changes' : ''}
       </span>
-      <span
-        className={styles.statusItem}
-        data-testid="save-status"
-        aria-live="polite"
-      >
-        {saveStatus}
-      </span>
+      {viewOnly ? (
+        // The viewer saves nothing; it says when the package was frozen.
+        <span className={styles.statusItem} data-testid="handover-status">
+          {handover
+            ? `Handed over ${formatDateTime(handover.createdAt)}`
+            : 'View only'}
+        </span>
+      ) : (
+        <span
+          className={styles.statusItem}
+          data-testid="save-status"
+          aria-live="polite"
+        >
+          {saveStatus}
+        </span>
+      )}
       {conditions ? (
         <button
           type="button"
@@ -122,29 +132,34 @@ export function StatusBar({
           <FlaskConical size={14} aria-hidden="true" /> Demo: {conditions}
         </button>
       ) : null}
-      {currentStage ? (
+      {currentStage && !viewOnly ? (
         <span className={styles.statusItem}>
           Stage: {currentStage.name}{' '}
           <StateBadge state={stageStates[currentStage.id] ?? 'future'} />
         </span>
       ) : null}
-      <button
-        type="button"
-        className={styles.statusButton}
-        aria-label={`${errors} errors and ${warnings} warnings. Open Issues.`}
-        onClick={() => onOpenPage('issues')}
-      >
-        <CircleX size={14} aria-hidden="true" /> {errors}
-        <TriangleAlert size={14} aria-hidden="true" /> {warnings}
-      </button>
-      <button
-        type="button"
-        className={styles.statusButton}
-        aria-label={`${activeTasks.length} active jobs. Open Jobs.`}
-        onClick={() => onOpenPage('tasks')}
-      >
-        <ListChecks size={14} aria-hidden="true" /> {activeTasks.length}
-      </button>
+      {/* Issues and Jobs are modeller pages (decision 0032, stage 5). */}
+      {viewOnly ? null : (
+        <>
+          <button
+            type="button"
+            className={styles.statusButton}
+            aria-label={`${errors} errors and ${warnings} warnings. Open Issues.`}
+            onClick={() => onOpenPage('issues')}
+          >
+            <CircleX size={14} aria-hidden="true" /> {errors}
+            <TriangleAlert size={14} aria-hidden="true" /> {warnings}
+          </button>
+          <button
+            type="button"
+            className={styles.statusButton}
+            aria-label={`${activeTasks.length} active jobs. Open Jobs.`}
+            onClick={() => onOpenPage('tasks')}
+          >
+            <ListChecks size={14} aria-hidden="true" /> {activeTasks.length}
+          </button>
+        </>
+      )}
       <button
         type="button"
         className={cx(
@@ -161,7 +176,7 @@ export function StatusBar({
       >
         <Bell size={14} aria-hidden="true" /> {unread.length}
       </button>
-      {activeTasks.slice(0, 2).map((task) => (
+      {(viewOnly ? [] : activeTasks.slice(0, 2)).map((task) => (
         <ProgressBar
           key={task.id}
           className={styles.progress}
@@ -187,10 +202,12 @@ export function StatusBar({
           {pending.map((request) => request.title).join(', ')}
         </span>
       ) : null}
-      <span className={styles.statusItem} title="Illustrative, not measured">
-        <Cpu size={14} aria-hidden="true" /> 4 workers{' '}
-        <StatusTag status="simulated" />
-      </span>
+      {viewOnly ? null : (
+        <span className={styles.statusItem} title="Illustrative, not measured">
+          <Cpu size={14} aria-hidden="true" /> 4 workers{' '}
+          <StatusTag status="simulated" />
+        </span>
+      )}
       <span
         className={cx(styles.notice, rejected && styles.noticeRejected)}
         role="status"

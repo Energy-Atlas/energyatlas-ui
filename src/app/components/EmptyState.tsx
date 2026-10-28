@@ -13,7 +13,7 @@ type EmptyStateProps = {
 }
 
 export function EmptyState({ title, message, stageId }: EmptyStateProps) {
-  const { client, layout } = useServices()
+  const { client, layout, viewOnly } = useServices()
   const waiting = usePendingReason(
     'workflow.runStage',
     'the run was requested',
@@ -21,6 +21,24 @@ export function EmptyState({ title, message, stageId }: EmptyStateProps) {
   )
   const state = useWorkbenchSnapshot((snapshot) => snapshot.state)
   const stage = state.workflow.stages[stageId]
+
+  if (viewOnly) {
+    // The viewer runs nothing (decision 0032, stage 5): it says why the data
+    // is missing instead of offering a run.
+    return (
+      <div className={styles.emptyState}>
+        <p className={styles.emptyTitle}>
+          <Info size={16} aria-hidden="true" /> {title}
+        </p>
+        <p className={styles.muted}>{message}</p>
+        <p className={styles.muted}>
+          {stage
+            ? `This handover package does not include it: "${stage.name}" had not published it when the project was handed over. Ask the modeller for a new handover.`
+            : 'This handover package does not include it.'}
+        </p>
+      </div>
+    )
+  }
 
   return (
     <div className={styles.emptyState}>

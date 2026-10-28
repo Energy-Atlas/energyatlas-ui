@@ -2,6 +2,7 @@ import react from '@vitejs/plugin-react'
 import { readFile } from 'node:fs/promises'
 import { createRequire } from 'node:module'
 import { dirname, join } from 'node:path'
+import { fileURLToPath } from 'node:url'
 import { defineConfig, type Plugin } from 'vite'
 import { BASE_PATH } from './basePath.ts'
 
@@ -73,6 +74,16 @@ export default defineConfig(({ command, isPreview }) => ({
   // would serve the built bundle at "/" while its asset URLs carry the prefix.
   base: command === 'build' || isPreview ? BASE_PATH : '/',
   plugins: [stripMissingFlexLayoutSourceMaps(), emitMapLibreWorker(), react()],
+  build: {
+    // Two pages (decision 0032, stage 5): the modeller and the view-only
+    // viewer, each its own HTML entry beside the other under the base path.
+    rolldownOptions: {
+      input: {
+        main: fileURLToPath(new URL('./index.html', import.meta.url)),
+        viewer: fileURLToPath(new URL('./viewer.html', import.meta.url)),
+      },
+    },
+  },
   optimizeDeps: {
     // Pre-bundling moves maplibre-gl but not its worker module, which then 404s.
     exclude: ['maplibre-gl'],

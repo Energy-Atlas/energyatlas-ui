@@ -12,7 +12,14 @@ import {
   MAX_CHARTED_SCENARIOS,
   chartedScenarioOrder,
 } from '../pages/dashboardData.ts'
-import { command, layoutCall, viewCall, type ToolCall } from './tools.ts'
+import { formatEnergy } from '../format.ts'
+import {
+  command,
+  layoutCall,
+  layoutsCall,
+  viewCall,
+  type ToolCall,
+} from './tools.ts'
 import type { ReferenceTarget } from './types.ts'
 
 // Scripted agent sessions (decision 0006). Each replays realistic tool calls
@@ -981,3 +988,150 @@ export function matchSession(text: string): ScriptedSession | null {
     ) ?? null
   )
 }
+
+// The viewer page's agent (decision 0032, stage 5) answers questions,
+// interprets the handed-over results, and changes views; it never offers a
+// model change, so its sessions call no server command.
+
+const RESULT_STAGES = [
+  STAGE_IDS.baseline,
+  STAGE_IDS.scenarioModeling,
+  STAGE_IDS.gridModeling,
+]
+
+const viewerResultsSession: ScriptedSession = {
+  id: 'viewerResults',
+  label: 'Explain the published results',
+  prompt:
+    'Which building uses the most energy, and how current are these results?',
+  description:
+    'Reads the handed-over results and their stage states, then shows the highest-demand building through view operations and the shared selection.',
+  keywords: [
+    /\bmost energy\b/,
+    /\bhighest\b/,
+    /\bexplain/,
+    /\bresults?\b/,
+    /\bcurrent\b/,
+    /\binterpret/,
+  ],
+  steps: [
+    reason(
+      'The package holds the results as they were published when the project was handed over. I read them and their stage states; nothing in the package changes.',
+    ),
+    (context) => {
+      const state = context.state()
+      const states = context.stageStates()
+      const baseline = state.results.baseline
+      if (!baseline) {
+        return say(
+          'This package has no published results to explain: Baseline model setup had not published a baseline when it was handed over. Ask the modeller for a new handover once the baseline has run.',
+        )
+      }
+      const outdated = RESULT_STAGES.filter((id) => states[id] === 'stale').map(
+        (id) => state.workflow.stages[id]?.name ?? id,
+      )
+      const top = Object.entries(baseline.byBuildingKwh).sort(
+        ([a, x], [b, y]) => y - x || (a < b ? -1 : 1),
+      )[0]
+      const scenarios = Object.values(state.results.scenarios)
+      const currency =
+        outdated.length > 0
+          ? `They are **outdated** relative to the model: ${outdated.join(', ')} changed after the last run, so the numbers are from before those changes.`
+          : 'They were current when the project was handed over.'
+      const steps: Step[] = [
+        say(
+          `The published baseline totals **${formatEnergy(baseline.totalKwh)}** a year with a peak of ${Math.round(baseline.peakKw).toLocaleString('en-US')} kW, from run ${baseline.runId}.${scenarios.length > 0 ? ` ${scenarios.length} scenario result${scenarios.length === 1 ? ' is' : 's are'} published beside it.` : ''} ${currency} All numbers are synthetic.`,
+        ),
+        tool(
+          'Open Results',
+          layoutCall({ type: 'layout.openPage', input: { page: 'results' } }),
+        ),
+        tool(
+          'Show the published baseline',
+          viewCall({ type: 'results.select', input: { resultId: 'baseline' } }),
+        ),
+      ]
+      if (!top) return steps
+      return [
+        ...steps,
+        tool(
+          `Drill into ${top[0]}, the highest-demand building`,
+          viewCall({
+            type: 'results.showBuilding',
+            input: { buildingId: top[0] },
+          }),
+        ),
+        tool(
+          `Select ${top[0]} on the map and table`,
+          command({
+            type: 'selection.set',
+            input: { entityType: 'building', ids: [top[0]] },
+          }),
+        ),
+        say(
+          `**${top[0]}** uses the most: ${formatEnergy(top[1])} a year. Results now show it, and the map and table highlight it because the selection is shared. Export CSV on the Results page downloads the published baseline with its run named in the header.`,
+        ),
+        reference('Show its properties', { type: 'inspection' }),
+      ]
+    },
+  ],
+}
+
+const viewerRestoreSession: ScriptedSession = {
+  id: 'viewerRestore',
+  label: 'Reset to the handed-over layout',
+  prompt: 'Reset to the handed-over layout.',
+  description:
+    'Returns the panels and views to the layout the package was handed over with; personal layouts stay.',
+  keywords: [
+    /\brestore\b/,
+    /\breset\b/,
+    /\bhanded.over\b/,
+    /\bdefault layout\b/,
+  ],
+  steps: [
+    reason(
+      'Resetting changes only how this viewer arranges the package; the handed-over layouts and the model stay as they are.',
+    ),
+    tool(
+      'Reset to the handed-over layout',
+      layoutsCall({ type: 'layouts.resetToHandover', input: {} }),
+    ),
+    say(
+      'The panels and views are back as they were handed over. Your personal layouts for this package are still in View > Layouts.',
+    ),
+  ],
+}
+
+/** The viewer's sessions: questions, interpretation, and view changes only. */
+export const VIEWER_SESSIONS: ScriptedSession[] = [
+  viewerResultsSession,
+  layoutSession,
+  viewerRestoreSession,
+]
+
+const VIEWER_MATCH_ORDER = [
+  viewerRestoreSession,
+  layoutSession,
+  viewerResultsSession,
+]
+
+export function matchViewerSession(text: string): ScriptedSession | null {
+  const normalized = text.toLowerCase()
+  return (
+    VIEWER_MATCH_ORDER.find((session) =>
+      session.keywords.some((keyword) => keyword.test(normalized)),
+    ) ?? null
+  )
+}
+
+/** Requests the viewer turns down: they would change the model or run work. */
+const MODEL_CHANGE =
+  /\b(run|rerun|re-run|change|edit|modify|add|create|delete|remove|adopt|calibrate|fit|apply|save|assign|import|update|retry|cancel|set)\b/
+
+export function asksForModelChange(text: string): boolean {
+  return MODEL_CHANGE.test(text.toLowerCase())
+}
+
+export const VIEW_ONLY_ANSWER =
+  'This is a **view-only handover**, so I cannot change the model, run or cancel stages, or save anything here; the server refuses such changes from the viewer. I can explain the published results, select and point out buildings, and change how the map, table, dashboard, and results are shown. For model changes, ask the modeller for a new handover.'

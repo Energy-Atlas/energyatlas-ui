@@ -8,10 +8,15 @@ import {
 import type { Workbench } from '../../domain/workbench.ts'
 import {
   PAGES,
+  VIEWER_PAGES,
   type DockSide,
   type LayoutController,
   type PageId,
 } from '../layout/layoutController.ts'
+import { SERVER_COMMANDS } from '../../server/server.ts'
+import { VIEW_ONLY_MESSAGE } from '../../server/apiError.ts'
+import type { HandoverService } from '../handover/handoverService.ts'
+import { DRAFT_COMMANDS } from '../service/projectClient.ts'
 import {
   describeViewOperations,
   type ViewOperation,
@@ -61,6 +66,14 @@ export type LayoutsToolOperation =
     }
   | { type: 'layouts.setDefault'; input: { layoutId: string | null } }
   | { type: 'layouts.reset'; input: Record<string, never> }
+  /** The viewer's reset to the layouts and views as handed over (decision 0032, stage 5). */
+  | { type: 'layouts.resetToHandover'; input: Record<string, never> }
+
+/** Freezes the project into a view-only handover package (decision 0032, stage 5). */
+export type HandoverToolOperation = {
+  type: 'project.handover'
+  input: Record<string, never>
+}
 
 export type ToolCall =
   | { kind: 'project'; intent: ProjectIntent }
@@ -68,6 +81,7 @@ export type ToolCall =
   | { kind: 'view'; operation: ViewOperation }
   | { kind: 'layout'; operation: LayoutToolOperation }
   | { kind: 'layouts'; operation: LayoutsToolOperation }
+  | { kind: 'handover'; operation: HandoverToolOperation }
 
 export type ToolResult = {
   status: 'applied' | 'rejected'
@@ -86,6 +100,13 @@ export type ToolDeps = {
   layout: LayoutController
   /** Saved layouts; absent in tests that do not use them. */
   layouts?: LayoutLibrary
+  /** Hand over; absent in tests that do not use it. */
+  handover?: HandoverService
+  /**
+   * The viewer page (decision 0032, stage 5): only questions, view changes,
+   * and selection; model, job, draft, and lifecycle tools are refused.
+   */
+  viewOnly?: boolean
 }
 
 export function command(value: Command): ToolCall {
@@ -139,9 +160,64 @@ const IRREVERSIBLE_LAYOUT_TOOLS: ReadonlySet<string> = new Set([
   'layouts.delete',
 ])
 
+/**
+ * View operations for pages the viewer leaves out (decision 0032, stage 5):
+ * data intake, schema matching, archetypes, scenarios, and jobs.
+ */
+const MODELLER_VIEW_PREFIXES = [
+  'intake.',
+  'schema.',
+  'archetypes.',
+  'scenarios.',
+  'jobs.',
+]
+
+function isModellerViewOperation(type: string): boolean {
+  return MODELLER_VIEW_PREFIXES.some((prefix) => type.startsWith(prefix))
+}
+
+/** Project layout settings a viewer cannot change; its own layouts are personal. */
+const MODELLER_LAYOUTS_TOOLS: ReadonlySet<string> = new Set([
+  'layouts.setDefault',
+])
+
+/**
+ * Whether the viewer's agent may make this call (decision 0032, stage 5): no
+ * server command (every model change, run, retry, and cancel), no drafts, no
+ * lifecycle or handover, and no view of a page the viewer leaves out.
+ */
+export function isViewerToolCall(call: ToolCall): boolean {
+  switch (call.kind) {
+    case 'project':
+    case 'handover':
+      return false
+    case 'command': {
+      const { type } = call.command
+      return (
+        !SERVER_COMMANDS.has(type) &&
+        !DRAFT_COMMANDS.has(type) &&
+        !isRunnerCommand(type)
+      )
+    }
+    case 'view':
+      return !isModellerViewOperation(call.operation.type)
+    case 'layout':
+      return call.operation.type === 'layout.reset'
+        ? true
+        : call.operation.type === 'layout.openPage'
+          ? VIEWER_PAGES.includes(call.operation.input.page)
+          : VIEWER_PAGES.includes(call.operation.input.page) &&
+            VIEWER_PAGES.includes(call.operation.input.beside)
+    case 'layouts':
+      return !MODELLER_LAYOUTS_TOOLS.has(call.operation.type)
+  }
+}
+
 /** Tool calls that run, retry, or cancel jobs or change the project model wait for approval. */
 export function requiresApproval(call: ToolCall): boolean {
   if (call.kind === 'project') return call.intent.type !== 'list'
+  // A handover hands a copy of the project to others; the person decides.
+  if (call.kind === 'handover') return true
   // Deleting or overwriting a saved layout cannot be undone.
   if (call.kind === 'layouts')
     return IRREVERSIBLE_LAYOUT_TOOLS.has(call.operation.type)
@@ -159,6 +235,58 @@ export async function executeToolCall(
 ): Promise<ToolResult> {
   const log = () => deps.workbench.store.getState().log
   const before = log().length
+
+  if (deps.viewOnly && !isViewerToolCall(call)) {
+    const operationId = deps.workbench.record({
+      type: toolTypeOf(call),
+      title: 'Agent tool call',
+      input: toolInputOf(call),
+      source: 'agent',
+      status: 'rejected',
+      summary: '',
+      issues: [{ path: '', message: VIEW_ONLY_MESSAGE }],
+    })
+    return {
+      status: 'rejected',
+      summary: null,
+      issues: [{ path: '', message: VIEW_ONLY_MESSAGE }],
+      operationIds: [operationId],
+    }
+  }
+
+  if (call.kind === 'handover') {
+    if (!deps.handover)
+      return {
+        status: 'rejected',
+        summary: null,
+        issues: [
+          { path: '', message: 'Hand over is unavailable in this session.' },
+        ],
+        operationIds: [],
+      }
+    const handed = await deps.handover.handOver('agent')
+    const entry = log()
+      .slice(before)
+      .findLast((candidate) => candidate.type === 'project.handover')
+    return handed.last
+      ? {
+          status: 'applied',
+          summary:
+            entry?.summary ?? `Handed over "${handed.last.package.name}".`,
+          issues: [],
+          operationIds: entry ? [entry.id] : [],
+          data: {
+            packageId: handed.last.package.id,
+            storedInCatalog: handed.last.storeError === null,
+          },
+        }
+      : {
+          status: 'rejected',
+          summary: null,
+          issues: handed.issues,
+          operationIds: entry ? [entry.id] : [],
+        }
+  }
 
   if (call.kind === 'project' || call.kind === 'command') {
     if (call.kind === 'project' && !deps.lifecycle)
@@ -299,6 +427,8 @@ function runLayoutsTool(
         return library.setDefault(operation.input.layoutId, 'agent')
       case 'layouts.reset':
         return library.resetToApplied('agent')
+      case 'layouts.resetToHandover':
+        return library.resetToHandedOver('agent')
     }
   })()
   return {
@@ -315,31 +445,33 @@ function refOf(input: { scope: LayoutScope; layoutId: string }) {
 
 const PAGE_IDS = Object.keys(PAGES) as [PageId, ...PageId[]]
 
-const LAYOUT_TOOLS = [
-  {
-    name: 'layout.placePage',
-    title: 'Place page beside another',
-    description:
-      'Put a page in a new tab group beside another page; both stay visible.',
-    input: z.object({
-      page: z.enum(PAGE_IDS),
-      beside: z.enum(PAGE_IDS),
-      side: z.enum(['left', 'right', 'top', 'bottom']),
-    }),
-  },
-  {
-    name: 'layout.openPage',
-    title: 'Open page',
-    description: 'Open or select a page.',
-    input: z.object({ page: z.enum(PAGE_IDS) }),
-  },
-  {
-    name: 'layout.reset',
-    title: 'Reset layout',
-    description: 'Restore the default workbench layout.',
-    input: z.object({}),
-  },
-]
+function layoutTools(pages: [PageId, ...PageId[]]) {
+  return [
+    {
+      name: 'layout.placePage',
+      title: 'Place page beside another',
+      description:
+        'Put a page in a new tab group beside another page; both stay visible.',
+      input: z.object({
+        page: z.enum(pages),
+        beside: z.enum(pages),
+        side: z.enum(['left', 'right', 'top', 'bottom']),
+      }),
+    },
+    {
+      name: 'layout.openPage',
+      title: 'Open page',
+      description: 'Open or select a page.',
+      input: z.object({ page: z.enum(pages) }),
+    },
+    {
+      name: 'layout.reset',
+      title: 'Reset layout',
+      description: 'Restore the default workbench layout.',
+      input: z.object({}),
+    },
+  ]
+}
 
 const scope = z.enum(['project', 'personal'])
 const layoutRef = { scope, layoutId: z.string().min(1) }
@@ -408,6 +540,15 @@ const LAYOUTS_TOOLS = [
   },
 ]
 
+/** Viewer only: the reset to the layouts and views as handed over. */
+const VIEWER_LAYOUTS_TOOL = {
+  name: 'layouts.resetToHandover',
+  title: 'Reset to handed-over layout',
+  description:
+    'Viewer page: return the panels and view settings to the handed-over layout (the package default layout, or the default arrangement with the package table settings and map layers). Personal layouts are kept.',
+  input: z.object({}),
+}
+
 export type AgentToolDescription = {
   name: string
   kind: ToolCall['kind']
@@ -422,7 +563,70 @@ export type AgentToolDescription = {
  * commands are internal to the job runner and are not offered as tools,
  * except Cancel job, which people use too.
  */
-export function describeAgentTools(): AgentToolDescription[] {
+export function describeAgentTools(
+  options: { viewOnly?: boolean } = {},
+): AgentToolDescription[] {
+  return options.viewOnly ? describeViewerTools() : describeModellerTools()
+}
+
+/**
+ * The viewer's tools (decision 0032, stage 5): questions, interpretation,
+ * selection, and view changes. Every server command is left out, so the
+ * agent there cannot even ask the server for a model change.
+ */
+function describeViewerTools(): AgentToolDescription[] {
+  const viewerPages = [...VIEWER_PAGES] as [PageId, ...PageId[]]
+  return [
+    ...describeCommands()
+      .filter(
+        (description) =>
+          !SERVER_COMMANDS.has(description.type) &&
+          !DRAFT_COMMANDS.has(description.type) &&
+          !isRunnerCommand(description.type),
+      )
+      .map((description) => ({
+        name: description.type,
+        kind: 'command' as const,
+        title: description.title,
+        description: description.description,
+        requiresApproval: false,
+        inputSchema: description.inputSchema,
+      })),
+    ...describeViewOperations()
+      .filter((description) => !isModellerViewOperation(description.type))
+      .map((description) => ({
+        name: description.type,
+        kind: 'view' as const,
+        title: description.title,
+        description: description.description,
+        requiresApproval: false,
+        inputSchema: description.inputSchema,
+      })),
+    ...layoutTools(viewerPages).map((tool) => ({
+      name: tool.name,
+      kind: 'layout' as const,
+      title: tool.title,
+      description: tool.description,
+      requiresApproval: false,
+      inputSchema: z.toJSONSchema(tool.input, { io: 'input' }),
+    })),
+    ...[...LAYOUTS_TOOLS, VIEWER_LAYOUTS_TOOL]
+      .filter((tool) => !MODELLER_LAYOUTS_TOOLS.has(tool.name))
+      .map((tool) => ({
+        name: tool.name,
+        kind: 'layouts' as const,
+        title: tool.title,
+        description:
+          tool.name === 'layouts.save'
+            ? `${tool.description} On the viewer page only "personal" works: handed-over project layouts are read-only.`
+            : tool.description,
+        requiresApproval: IRREVERSIBLE_LAYOUT_TOOLS.has(tool.name),
+        inputSchema: z.toJSONSchema(tool.input, { io: 'input' }),
+      })),
+  ]
+}
+
+function describeModellerTools(): AgentToolDescription[] {
   return [
     ...[
       { type: 'list', title: 'List saved projects', input: z.object({}) },
@@ -465,7 +669,16 @@ export function describeAgentTools(): AgentToolDescription[] {
       requiresApproval: false,
       inputSchema: description.inputSchema,
     })),
-    ...LAYOUT_TOOLS.map((tool) => ({
+    {
+      name: 'project.handover',
+      kind: 'handover' as const,
+      title: 'Hand over project',
+      description:
+        'Freeze the open project into a view-only handover package (the published model and results, its layouts and views, and provenance, without held job outputs, drafts, or job logs), keep it in this browser handover catalog for the viewer page, and return its id. Refused while jobs run. Waits for approval.',
+      requiresApproval: true,
+      inputSchema: z.toJSONSchema(z.object({}), { io: 'input' }),
+    },
+    ...layoutTools(PAGE_IDS).map((tool) => ({
       name: tool.name,
       kind: 'layout' as const,
       title: tool.title,

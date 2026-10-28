@@ -22,6 +22,7 @@ import { MeasureProperties } from '../properties/MeasureProperties.tsx'
 import { ScenarioProperties } from '../properties/ScenarioProperties.tsx'
 import { ScheduleProperties } from '../properties/ScheduleProperties.tsx'
 import { StageProperties } from '../properties/StageProperties.tsx'
+import { ReadOnlyDefinition } from '../properties/ReadOnlyDefinition.tsx'
 import componentStyles from '../components/components.module.css'
 import { cx } from '../cx.ts'
 import { shownEdits } from '../properties/useEdits.ts'
@@ -378,7 +379,8 @@ function DefinitionProperties() {
  * dockable panel since decision 0016.
  */
 export function PropertiesPanel() {
-  const { workbench, layout, workedSurface, properties } = useServices()
+  const { workbench, layout, workedSurface, properties, viewOnly } =
+    useServices()
   const state = useWorkbenchSnapshot((snapshot) => snapshot.state)
   const creating = useStore(properties.store, (snapshot) => snapshot.creating)
   const inspection = useMemo(() => buildInspection(state), [state])
@@ -402,7 +404,15 @@ export function PropertiesPanel() {
       // (axe scrollable-region-focusable).
       <section className={styles.panel} aria-label="Properties" tabIndex={0}>
         <CloseSelection />
-        <DefinitionProperties />
+        {/* The viewer reads definitions as handed over (decision 0032, stage 5). */}
+        {viewOnly && definition !== null && definition !== 'asset' ? (
+          <ReadOnlyDefinition
+            entityType={definition}
+            id={state.selection.ids[0] ?? ''}
+          />
+        ) : (
+          <DefinitionProperties />
+        )}
       </section>
     )
   }
@@ -442,10 +452,9 @@ export function PropertiesPanel() {
             <Info size={16} aria-hidden="true" /> Nothing selected
           </p>
           <p className={styles.muted}>
-            Select buildings or grid elements on the Map or Table page, an
-            asset, or an assignment rule, archetype, part, schedule, measure,
-            scenario, or scenario rule to see its properties here. Definitions
-            are edited here too.
+            {viewOnly
+              ? 'Select buildings or grid elements on the Map or Table page, or an asset, to see its properties here as handed over.'
+              : 'Select buildings or grid elements on the Map or Table page, an asset, or an assignment rule, archetype, part, schedule, measure, scenario, or scenario rule to see its properties here. Definitions are edited here too.'}
           </p>
           <div className={styles.actions}>{pageActions}</div>
         </div>

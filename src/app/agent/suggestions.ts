@@ -12,7 +12,8 @@ export type Suggestion = {
 export const MAX_SUGGESTIONS = 3
 
 const LAYOUT_SESSION_ID = 'layout'
-const RESTORE_SESSION_ID = 'restore'
+// The viewer page has its own restore session (decision 0032, stage 5).
+const RESTORE_SESSION_IDS = new Set(['restore', 'viewerRestore'])
 
 /**
  * Orders the prepared sessions by what the conversation has already done:
@@ -24,10 +25,12 @@ export function suggestNextSteps(
   ranSessionIds: string[],
 ): Suggestion[] {
   const ran = new Set(ranSessionIds)
-  const rearranged = ran.has(LAYOUT_SESSION_ID) && !ran.has(RESTORE_SESSION_ID)
+  const rearranged =
+    ran.has(LAYOUT_SESSION_ID) &&
+    ![...RESTORE_SESSION_IDS].some((id) => ran.has(id))
 
   const rankOf = (preset: AgentPreset): number => {
-    if (preset.id === RESTORE_SESSION_ID && rearranged) return 0
+    if (RESTORE_SESSION_IDS.has(preset.id) && rearranged) return 0
     return ran.has(preset.id) ? 2 : 1
   }
 

@@ -3,8 +3,12 @@ import { planStages, type Requirement } from '../../domain/stagePlan.ts'
 import type { Scheduler } from '../../domain/simulator.ts'
 import { deriveStageStates, hasActiveTask } from '../../domain/workflow.ts'
 import {
+  asksForModelChange,
   matchSession,
+  matchViewerSession,
   SESSIONS,
+  VIEW_ONLY_ANSWER,
+  VIEWER_SESSIONS,
   type ScriptContext,
   type ScriptedSession,
   type Step,
@@ -60,19 +64,24 @@ export function createScriptedAgent(
   options: ScriptedAgentOptions,
 ): AgentAdapter {
   const { workbench, scheduler, stepDelayMs = STEP_DELAY_MS } = options
+  const viewOnly = options.viewOnly ?? false
+  // The viewer offers questions and view changes only (decision 0032, stage 5).
+  const sessions = viewOnly ? VIEWER_SESSIONS : SESSIONS
   const deps: ToolDeps = {
     workbench: options.workbench,
     client: options.client,
-    lifecycle: options.lifecycle,
+    lifecycle: viewOnly ? undefined : options.lifecycle,
     view: options.view,
     layout: options.layout,
     layouts: options.layouts,
+    handover: viewOnly ? undefined : options.handover,
+    viewOnly,
   }
   const store = createStore<AgentSnapshot>()(() => ({
     status: 'idle',
     transcript: [],
     activeSessionId: null,
-    presets: SESSIONS.map(({ id, label, prompt, description }) => ({
+    presets: sessions.map(({ id, label, prompt, description }) => ({
       id,
       label,
       prompt,
@@ -157,7 +166,13 @@ export function createScriptedAgent(
 
   /** Answers a message: starts the session it matches, or explains that none does. */
   function deliver(prompt: string) {
-    const session = matchSession(prompt)
+    if (viewOnly && asksForModelChange(prompt)) {
+      push({ id: nextId(), kind: 'user', text: prompt })
+      push({ id: nextId(), kind: 'agent', markdown: VIEW_ONLY_ANSWER })
+      deliverQueued()
+      return
+    }
+    const session = viewOnly ? matchViewerSession(prompt) : matchSession(prompt)
     if (session) {
       start(session, prompt)
       return
@@ -449,6 +464,18 @@ export function createScriptedAgent(
       return
     }
     const stageName = (id: string) => state.workflow.stages[id]?.name ?? id
+    if (viewOnly) {
+      // A viewer cannot run stages, so the missing data is explained instead.
+      endWith(
+        'warning',
+        `${purpose} needs ${requirement === 'current' ? 'current results from' : 'data from'} ${plan.steps
+          .map((step) => `"${stageName(step.stageId)}"`)
+          .join(
+            ', ',
+          )}, which this handover package does not include. The viewer is view only and cannot run stages; ask the modeller for a new handover.`,
+      )
+      return
+    }
     const runs = plan.steps.filter((step) => step.action === 'run').length
     const current = requirement === 'current'
     propose(
@@ -535,7 +562,7 @@ export function createScriptedAgent(
     },
     sendBlocker,
     startPreset(presetId) {
-      const session = SESSIONS.find((candidate) => candidate.id === presetId)
+      const session = sessions.find((candidate) => candidate.id === presetId)
       if (session) start(session, session.prompt)
     },
     setPermissionMode(mode) {

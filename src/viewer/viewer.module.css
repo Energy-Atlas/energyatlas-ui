@@ -1,0 +1,51 @@
+/* The viewer page (decision 0032, stage 5): its package list reuses the
+   start screen's layout; the shell reuses the workbench's. */
+.startContent {
+  width: min(100%, calc(var(--space-6) * 64));
+}
+
+.columns {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 22rem), 1fr));
+  gap: var(--space-4);
+  margin-top: var(--space-4);
+  align-items: start;
+}
+
+.opening {
+  margin: 0 0 var(--space-2);
+  color: var(--color-text-muted);
+}
+
+.warningIcon {
+  color: var(--tone-warning-text);
+}
+
+/* The package's name beside the View only badge in the ribbon. */
+.packageName {
+  max-width: 18rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-weight: 600;
+}
+
+.warnings {
+  display: grid;
+  gap: var(--space-1);
+  padding: var(--space-1) var(--space-2) 0;
+}
+
+.warnings > * {
+  margin: 0;
+}
+
+.warnings:empty {
+  padding: 0;
+}
+
+/* The shell's rows with the handover warnings under the ribbon; doubled to
+   win over the workbench shell's rows whatever order the sheets load in. */
+.shell.shell {
+  grid-template-rows: auto auto minmax(0, 1fr) auto auto;
+}

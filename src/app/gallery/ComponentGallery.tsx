@@ -34,6 +34,11 @@ import type { Message } from '../messages/messageCenter.ts'
 import { MessageHistory } from '../panels/MessagesPanel.tsx'
 import { Toast } from '../shell/ToastHost.tsx'
 import { HeaderCount, PanelHeader } from '../components/PanelHeader.tsx'
+import {
+  HandoverSummary,
+  ViewOnlyBadge,
+} from '../components/HandoverSummary.tsx'
+import type { HandoverProvenance } from '../../server/handover.ts'
 import { PropertyList } from '../components/PropertyList.tsx'
 import { Section } from '../components/Section.tsx'
 import { SegmentedFilter } from '../components/SegmentedFilter.tsx'
@@ -56,6 +61,39 @@ import { getBrowserStorage } from '../storage.ts'
 import { applyAppearance, readAppearancePreference } from '../theme.ts'
 import styles from './gallery.module.css'
 import { MappingSpecimen } from './MappingSpecimen.tsx'
+
+const HANDOVER_CURRENT: HandoverProvenance = {
+  projectId: 'project:gallery',
+  projectName: 'Back Bay study',
+  savedAt: '2026-10-28T11:30:00Z',
+  unsavedChanges: false,
+  handedOverBy: 'manual',
+  stages: [
+    {
+      id: 'stage:location',
+      name: 'Location setup',
+      state: 'executed',
+      finishedAt: '2026-10-28T10:00:00Z',
+      runId: 'run-1',
+    },
+    {
+      id: 'stage:baseline',
+      name: 'Baseline model setup',
+      state: 'executed',
+      finishedAt: '2026-10-28T10:05:00Z',
+      runId: 'run-7',
+    },
+    {
+      id: 'stage:shading',
+      name: 'Shading calculation',
+      state: 'skipped',
+      finishedAt: null,
+      runId: null,
+    },
+  ],
+  results: [{ id: 'baseline', label: 'Baseline', runId: 'run-7' }],
+  excluded: { heldOutputs: 0, jobLogLines: 18, drafts: 0 },
+}
 
 const STATES: StageState[] = [
   'future',
@@ -818,6 +856,44 @@ export default function ComponentGallery() {
                 label: 'Updated',
                 value: formatDateTime(Date.UTC(2026, 9, 26)),
               },
+            ]}
+          />
+        </section>
+
+        <section className={styles.cell}>
+          <h2>Handover summary</h2>
+          <p>
+            <ViewOnlyBadge />
+          </p>
+          <h3>Current, saved</h3>
+          <HandoverSummary
+            createdAt="2026-10-28T12:00:00Z"
+            provenance={HANDOVER_CURRENT}
+            warnings={[]}
+          />
+          <h3>Outdated, with unsaved changes</h3>
+          <HandoverSummary
+            createdAt="2026-10-28T12:00:00Z"
+            provenance={{
+              ...HANDOVER_CURRENT,
+              unsavedChanges: true,
+              handedOverBy: 'agent',
+              stages: HANDOVER_CURRENT.stages.map((stage, index) =>
+                index === 1 ? { ...stage, state: 'stale' } : stage,
+              ),
+              excluded: { heldOutputs: 12, jobLogLines: 40, drafts: 2 },
+            }}
+            warnings={[
+              'Results are outdated relative to the model: "Baseline model setup" changed after its last run, so the results shown are from before those changes.',
+            ]}
+            fileName="back-bay-2026-10-28.handover.json"
+          />
+          <h3>No results</h3>
+          <HandoverSummary
+            createdAt="2026-10-28T12:00:00Z"
+            provenance={{ ...HANDOVER_CURRENT, results: [], savedAt: null }}
+            warnings={[
+              'This package has no published results: Baseline model setup had not published a baseline when it was handed over.',
             ]}
           />
         </section>

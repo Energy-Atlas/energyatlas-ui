@@ -133,12 +133,20 @@ function LayoutsContent({
             aria-labelledby={headingId}
           >
             <h3 id={headingId} className={shellStyles.dialogSection}>
-              {scope === 'project' ? 'Project layouts' : 'Personal layouts'}
+              {scope === 'project'
+                ? layouts.projectWritable
+                  ? 'Project layouts'
+                  : 'Handed-over layouts'
+                : 'Personal layouts'}
             </h3>
             <p className={componentStyles.muted}>
               {scope === 'project'
-                ? 'Saved with this project when you save it, and handed over with it.'
-                : 'Kept in this browser and available in every project.'}
+                ? layouts.projectWritable
+                  ? 'Saved with this project when you save it, and handed over with it.'
+                  : 'Handed over with the package and kept as they are. Copy one to your personal layouts to change it.'
+                : layouts.projectWritable
+                  ? 'Kept in this browser and available in every project.'
+                  : 'Kept in this browser for this handover package only.'}
             </p>
             {scope === 'personal' && library.personalStatus.kind !== 'ready' ? (
               <InlineAlert
@@ -195,7 +203,9 @@ function LayoutsContent({
               empty={
                 <p className={componentStyles.empty}>
                   {scope === 'project'
-                    ? 'No project layouts yet. Save the current layout as a project layout above.'
+                    ? layouts.projectWritable
+                      ? 'No project layouts yet. Save the current layout as a project layout above.'
+                      : 'The package was handed over without saved layouts.'
                     : library.personalStatus.kind === 'ready'
                       ? 'No personal layouts yet. Save the current layout as a personal layout above.'
                       : 'No personal layouts can be shown.'}
@@ -320,28 +330,31 @@ function SaveForm({
             {errors.name}
           </FieldError>
         </TextField>
-        <RadioGroup
-          className={formStyles.field}
-          value={scope}
-          onChange={(value) => {
-            setScope(value as LayoutScope)
-            setErrors({})
-          }}
-        >
-          <Label className={formStyles.label}>Keep it</Label>
-          <div className={formStyles.options}>
-            <Radio
-              value="project"
-              className={formStyles.radio}
-              isDisabled={!library.projectWritable}
-            >
-              With the project
-            </Radio>
-            <Radio value="personal" className={formStyles.radio}>
-              In this browser, for every project
-            </Radio>
-          </div>
-        </RadioGroup>
+        {library.projectWritable ? (
+          <RadioGroup
+            className={formStyles.field}
+            value={scope}
+            onChange={(value) => {
+              setScope(value as LayoutScope)
+              setErrors({})
+            }}
+          >
+            <Label className={formStyles.label}>Keep it</Label>
+            <div className={formStyles.options}>
+              <Radio value="project" className={formStyles.radio}>
+                With the project
+              </Radio>
+              <Radio value="personal" className={formStyles.radio}>
+                In this browser, for every project
+              </Radio>
+            </div>
+          </RadioGroup>
+        ) : (
+          // The viewer keeps only personal layouts (decision 0032, stage 5).
+          <p className={componentStyles.muted}>
+            Kept in this browser as a personal layout for this package.
+          </p>
+        )}
         {blocker ? <InlineAlert tone="warning">{blocker}</InlineAlert> : null}
         {errors.form ? (
           <InlineAlert tone="danger">{errors.form}</InlineAlert>
@@ -381,7 +394,10 @@ function LayoutDetail({
   const changeBlocker = library.changeBlocker(ref)
   const other: LayoutScope = layout.scope === 'project' ? 'personal' : 'project'
 
-  const items: ToolbarItem[] = [
+  // Handed-over layouts on the viewer page are read-only: what would change
+  // them is left out rather than shown unavailable (decision 0032, stage 5).
+  const readOnly = layout.scope === 'project' && !library.projectWritable
+  const allItems: ToolbarItem[] = [
     {
       id: 'apply',
       label: 'Apply',
@@ -438,6 +454,9 @@ function LayoutDetail({
       onPress: () => setMode('delete'),
     },
   ]
+  const items = readOnly
+    ? allItems.filter((item) => item.id === 'apply' || item.id === 'copy')
+    : allItems
 
   return (
     <section className={styles.detail} aria-labelledby={headingId}>
@@ -451,10 +470,17 @@ function LayoutDetail({
             label: 'Kept',
             value:
               layout.scope === 'project'
-                ? 'With the project'
+                ? library.projectWritable
+                  ? 'With the project'
+                  : 'Handed over with the package'
                 : 'In this browser',
           },
-          isDefault && { label: 'Opens with the project', value: 'Yes' },
+          isDefault && {
+            label: library.projectWritable
+              ? 'Opens with the project'
+              : 'Opens with the package',
+            value: 'Yes',
+          },
           { label: 'Saved by', value: SOURCE_LABELS[layout.createdBy] },
           { label: 'Created', value: formatDateTime(layout.createdAt) },
           { label: 'Updated', value: formatDateTime(layout.updatedAt) },
