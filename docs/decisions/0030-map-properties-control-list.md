@@ -2,7 +2,8 @@
 
 Date: 2026-10-27
 
-Status: accepted by the owner (2026-10-27); implemented on `claude/ui-component-system`, not merged into `master`.
+Status: accepted by the owner (2026-10-27); implemented on `claude/ui-component-system` and
+fast-forwarded into local `master` at the owner's request on 2026-10-27; not pushed by the agent.
 
 ## Context
 

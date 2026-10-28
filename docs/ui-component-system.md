@@ -499,7 +499,7 @@ timeout under 4 workers; it passed alone (1.6 min) and in a full rerun.
 
 ## Map properties as one control list (2026-10-27)
 
-Built on `claude/ui-component-system`, not merged. Recorded in
+Built on `claude/ui-component-system` and fast-forwarded into local `master` at the owner's request on 2026-10-27; not pushed by the agent. Recorded in
 [decision 0030](decisions/0030-map-properties-control-list.md); how layers are managed is open in the
 [map layers discussion](map-layers-discussion.md).
 
@@ -514,7 +514,7 @@ and 3 production-preview tests passed.
 
 ## Map layer stack (2026-10-27)
 
-Built on `claude/ui-component-system`, not merged. Recorded in [decision 0031](decisions/0031-map-layer-stack.md).
+Built on `claude/ui-component-system` and fast-forwarded into local `master` at the owner's request on 2026-10-27; not pushed by the agent. Recorded in [decision 0031](decisions/0031-map-layer-stack.md).
 
 - New shared component `ReorderableList` (gallery: "Reorderable list"), rows with a drag handle, a checkbox, a
   title, and a meta line, reordered by pointer or keyboard drag and drop.
