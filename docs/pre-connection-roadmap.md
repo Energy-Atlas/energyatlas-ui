@@ -89,3 +89,7 @@ and failed-item retry only when inputs are unchanged. The owner approved the [ro
 through Results (steps 3–8), with local merges after review and checks pass and no implementation pushes/deployments
 ([decision 0026](decisions/0026-autonomous-roadmap-through-results.md)). The next agent starts from the
 [autonomous handoff](20261026_autonomous-roadmap-handoff.md).
+
+On 2026-10-28 the owner proposed four further features (floors and zones, rule and version interfaces, a viewer
+page for handover, and saved layouts); directions and open questions are in the
+[next stages discussion](next-stages-discussion.md).

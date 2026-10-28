@@ -27,6 +27,7 @@
 - [UI directions](ui-directions.md): three product approaches, technical comparison, recommendation, proposed slice boundaries, and two pending decisions.
 - [First-slice plan and status](first-slice-proposal.md): layout details, state model, workflow stages, working/simulated/planned boundary, per-stage implementation status with verification evidence, deviations, and next steps.
 - [Package selection proposal](package-selection.md): researched package recommendations, fallbacks, constraints, spikes, and rejected candidates.
+- [Next stages discussion](next-stages-discussion.md): the owner's four proposed features (floors and zones, schema matching and assignment rules, result versions, a viewer page for handover, saved layouts), read-only RC observations, directions, a suggested order, and open questions.
 - [Pre-connection roadmap](pre-connection-roadmap.md): the UI work to build and test before real backend connections, which are built inside RCEnergySimulator later (decision 0022).
 - [Decision records](decisions/README.md): accepted constraints and future product/technical decisions.
 
