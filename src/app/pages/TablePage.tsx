@@ -553,6 +553,9 @@ function BuildingsTable() {
         columnOptions={columnOptions}
         gridOptions={{
           readOnlyEdit: true,
+          // Sixteen columns are cheap to draw; drawing them all keeps the part
+          // columns reachable without scrolling first (decision 0032).
+          suppressColumnVirtualisation: true,
           onCellEditRequest: (event: CellEditRequestEvent<BuildingRow>) => {
             const columnId = event.column.getColId()
             const kind = PART_KINDS.find(

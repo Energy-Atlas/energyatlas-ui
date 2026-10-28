@@ -8,9 +8,10 @@ import {
   type Page,
 } from './test.ts'
 
-// Archetypes and schedules (jobs rollout plan, slice 5; decision 0028):
-// tables of definitions edited in Properties with per-field validation,
-// coverage, and assignment as a job.
+// Archetypes and schedules (jobs rollout plan, slice 5; decisions 0028 and
+// 0032): tables of definitions edited in Properties with per-field
+// validation, default rules generated from archetypes, and assignment as a
+// job. Assignment rules themselves are covered in assignment-rules.spec.ts.
 
 function workflowPanel(page: Page) {
   return page.getByRole('region', { name: 'Workflow' })
@@ -26,13 +27,13 @@ async function openArchetypes(page: Page) {
     })
     .click()
   const archetypes = page.getByRole('region', {
-    name: 'Archetypes and schedules',
+    name: 'Archetypes and assignment rules',
   })
   await expect(archetypes).toBeVisible()
   return archetypes
 }
 
-test('adds a library archetype, shows coverage, and reassigns as a job', async ({
+test('adds a library archetype, generates its default rule, and reassigns as a job', async ({
   page,
 }) => {
   test.setTimeout(60_000)
@@ -40,12 +41,11 @@ test('adds a library archetype, shows coverage, and reassigns as a job', async (
   const table = archetypes.getByRole('grid', { name: 'Project archetypes' })
   // Five archetypes and the header row.
   await expect(table.getByRole('row')).toHaveCount(6)
-  const coverage = archetypes.getByRole('grid', {
-    name: 'Assignment coverage',
+  const rules = archetypes.getByRole('grid', {
+    name: 'Assignment rules',
+    exact: true,
   })
-  await expect(
-    coverage.getByRole('row').filter({ hasText: 'Mixed use' }),
-  ).toContainText(/Mixed use\s*\d+\s*0\s*\d+/)
+  await expect(rules.getByRole('row')).toHaveCount(6)
 
   // A library entry opens read-only in Properties, where it can be added.
   await archetypes
@@ -60,6 +60,9 @@ test('adds a library archetype, shows coverage, and reassigns as a job', async (
     entry.getByRole('textbox', { name: 'Archetype name' }),
   ).toHaveAttribute('readonly', '')
   await expect(
+    entry.getByRole('combobox', { name: 'Construction part' }),
+  ).toBeDisabled()
+  await expect(
     entry.getByRole('button', { name: 'Save archetype' }),
   ).toHaveAttribute('aria-disabled', 'true')
   await entry
@@ -73,11 +76,23 @@ test('adds a library archetype, shows coverage, and reassigns as a job', async (
   await expect(
     properties(page).getByRole('textbox', { name: 'Archetype name' }),
   ).not.toHaveAttribute('readonly', '')
-  await expect(archetypes).toContainText('Archetype modeling')
+  // Archetypes feed the default rules; generating them again adds its rule.
+  await expect(rules.getByRole('row')).toHaveCount(6)
+  // The action may sit in the toolbar's More menu while Properties is open.
+  const generate = archetypes.getByRole('button', {
+    name: 'Generate default rules',
+  })
+  if (await generate.isVisible()) {
+    await generate.click()
+  } else {
+    await archetypes
+      .getByRole('button', { name: 'More actions: Assignment rules actions' })
+      .click()
+    await page.getByRole('menuitem', { name: 'Generate default rules' }).click()
+  }
+  await expect(rules.getByRole('row')).toHaveCount(7)
+  await expect(rules.getByRole('row').first()).toContainText('Mixed use')
   await expect(archetypes.getByText('Outdated').first()).toBeVisible()
-  await expect(
-    coverage.getByRole('row').filter({ hasText: 'Mixed use' }),
-  ).toContainText(/Mixed use\s*(\d+)\s*\1\s*0/)
 
   await archetypes
     .getByRole('button', { name: 'Run Archetype modeling to assign buildings' })
@@ -86,7 +101,7 @@ test('adds a library archetype, shows coverage, and reassigns as a job', async (
     'Archetype modeling completed',
     { timeout: 15_000 },
   )
-  await expect(archetypes).toContainText('0 assignments would change')
+  await expect(archetypes).toContainText('0 buildings would change')
 })
 
 test('validates archetype and schedule fields where they are entered', async ({
@@ -122,6 +137,13 @@ test('validates archetype and schedule fields where they are entered', async ({
     .getByRole('textbox', { name: 'Built from (year, optional)' })
     .fill('1990')
   await expect(builtTo).not.toHaveAttribute('aria-invalid', 'true')
+  // An archetype bundles at least one part.
+  await form.getByRole('button', { name: 'Create archetype' }).click()
+  const construction = form.getByRole('combobox', { name: 'Construction part' })
+  await expect(construction).toHaveAttribute('aria-invalid', 'true')
+  await expect(form).toContainText('Choose at least one part.')
+  await construction.selectOption({ label: 'Commercial curtain wall' })
+  await expect(form).toContainText('Needs all four parts')
   await form.getByRole('button', { name: 'Create archetype' }).click()
   await expect(
     archetypes

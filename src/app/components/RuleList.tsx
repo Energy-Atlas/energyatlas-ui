@@ -79,6 +79,7 @@ export function RuleList({
     {
       id: 'duplicate',
       label: 'Duplicate',
+      iconOnly: true,
       ariaLabel: chosen ? `Duplicate ${chosen.name}` : `Duplicate ${noun}`,
       icon: Copy,
       group: 'edit',
@@ -88,6 +89,7 @@ export function RuleList({
     {
       id: 'remove',
       label: 'Remove',
+      iconOnly: true,
       ariaLabel: chosen ? `Remove ${chosen.name}` : `Remove ${noun}`,
       icon: Trash2,
       group: 'edit',
@@ -97,6 +99,7 @@ export function RuleList({
     {
       id: 'up',
       label: 'Move up',
+      iconOnly: true,
       ariaLabel: chosen ? `Move ${chosen.name} up` : `Move ${noun} up`,
       icon: ArrowUp,
       group: 'order',
@@ -109,6 +112,7 @@ export function RuleList({
     {
       id: 'down',
       label: 'Move down',
+      iconOnly: true,
       ariaLabel: chosen ? `Move ${chosen.name} down` : `Move ${noun} down`,
       icon: ArrowDown,
       group: 'order',
