@@ -331,8 +331,9 @@ export function FloorsAndZones({ buildingId }: { buildingId: string }) {
       {withDemand ? (
         <p className={componentStyles.muted}>
           Baseline share: the building&rsquo;s published baseline split by floor
-          area, so floors and zones add up to its total; no zone is simulated on
-          its own. <CapabilityBadge id="results.zoneBreakdown" />
+          area in whole kWh, so floors and zones each add up to its total; no
+          zone is simulated on its own.{' '}
+          <CapabilityBadge id="results.zoneBreakdown" />
         </p>
       ) : null}
     </div>

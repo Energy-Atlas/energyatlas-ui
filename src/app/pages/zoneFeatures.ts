@@ -4,7 +4,6 @@ import {
   buildingZoning,
   ownerOf,
   selectedBuildingIds,
-  zoneBuilding,
   type ZoneKind,
 } from '../../domain/zoning/zoning.ts'
 import { METRICS, type MetricId, type MetricValues } from './mapMetrics.ts'
@@ -111,6 +110,11 @@ export type ZoneOverlay = {
   cut: { buildingId: string; topM: number } | null
   /** What the zones are, for the legend. */
   kinds: ZoneKind[]
+  /**
+   * The legend's rows: each kind of zone drawn, with the colour slots its
+   * drawn cells use (-1 for the core's de-emphasis colour), in drawing order.
+   */
+  legend: { kind: ZoneKind; slots: number[] }[]
   /** Selected buildings with no zones yet. */
   withoutZones: number
 }
@@ -120,7 +124,9 @@ export type ZoneOverlay = {
  * whole-building zone has a cell on every floor), so a selected floor or zone
  * can be highlighted in 3D and a flat map can show one floor's plan.
  */
-export function zoneOverlay(state: WorkbenchState): ZoneOverlay {
+export function zoneOverlay(
+  state: Pick<WorkbenchState, 'selection' | 'buildings' | 'zoning'>,
+): ZoneOverlay {
   const selection = state.selection
   const all = selectedBuildingIds(selection)
   const shown = all.slice(0, MAX_ZONED_BUILDINGS)
@@ -135,20 +141,16 @@ export function zoneOverlay(state: WorkbenchState): ZoneOverlay {
   if (focus && selection.entityType === 'floor') {
     cutAbove = Number(focus.slice(focus.lastIndexOf(':F') + 2)) || null
   } else if (focus && selection.entityType === 'zone') {
-    const building = state.buildings[ownerOf(focus)]
-    const published = state.zoning.published
-    const zone =
-      building && published
-        ? zoneBuilding(building, published)?.zones.find(
-            (each) => each.id === focus,
-          )
-        : undefined
+    const zone = buildingZoning(state, ownerOf(focus))?.zones.find(
+      (each) => each.id === focus,
+    )
     cutAbove = zone?.floor ?? null
   }
   const cutBuilding = focus ? ownerOf(focus) : null
   const features: ZoneCell[] = []
   const buildingIds: string[] = []
   const kinds = new Set<ZoneKind>()
+  const legend = new Map<ZoneKind, Set<number>>()
   let withoutZones = 0
   for (const buildingId of shown) {
     const zoning = buildingZoning(state, buildingId)
@@ -172,6 +174,9 @@ export function zoneOverlay(state: WorkbenchState): ZoneOverlay {
           continue
         }
         const gap = slabGap(floor.topM - floor.bottomM)
+        const slots = legend.get(zone.kind) ?? new Set<number>()
+        slots.add(zone.colorSlot ?? -1)
+        legend.set(zone.kind, slots)
         features.push({
           type: 'Feature',
           properties: {
@@ -209,6 +214,10 @@ export function zoneOverlay(state: WorkbenchState): ZoneOverlay {
           }
         : null,
     kinds: [...kinds],
+    legend: [...legend].map(([kind, slots]) => ({
+      kind,
+      slots: [...slots].sort((a, b) => a - b),
+    })),
     withoutZones,
   }
 }

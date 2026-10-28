@@ -84,7 +84,8 @@ export function ZoneBreakdown({
       floor: zone.floor,
       areaM2: zone.areaM2,
       sharePercent: kwh > 0 ? ((shares.zones[zone.id] ?? 0) / kwh) * 100 : 0,
-      kwh: Math.round(shares.zones[zone.id] ?? 0),
+      // Whole kWh by largest remainders: the rows add up to the total.
+      kwh: shares.zones[zone.id] ?? 0,
     }))
   }, [zoning, kwh])
   const name = state.buildings[buildingId]?.name ?? buildingId
@@ -108,7 +109,7 @@ export function ZoneBreakdown({
               perimeterDepthM: zoning.setting.perimeterDepthM,
             }).toLowerCase()}
             ) by floor-area share: the rows add up to the building&rsquo;s
-            published total, and no zone is simulated on its own.{' '}
+            published total in whole kWh, and no zone is simulated on its own.{' '}
             <CapabilityBadge id="results.zoneBreakdown" />
           </p>
           <WorkbenchTable

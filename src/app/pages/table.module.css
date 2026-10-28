@@ -19,13 +19,15 @@
 }
 
 /* A tab strip like the docked ones: mono labels, the selected tab an
-   inverted block in an accent outline with a gap (decision 0021). */
+   inverted block in an accent outline with a gap (decision 0021). Four views
+   wrap onto a second line in a narrow docked Table rather than clip. */
 .tabList {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   gap: var(--space-1);
   min-height: 2rem;
-  padding: 0 var(--space-4);
+  padding: var(--space-1) var(--space-4);
   border-bottom: var(--rule);
 }
 

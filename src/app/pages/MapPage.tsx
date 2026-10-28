@@ -58,7 +58,11 @@ import {
 } from './terrain.ts'
 import { useBasemap } from './useBasemap.ts'
 import { useTerrain } from './useTerrain.ts'
-import { selectedBuildingIds } from '../../domain/zoning/zoning.ts'
+import {
+  selectedBuildingIds,
+  type ZoneKind,
+} from '../../domain/zoning/zoning.ts'
+import type { WorkbenchState } from '../../domain/types.ts'
 import { slabFeatures, zoneOverlay, type ZoneOverlay } from './zoneFeatures.ts'
 import {
   ZONE_LAYER_IDS,
@@ -193,13 +197,19 @@ export function MapPage() {
   const handledFocusRequest = useRef(0)
   const [hover, setHover] = useState<Hover | null>(null)
 
-  const metrics = useMemo(
-    () =>
-      Object.fromEntries(
-        METRICS.map((metric) => [metric.id, computeMetric(state, metric.id)]),
-      ) as Record<MetricId, ReturnType<typeof computeMetric>>,
-    [state],
-  )
+  // Metrics read buildings, results, and scenarios only, so a selection or a
+  // job's progress does not rebuild (and re-upload) the map's sources.
+  const { buildingIds, buildings, zoning, results, scenarios, selection } =
+    state
+  const metrics = useMemo(() => {
+    const inputs = { buildingIds, buildings, results, scenarios }
+    return Object.fromEntries(
+      METRICS.map((metric) => [
+        metric.id,
+        computeMetric(inputs as WorkbenchState, metric.id),
+      ]),
+    ) as Record<MetricId, ReturnType<typeof computeMetric>>
+  }, [buildingIds, buildings, results, scenarios])
   // The layer stack (decision 0031), top first, resolved against the data.
   const stack = useMemo(
     () => resolveLayers(mapView.layers, metrics, view3d),
@@ -217,12 +227,14 @@ export function MapPage() {
 
   // Floor slabs for every building, and the selected buildings' zones
   // (decision 0032, stage 6).
-  const { buildingIds, buildings, zoning } = state
   const slabs = useMemo(
     () => slabFeatures({ buildingIds, buildings, zoning }, metrics),
     [buildingIds, buildings, zoning, metrics],
   )
-  const overlay = useMemo(() => zoneOverlay(state), [state])
+  const overlay = useMemo(
+    () => zoneOverlay({ selection, buildings, zoning }),
+    [selection, buildings, zoning],
+  )
   const zoneDrawing: ZoneDrawing =
     overlay.buildingIds.length === 0 || !buildingLayerShown
       ? 'none'
@@ -377,7 +389,6 @@ export function MapPage() {
     return () => window.cancelAnimationFrame(frame)
   }, [focusRequest, loaded, workbench, state.buildings, state.gridElements])
 
-  const selection = state.selection
   // In 3D the outline follows each selected building's visible silhouette
   // instead of its footprint (decision 0013).
   const selectedPrisms = useMemo<SilhouettePrism[]>(
@@ -862,6 +873,13 @@ function LegendBlock({
   )
 }
 
+const ZONE_LEGEND_LABELS: Record<ZoneKind, string> = {
+  building: 'Whole building',
+  floor: 'Whole floors',
+  perimeter: 'Perimeter zones',
+  core: 'Core',
+}
+
 /** The selected buildings' zones in the legend (decision 0032, stage 6). */
 function ZoneLegend({
   overlay,
@@ -873,7 +891,10 @@ function ZoneLegend({
   palette: DataPalette
 }) {
   const many = overlay.buildingIds.length > 1
-  const kinds = new Set(overlay.kinds)
+  const colorOf = (slot: number) =>
+    slot < 0
+      ? palette.deemphasis
+      : (palette.categorical[slot] ?? palette.deemphasis)
   return (
     <div className={styles.legendBlock} data-testid="zone-legend">
       <p className={styles.legendTitle}>
@@ -890,29 +911,19 @@ function ZoneLegend({
           Floors above floor {overlay.cutAbove} are cut away.
         </p>
       ) : null}
-      <p className={styles.legendRow}>
-        {palette.categorical.map((color) => (
-          <span
-            key={color}
-            className={styles.swatch}
-            style={{ background: color }}
-          />
-        ))}{' '}
-        {kinds.has('perimeter')
-          ? 'Perimeter zones'
-          : kinds.has('floor')
-            ? 'Floors, one zone each'
-            : 'One zone per building'}
-      </p>
-      {kinds.has('core') ? (
-        <p className={styles.legendRow}>
-          <span
-            className={styles.swatch}
-            style={{ background: palette.deemphasis }}
-          />{' '}
-          Core
+      {/* One row per kind of zone drawn, with the colours its cells use. */}
+      {overlay.legend.map((row) => (
+        <p key={row.kind} className={styles.legendRow}>
+          {row.slots.map((slot) => (
+            <span
+              key={slot}
+              className={styles.swatch}
+              style={{ background: colorOf(slot) }}
+            />
+          ))}{' '}
+          {ZONE_LEGEND_LABELS[row.kind]}
         </p>
-      ) : null}
+      ))}
       <p className={styles.legendRow}>
         <span
           className={styles.swatch}

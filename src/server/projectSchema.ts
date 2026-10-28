@@ -220,7 +220,13 @@ const zoningSetting = {
 }
 const zoning = z.object({
   ...zoningSetting,
-  published: z.object({ ...zoningSetting, runId: id }).nullable(),
+  published: z
+    .object({
+      ...zoningSetting,
+      runId: id,
+      storeys: z.record(id, number.positive()).default({}),
+    })
+    .nullable(),
 })
 // Saves from before archetype parts are migrated first (migrateArchetypes.ts).
 const archetype = z.object({

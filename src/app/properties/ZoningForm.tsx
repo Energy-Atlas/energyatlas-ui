@@ -12,7 +12,6 @@ import {
 } from 'react-aria-components'
 import { hasActiveTask, STAGE_IDS } from '../../domain/workflow.ts'
 import {
-  DEFAULT_PERIMETER_DEPTH_M,
   MAX_PERIMETER_DEPTH_M,
   MIN_PERIMETER_DEPTH_M,
   RC_ZONING_MODES,
@@ -58,7 +57,8 @@ export function ZoningForm() {
   const tasks = useWorkbenchSnapshot((snapshot) => snapshot.state.tasks)
   const pending = useClientSnapshot((snapshot) => snapshot.pending)
   const [mode, setMode] = useState<ZoningMode>(zoning.mode)
-  const [depth, setDepth] = useState(zoning.perimeterDepthM)
+  // Null while the depth field is empty.
+  const [depth, setDepth] = useState<number | null>(zoning.perimeterDepthM)
   const [errors, setErrors] = useState<Record<string, string>>({})
   const [general, setGeneral] = useState<string | null>(null)
   // A setting saved elsewhere (another control, the agent) replaces the
@@ -76,21 +76,39 @@ export function ZoningForm() {
     'zoning.set',
     'the zoning is being set',
   )
-  const unchanged = mode === zoning.mode && depth === zoning.perimeterDepthM
+  // The depth belongs to perimeter and core; other modes neither compare
+  // nor send it, so a hidden depth is never saved.
+  const perimeterCore = mode === 'perimeterCore'
+  const depthError =
+    errors.perimeterDepthM ??
+    (perimeterCore && depth === null
+      ? `Enter a depth from ${MIN_PERIMETER_DEPTH_M} to ${MAX_PERIMETER_DEPTH_M} m.`
+      : null)
+  const unchanged =
+    mode === zoning.mode && (!perimeterCore || depth === zoning.perimeterDepthM)
   const reason =
     waiting ??
     (running
       ? '"Geospatial preprocessing" is running. Wait for it to finish before changing the zoning.'
       : unchanged
         ? 'The zoning has not been changed.'
-        : null)
+        : perimeterCore && depth === null
+          ? 'Enter a perimeter depth first.'
+          : null)
   const published = zoning.published
-  const draft = { mode, perimeterDepthM: depth }
+  const draft = {
+    mode,
+    perimeterDepthM:
+      perimeterCore && depth !== null ? depth : zoning.perimeterDepthM,
+  }
   const save = () => {
     void client
       .execute({
         type: 'zoning.set',
-        input: { mode, perimeterDepthM: depth },
+        input:
+          perimeterCore && depth !== null
+            ? { mode, perimeterDepthM: depth }
+            : { mode },
       })
       .then((result) => {
         if (result.outcome.status === 'applied') {
@@ -106,7 +124,9 @@ export function ZoningForm() {
 
   return (
     <section className={styles.zoningForm} aria-labelledby={titleId}>
-      <h4 id={titleId}>Zoning</h4>
+      <h4 id={titleId} className={styles.formTitle}>
+        Zoning
+      </h4>
       <p className={componentStyles.muted}>
         How this stage divides buildings into thermal zones, in RC&rsquo;s three
         modes.{' '}
@@ -141,13 +161,14 @@ export function ZoningForm() {
       {mode === 'perimeterCore' ? (
         <NumberField
           className={formStyles.field}
-          value={depth}
+          value={depth ?? Number.NaN}
           minValue={MIN_PERIMETER_DEPTH_M}
           maxValue={MAX_PERIMETER_DEPTH_M}
-          step={0.5}
-          isInvalid={Boolean(errors.perimeterDepthM)}
+          step={0.1}
+          formatOptions={{ maximumFractionDigits: 1 }}
+          isInvalid={depthError !== null}
           onChange={(value) => {
-            setDepth(Number.isNaN(value) ? DEFAULT_PERIMETER_DEPTH_M : value)
+            setDepth(Number.isNaN(value) ? null : value)
             setErrors({})
             setGeneral(null)
           }}
@@ -167,7 +188,7 @@ export function ZoningForm() {
             15 ft.
           </Text>
           <FieldError className={formStyles.fieldError}>
-            {errors.perimeterDepthM}
+            {depthError}
           </FieldError>
         </NumberField>
       ) : null}

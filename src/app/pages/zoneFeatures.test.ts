@@ -105,6 +105,33 @@ describe('floor slabs and zone cells', () => {
     expect(overlay.buildingIds).toHaveLength(MAX_ZONED_BUILDINGS)
     expect(overlay.omitted).toBe(30 - MAX_ZONED_BUILDINGS)
   })
+
+  it('builds the legend from the zones drawn', () => {
+    const single = createWorkbench({
+      initialState: buildFixture('partway', NOW),
+      now: NOW,
+    })
+    single.execute({
+      type: 'selection.set',
+      input: { entityType: 'building', ids: ['B0039'] },
+    })
+    expect(zoneOverlay(single.getState()).legend).toEqual([
+      { kind: 'building', slots: [0] },
+    ])
+    // A building that kept perimeter and core beside one that fell back.
+    const workbench = zoned()
+    workbench.execute({
+      type: 'selection.set',
+      input: { entityType: 'building', ids: ['B0039', 'B0002'] },
+    })
+    const legend = zoneOverlay(workbench.getState()).legend
+    expect(legend.map((row) => row.kind)).toEqual([
+      'core',
+      'perimeter',
+      'floor',
+    ])
+    expect(legend[0]?.slots).toEqual([-1])
+  })
 })
 
 describe('floors and zones view operations', () => {
@@ -133,5 +160,23 @@ describe('floors and zones view operations', () => {
       summary: 'The table shows the zones of every building.',
     })
     expect(view.getState().table.view).toBe('zones')
+    // Zooming names what is selected, and refuses what the map does not show.
+    workbench.execute({
+      type: 'selection.set',
+      input: { entityType: 'zone', ids: ['B0039:F1:Z1'] },
+    })
+    expect(
+      view.execute({ type: 'map.focusSelection', input: {} }).outcome,
+    ).toEqual({
+      status: 'applied',
+      summary: 'Zoomed the map to 1 selected zone(s).',
+    })
+    workbench.execute({
+      type: 'selection.set',
+      input: { entityType: 'stage', ids: [STAGE_IDS.preprocessing] },
+    })
+    expect(
+      view.execute({ type: 'map.focusSelection', input: {} }).outcome.status,
+    ).toBe('rejected')
   })
 })

@@ -15,6 +15,8 @@ import {
 } from './geometry.ts'
 import {
   buildingZoning,
+  apportion,
+  buildingFloors,
   demandShares,
   floorExists,
   perimeterCorePlan,
@@ -242,8 +244,20 @@ describe('zoning OpenStreetMap footprints from the fixture', () => {
     const shares = demandShares(zoning, 123_456)
     const sum = (values: Record<string, number>) =>
       Object.values(values).reduce((total, value) => total + value, 0)
-    expect(sum(shares.zones)).toBeCloseTo(123_456, 6)
-    expect(sum(shares.floors)).toBeCloseTo(123_456, 6)
+    expect(sum(shares.zones)).toBe(123_456)
+    expect(sum(shares.floors)).toBe(123_456)
+    // A total that is not whole still adds up, rounded, in whole kWh.
+    const odd = demandShares(zoning, 98_765.4321)
+    expect(sum(odd.zones)).toBe(98_765)
+    expect(Object.values(odd.zones).every(Number.isInteger)).toBe(true)
+  })
+
+  test('apportions whole numbers by largest remainders', () => {
+    expect(apportion([1, 1, 1], 100)).toEqual([34, 33, 33])
+    expect(apportion([2, 1], 10)).toEqual([7, 3])
+    expect(apportion([1, 1], 0.6)).toEqual([1, 0])
+    expect(apportion([0, 0], 5)).toEqual([5, 0])
+    expect(apportion([], 5)).toEqual([])
   })
 })
 
@@ -356,6 +370,34 @@ describe('the zoning setting', () => {
     )
   })
 
+  test('slices floors from the storeys the last run used until it runs again', () => {
+    const workbench = preprocessed()
+    const before = buildingFloors(workbench.getState(), 'B0039')
+    const storeys = workbench.getState().buildings.B0039?.floors ?? 0
+    expect(workbench.getState().zoning.published?.storeys.B0039).toBe(storeys)
+    workbench.execute({
+      type: 'edits.propose',
+      input: { entityId: 'B0039', field: 'floors', value: storeys * 2 },
+    })
+    expect(
+      workbench.execute({ type: 'edits.apply', input: {} }).outcome.status,
+    ).toBe('applied')
+    const edited = workbench.getState()
+    expect(edited.buildings.B0039?.floors).toBe(storeys * 2)
+    // Floors, zones, and selectable ids stay as the run published them.
+    expect(buildingFloors(edited, 'B0039')).toEqual(before)
+    expect(buildingZoning(edited, 'B0039')?.zones).toHaveLength(1)
+    expect(floorExists(edited, `B0039:F${storeys + 1}`)).toBe(false)
+    expect(stagesOf(edited)[STAGE_IDS.preprocessing]).toBe('stale')
+    // A rerun slices the new storeys.
+    runStageNow(workbench, STAGE_IDS.enrichment)
+    runStageNow(workbench, STAGE_IDS.schema)
+    runStageNow(workbench, STAGE_IDS.preprocessing)
+    const rerun = workbench.getState()
+    expect(buildingFloors(rerun, 'B0039')).toHaveLength(storeys * 2)
+    expect(floorExists(rerun, `B0039:F${storeys + 1}`)).toBe(true)
+  })
+
   test('selects floors and zones by id, and refuses ids that do not exist', () => {
     const workbench = preprocessed()
     expect(
@@ -406,5 +448,13 @@ describe('saved projects and packages from before zoning', () => {
     const state = workbench.getState()
     const parsed = projectStateSchema.parse(JSON.parse(JSON.stringify(state)))
     expect(parsed.zoning).toEqual(state.zoning)
+    // A published zoning without storeys reads as none recorded.
+    const saved = JSON.parse(JSON.stringify(state)) as {
+      zoning: { published: Record<string, unknown> }
+    }
+    delete saved.zoning.published.storeys
+    expect(projectStateSchema.parse(saved).zoning.published?.storeys).toEqual(
+      {},
+    )
   })
 })

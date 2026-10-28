@@ -83,6 +83,12 @@ test('zoning outdates preprocessing; a rerun draws slabs and zones shared by Pro
   await expect(perimeterCore).toBeChecked()
   const depth = zoning.getByRole('textbox', { name: 'Perimeter depth (m)' })
   await expect(depth).toHaveValue('4.5')
+  // An empty depth is an error, not a silent default.
+  await depth.fill('')
+  await depth.press('Tab')
+  await expect(zoning).toContainText('Enter a depth from 1 to 15 m.')
+  await depth.fill('4.5')
+  await depth.press('Tab')
   await expect(zoning).toContainText('Saving makes this stage')
   await zoning.getByRole('button', { name: 'Save zoning' }).click()
   await expect(page.getByTestId('status-notice')).toContainText(
@@ -326,13 +332,42 @@ test('the viewer shows floors and zones and leaves the zoning control out', asyn
     page.locator('.ag-row-selected [col-id="id"]').filter({ visible: true }),
   ).toHaveText('B0464:F3')
 
-  // The map draws the floor's building in zones; the zoning control is
-  // left out of the viewer, not disabled.
+  // The map draws the floor's building in zones.
   await tab(page, 'Map').click()
   await expect(page.getByTestId('zone-legend')).toContainText(
     'Zones of B0464, floor 3',
   )
-  await expect(page.getByRole('region', { name: 'Zoning' })).toHaveCount(0)
+  await expect(page.getByTestId('zone-legend')).toContainText('Whole building')
+
+  // The agent's floors-and-zones session leads to Geospatial preprocessing,
+  // shown as handed over: its zoning is a fact, and the form is left out.
+  await showTab(page, 'Reasoning')
+  const agent = page.getByRole('region', { name: 'Reasoning' })
+  await agent
+    .getByRole('button', {
+      name: 'Start session: Floors and zones of a building',
+    })
+    .click()
+  const transcript = agent.getByRole('log', { name: 'Agent transcript' })
+  await expect(transcript).toContainText(
+    'zoned one zone per building when the project was handed over',
+    { timeout: 20_000 },
+  )
+  await transcript
+    .getByRole('button', {
+      name: 'Show the zoning Geospatial preprocessing applied',
+    })
+    .click()
+  const stage = properties(page)
+  await expect(
+    stage.getByRole('heading', { name: 'Geospatial preprocessing' }),
+  ).toBeVisible()
+  await expect(stage.getByText('Zoning', { exact: true })).toBeVisible()
+  await expect(
+    stage.getByText('One zone per building', { exact: true }),
+  ).toBeVisible()
+  await expect(stage.getByRole('region', { name: 'Zoning' })).toHaveCount(0)
+  await expect(stage.getByRole('radio')).toHaveCount(0)
   await expect(page.getByRole('button', { name: 'Save zoning' })).toHaveCount(0)
   expect(await seriousViolations(page)).toEqual([])
 })

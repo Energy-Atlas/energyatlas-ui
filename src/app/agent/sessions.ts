@@ -1091,6 +1091,10 @@ const zoningSession: ScriptedSession = {
           `${describeBuildingZones(state, zoning)} The map draws its zones, one colour per zone with the core in grey, and every other building as floor slabs. ${fallbackSentence(state)} Choose a floor or zone in Properties, or on the Table page's Floors and Zones views, to highlight it.`,
         ),
         reference('Show its floors and zones', { type: 'inspection' }),
+        reference('Show the zoning Geospatial preprocessing applied', {
+          type: 'stage',
+          stageId: STAGE_IDS.preprocessing,
+        }),
       ]
     },
   ],
@@ -1288,6 +1292,10 @@ const viewerZonesSession: ScriptedSession = {
           `The buildings were zoned ${published ? describeZoning(published).toLowerCase() : 'by a setting'} when the project was handed over. ${describeBuildingZones(state, zoning)} ${fallbackSentence(state)} Zones are display only, and per-zone results are a synthetic split of the building's demand by floor area.`,
         ),
         reference('Show its floors and zones', { type: 'inspection' }),
+        reference('Show the zoning Geospatial preprocessing applied', {
+          type: 'stage',
+          stageId: STAGE_IDS.preprocessing,
+        }),
       ]
     },
   ],

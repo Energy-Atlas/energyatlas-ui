@@ -46,8 +46,15 @@ export type ZoningSetting = {
   perimeterDepthM: number
 }
 
-/** The zoning a Geospatial preprocessing run applied. */
-export type PublishedZoning = ZoningSetting & { runId: string }
+/**
+ * The zoning a Geospatial preprocessing run applied, with the storeys each
+ * building had then: floors are sliced from those, not from a floor count
+ * edited since, until the stage runs again.
+ */
+export type PublishedZoning = ZoningSetting & {
+  runId: string
+  storeys: Record<string, number>
+}
 
 export type ZoningState = ZoningSetting & {
   /**
@@ -302,15 +309,16 @@ const cache = new WeakMap<Building, Map<string, BuildingZoning | null>>()
 export function zoneBuilding(
   building: Building,
   setting: ZoningSetting,
+  storeys: number | null = building.floors,
 ): BuildingZoning | null {
-  const key = `${setting.mode}:${setting.perimeterDepthM}`
+  const key = `${setting.mode}:${setting.perimeterDepthM}:${storeys}`
   let byBuilding = cache.get(building)
   if (!byBuilding) {
     byBuilding = new Map()
     cache.set(building, byBuilding)
   }
   if (byBuilding.has(key)) return byBuilding.get(key) ?? null
-  const zoning = computeZoning(building, setting)
+  const zoning = computeZoning(building, setting, storeys)
   byBuilding.set(key, zoning)
   return zoning
 }
@@ -318,8 +326,8 @@ export function zoneBuilding(
 function computeZoning(
   building: Building,
   setting: ZoningSetting,
+  storeys: number | null,
 ): BuildingZoning | null {
-  const storeys = building.floors
   const height = building.heightM
   if (storeys === null || height === null || storeys < 1 || !(height > 0)) {
     return null
@@ -457,7 +465,19 @@ export function buildingZoning(
   const building = state.buildings[buildingId]
   const published = state.zoning.published
   if (!building || !published) return null
-  return zoneBuilding(building, published)
+  return zoneBuilding(building, published, publishedStoreys(state, building))
+}
+
+/**
+ * The storeys a building is sliced into: those the last Geospatial
+ * preprocessing run used, or its floor count when no run recorded them
+ * (projects saved before zoning settings).
+ */
+export function publishedStoreys(
+  state: Pick<WorkbenchState, 'zoning'>,
+  building: Building,
+): number | null {
+  return state.zoning.published?.storeys[building.id] ?? building.floors
 }
 
 /**
@@ -473,6 +493,7 @@ export function buildingFloors(
   const zoning = zoneBuilding(
     building,
     state.zoning.published ?? { mode: 'single', perimeterDepthM: 0 },
+    publishedStoreys(state, building),
   )
   return zoning?.floors ?? []
 }
@@ -560,21 +581,54 @@ export function fallbackWarnings(
 }
 
 /**
+ * Whole numbers proportional to the weights that add up to `total` rounded:
+ * each takes its floor, and the largest remainders take the units left
+ * (ties go to the earlier one).
+ */
+export function apportion(weights: number[], total: number): number[] {
+  const target = Math.round(total)
+  const sum = weights.reduce((acc, weight) => acc + weight, 0)
+  if (weights.length === 0) return []
+  if (!(sum > 0)) {
+    return weights.map((_, index) => (index === 0 ? target : 0))
+  }
+  const exact = weights.map((weight) => (target * weight) / sum)
+  const whole = exact.map((value) => Math.floor(value))
+  let left = target - whole.reduce((acc, value) => acc + value, 0)
+  const order = exact
+    .map((value, index) => ({ index, remainder: value - Math.floor(value) }))
+    .sort((a, b) => b.remainder - a.remainder || a.index - b.index)
+  for (const { index } of order) {
+    if (left <= 0) break
+    whole[index] = (whole[index] ?? 0) + 1
+    left -= 1
+  }
+  return whole
+}
+
+/**
  * The synthetic split of a building's demand over its floors and zones, by
- * floor-area share; the shares add up to the building's total exactly.
+ * floor-area share, in whole kWh: each set adds up to the building's total
+ * rounded to whole kWh (largest remainders).
  */
 export function demandShares(
   zoning: BuildingZoning,
   buildingKwh: number,
 ): { floors: Record<string, number>; zones: Record<string, number> } {
-  const total = zoning.zones.reduce((sum, zone) => sum + zone.areaM2, 0)
-  const zones: Record<string, number> = {}
-  for (const zone of zoning.zones) {
-    zones[zone.id] = total > 0 ? (buildingKwh * zone.areaM2) / total : 0
+  const zoneKwh = apportion(
+    zoning.zones.map((zone) => zone.areaM2),
+    buildingKwh,
+  )
+  const floorKwh = apportion(
+    zoning.floors.map(() => 1),
+    buildingKwh,
+  )
+  return {
+    zones: Object.fromEntries(
+      zoning.zones.map((zone, index) => [zone.id, zoneKwh[index] ?? 0]),
+    ),
+    floors: Object.fromEntries(
+      zoning.floors.map((floor, index) => [floor.id, floorKwh[index] ?? 0]),
+    ),
   }
-  const floors: Record<string, number> = {}
-  for (const floor of zoning.floors) {
-    floors[floor.id] = buildingKwh / Math.max(1, zoning.floors.length)
-  }
-  return { floors, zones }
 }

@@ -18,6 +18,7 @@ import { PART_LABELS } from '../../domain/archetypes/parts.ts'
 import type {
   FieldMapping,
   PartKind,
+  SelectableEntity,
   WorkbenchState,
 } from '../../domain/types.ts'
 import { PART_KINDS } from '../../domain/types.ts'
@@ -76,6 +77,14 @@ const TABLE_VIEW_NAMES: Record<TableView, string> = {
   floors: 'the floors of every building',
   zones: 'the zones of every building',
   grid: 'grid elements',
+}
+
+/** What a map zoom names, by the kind of selection the map shows. */
+const MAP_SELECTION_NOUNS: Partial<Record<SelectableEntity, string>> = {
+  building: 'building(s)',
+  floor: 'floor(s)',
+  zone: 'zone(s)',
+  gridElement: 'grid element(s)',
 }
 
 /** Which jobs the Jobs list shows. */
@@ -437,17 +446,21 @@ export const viewOperationDefinitions = {
   'map.focusSelection': defineViewOperation({
     title: 'Zoom map to selection',
     description:
-      'Zoom the Map to the buildings or grid elements in the shared selection.',
+      'Zoom the Map to the buildings, floors or zones (their buildings), or grid elements in the shared selection.',
     input: z.object({}),
     run(view, _input, project) {
       const { entityType, ids } = project.selection
       if (!entityType || ids.length === 0) {
         return rejected('Nothing is selected to zoom to.')
       }
+      const noun = MAP_SELECTION_NOUNS[entityType]
+      if (!noun) {
+        return rejected(
+          'The selection is not on the map. Select buildings, floors, zones, or grid elements first.',
+        )
+      }
       view.map.focusRequest += 1
-      return applied(
-        `Zoomed the map to ${ids.length} selected ${entityType === 'building' ? 'building(s)' : 'grid element(s)'}.`,
-      )
+      return applied(`Zoomed the map to ${ids.length} selected ${noun}.`)
     },
   }),
 

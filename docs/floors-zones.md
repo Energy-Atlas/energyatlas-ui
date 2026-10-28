@@ -63,8 +63,11 @@ outdates nothing.
 Floors and zones are derived from a building's footprint, storeys, and height and the published zoning, and cached
 per building object; nothing about them is saved.
 
-- **Floors**: `floors` storeys of `height / floors` each (RC's uniform floors), floor 1 at the ground, each with the
-  footprint area. Floors exist for every building with a height, whatever the zoning.
+- **Floors**: `storeys` floors of `height / storeys` each (RC's uniform floors), floor 1 at the ground, each with
+  the footprint area. The storeys are those the last preprocessing run used (`published.storeys`, recorded per
+  building when it publishes), so a floor count edited since changes no floor or zone until the stage runs again;
+  projects saved before zoning settings use the current floor count. Floors exist for every building with a height,
+  whatever the zoning.
 - **Single**: one zone, `<building>:Z1`, from the ground to the roof, with the floor area of every storey.
 - **Floors**: one zone per storey, `<building>:F<n>:Z1`.
 - **Perimeter and core**: per storey, the core `<building>:F<n>:Z1`, then one perimeter zone per footprint edge,
@@ -76,9 +79,10 @@ repeated points, and points within 0.1 m of the line through their neighbours re
 keeps one corner per footprint corner, and the band splits along the corner bisectors into one cell per edge. It
 refuses, rather than repairs, a footprint that touches or crosses itself, an offset edge that collapses or turns
 round, a core that is not simple or leaves the footprint, and a core corner closer than the depth to any footprint
-edge (a narrow part of a concave footprint). A core under 10 m² or under 10% of the floor is too small. The zones
-must cover the floor within 0.5%, as RC's coverage check requires. Zone areas are scaled so a floor's zones add up
-to the footprint area exactly.
+edge (a narrow part of a concave footprint). A core under 10 m² or under 10% of the floor is too small. A final check
+that the zones' areas add up to the floor within 0.5% only catches an inverted cell: mitred cells always sum to the
+footprint by construction, and the distance checks above are what keep cells from overlapping. Zone areas are scaled
+so a floor's zones add up to the footprint area exactly.
 
 Where perimeter and core cannot be made, the building gets one zone per floor, Properties says why, and the run adds
 an RC-style coded warning per cause to Geospatial preprocessing's warnings (Issues and the status bar), naming up to
@@ -99,8 +103,9 @@ leave too small a core.
   slabs and extrusions, and when a floor or zone is selected the storeys above it are cut away so its plan shows;
   the selection outline follows the cut. Flat, the map shows one storey's plan (the selected floor or zone's, else
   the ground floor) with outlines. Clicking a zone selects it.
-- The legend names the zoned buildings and the storey shown, the colours, the cut, and how many selected buildings
-  are not drawn.
+- The legend names the zoned buildings and the storey shown, one row per kind of zone drawn with the colours its
+  cells use (so one zone per building shows one colour, and a selection mixing perimeter-and-core with a fallback
+  shows core, perimeter, and whole-floor rows), the cut, and how many selected buildings are not drawn.
 
 ### Properties
 
@@ -122,8 +127,9 @@ the other views. Their empty states name Geospatial preprocessing.
 ### Results
 
 On a drilled-down building, **Show _building_ by zone (synthetic split)** opens a table of its zones with area, share,
-and demand, the shown result split by floor area. The rows add up to the building's published total, which is
-unchanged; the section says so and shows the Simulated badge.
+and demand, the shown result split by floor area in whole kWh by largest remainders, so the rows and the CSV add up
+to the building's published total rounded to whole kWh. The total is unchanged; the section says so and shows the
+Simulated badge. The Properties tables' Baseline share uses the same split.
 
 ### Viewer
 
@@ -190,8 +196,8 @@ agent can select them.
    OpenStreetMap outlines do not become slivers. With fewer than three long edges every edge keeps its own zone, as in
    RC. The band is split along corner bisectors (mitre lines) rather than RC's Voronoi split, which differs near
    concave corners.
-7. **Fallback thresholds**: a core under 10 m² or 10% of the floor is too small; the zones must cover the floor within
-   0.5%. Fallbacks give one zone per floor (RC would make whatever cells its buffer gives).
+7. **Fallback thresholds**: a core under 10 m² or 10% of the floor is too small. Fallbacks give one zone per floor
+   (RC would make whatever cells its buffer gives).
 8. **Self-touching footprints**: none of the 464 fixture footprints touches itself (checked for every pair of edges),
    so the unit test pinches B0039's outline into one that does.
 9. **Floor slabs are on by default**, a building layer setting saved with the stack; stacks saved before it read as
@@ -215,15 +221,48 @@ agent can select them.
 
 ## Known issues and limits
 
-- Floors are sliced from the building's current storeys and its published height: after a floor-count edit,
-  preprocessing is Outdated and Properties says so, but storeys are re-sliced from the new count until the rerun.
+- After a floor-count edit, Properties' Floors attribute and the Table show the new count while floors and zones keep
+  the storeys of the last run until preprocessing runs again (it is Outdated, and Properties says so).
 - At 4.5 m most Back Bay row houses fall back to one zone per floor; a smaller depth zones more of them.
 - The Zones view lists about 3,900 rows under perimeter and core for the 464 buildings; larger districts are not
   benchmarked.
 - The map canvas is not available to screen readers; the Floors and Zones views and Properties tables are the
   equivalent.
 
+## Review (2026-10-28)
+
+An independent review's findings, all fixed on `claude/next-stages`:
+
+- **Medium**: floors were sliced from the building's current floor count, so an applied floor-count edit showed
+  storeys and selectable zones no run produced. The run now records each building's storeys in the published zoning
+  and floors are sliced from them until the next run (unit test).
+- **Medium**: the map rebuilt and re-sent every floor slab on every state change. Map metrics are now memoised on the
+  buildings, results, and scenarios they read, and the zone overlay on the selection, buildings, and zoning.
+- **Medium**: the viewer test checked for the zoning form on the Map page. It now follows the viewer agent's stage
+  reference to Geospatial preprocessing, as handed over, and checks the read-only Zoning fact and that no form, radio,
+  or Save zoning is there.
+- The zoning form compared and sent the perimeter depth in every mode; it now does so only for perimeter and core. An
+  emptied depth is an error instead of becoming 4.5 m, and the field steps by 0.1 m like the command. The form's
+  title takes the label tokens of every panel label.
+- The Results split rounded each row; it now uses largest remainders (unit tested) so rows add up. The legend is built
+  from the zones drawn. `map.focusSelection` names floors and zones, and refuses selections the map does not show.
+  The Table page's view tabs wrap in a narrow docked Table. The coverage check is described for what it catches.
+
 ## Verification (2026-10-28)
+
+After the review fixes: `npm run typecheck`, `npm run lint`, `npm run format:check`, `git diff --check`: clean.
+`npm test`: 523 passed in 50 files (3 more: storeys kept from the last run until a rerun, largest-remainder
+apportioning, and the legend built from the zones drawn; existing tests gained the whole-kWh split, an older published
+zoning without storeys, and `map.focusSelection` nouns). `npm run test:e2e` on port 5180, after the last change: 128
+passed with 4 workers. In the run before it, `map-table`'s "2D and 3D" test timed out at 30 s once; alone it passes in
+about 27.5 s whether slabs are on or off and whether zoned buildings are filtered, so it was near its limit rather
+than slowed by this stage, and it now sets a 60 s timeout like the other long flows. `npm run test:e2e:preview`: 4
+passed. The Table page and a building's Properties floors and zones were reviewed at 900x700 (the view tabs fit; the
+Properties tables scroll sideways in the narrow panel), and the view tabs wrap onto a second line in a 220 px docked
+Table; the captures were deleted.
+
+Before the review:
+
 
 - `npm run typecheck`, `npm run lint`, `npm run format:check`, `git diff --check`: clean.
 - `npm test`: 520 Vitest tests in 50 files passed (26 new). `src/domain/zoning/zoning.test.ts` covers ring cleaning,

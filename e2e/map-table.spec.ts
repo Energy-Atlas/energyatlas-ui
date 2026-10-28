@@ -205,6 +205,9 @@ test('map falls back to a plain background when the basemap cannot load, then re
 test('map switches buildings between 2D and 3D and explains missing heights', async ({
   page,
 }) => {
+  // Four stage runs and a 3D render take about 27 s alone; under 4 workers
+  // it can pass the default 30 s.
+  test.setTimeout(60_000)
   await runStages(page, ['Location setup / footprint capturing'])
   const panel = await openMapProperties(page)
 

@@ -427,7 +427,13 @@ export function publishPreprocessing(
     mode: state.zoning.mode,
     perimeterDepthM: state.zoning.perimeterDepthM,
   }
-  state.zoning.published = { ...zoning, runId: context.runId }
+  // Floors are sliced from the storeys this run used until it runs again.
+  const storeys: Record<string, number> = {}
+  for (const id of membership) {
+    const floors = state.buildings[id]?.floors
+    if (typeof floors === 'number') storeys[id] = floors
+  }
+  state.zoning.published = { ...zoning, runId: context.runId, storeys }
   const fallbacks = fallbackWarnings(
     zoningFallbacks(
       membership.flatMap((id) => {
