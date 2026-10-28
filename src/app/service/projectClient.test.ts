@@ -57,7 +57,6 @@ describe('project client and mock server', () => {
       name: 'First measure',
       kind: 'heating',
       savingsPercent: 30,
-      appliesTo: 'all',
     } as const
     const created = first.client.execute({ type: 'measure.create', input })
     await first.manual.settle()
@@ -130,7 +129,6 @@ describe('project client and mock server', () => {
         name: 'Old project measure',
         kind: 'heating',
         savingsPercent: 30,
-        appliesTo: 'all',
       },
     })
     // A replacement overtakes the delayed command, as a no-delay request can.
@@ -155,7 +153,6 @@ describe('project client and mock server', () => {
         name: 'Heat pumps',
         kind: 'heating',
         savingsPercent: 30,
-        appliesTo: 'all',
       },
     })
     await manual.settle()
@@ -248,7 +245,6 @@ describe('project client and mock server', () => {
         name: 'Heat pumps',
         kind: 'heating',
         savingsPercent: 30,
-        appliesTo: 'all',
       },
     })
     await manual.settle(200)
@@ -269,7 +265,6 @@ describe('project client and mock server', () => {
         name: 'Heat pumps',
         kind: 'heating',
         savingsPercent: 30,
-        appliesTo: 'all',
       },
     })
     await manual.settle()

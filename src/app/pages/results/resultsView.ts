@@ -11,6 +11,11 @@ import type {
   StageState,
   WorkbenchState,
 } from '../../../domain/types.ts'
+import {
+  describeAggregation,
+  publishedAggregation,
+  type Aggregation,
+} from '../../../domain/scenarios/rules.ts'
 import { STAGE_IDS } from '../../../domain/workflow.ts'
 import { csvCommentLine, csvField, fileSlug } from '../../csv.ts'
 
@@ -50,8 +55,13 @@ export type ResultEntry = {
   publishedAt: string | null
   /** For a scenario, its baseline to compare against. */
   compareTo: ResultSet | null
-  /** How the working baseline came to be, for the baseline entry. */
+  /** How the working baseline came to be, or how a scenario was aggregated. */
   note: string | null
+  /**
+   * For a scenario with published versions, how adoption sampled them
+   * (decision 0032, stage 3); null otherwise.
+   */
+  aggregation: Aggregation | null
 }
 
 /** When the run that produced a result finished: its succeeded job's last update. */
@@ -107,11 +117,13 @@ export function listResults(
       note: adopted
         ? `Calibrated variant adopted as the working baseline (factor ${adopted.factor}).`
         : 'Modeled baseline.',
+      aggregation: null,
     },
   ]
   for (const scenario of Object.values(state.scenarios)) {
     const result = state.results.scenarios[scenario.id]
     if (!result) continue
+    const aggregation = publishedAggregation(state, scenario.id)
     entries.push({
       id: scenario.id,
       label: scenario.name,
@@ -122,7 +134,10 @@ export function listResults(
       currentness: describeCurrentness(states[STAGE_IDS.scenarioModeling]),
       publishedAt: finishedAt(state, result.runId),
       compareTo: baseline,
-      note: `${scenario.measureIds.length} measure(s) at ${scenario.adoptionPercent}% adoption.`,
+      note: aggregation
+        ? `Aggregated at ${describeAggregation(aggregation)}; alternative versions from run ${result.runId}.`
+        : 'Saved before scenario rules: adoption scaled savings. Run Scenario modeling again.',
+      aggregation,
     })
   }
   return entries
@@ -138,6 +153,11 @@ export type BuildingRow = {
   euiKwhPerM2: number | null
   /** Saving against the baseline, for scenarios. */
   savingKwh: number | null
+  /**
+   * For a scenario aggregated from versions: whether the building adopts its
+   * alternative version, does not, or takes no measure; null otherwise.
+   */
+  adoption: 'adopted' | 'not adopted' | 'not affected' | null
 }
 
 /** Buildings in a result, highest demand first. */
@@ -145,6 +165,10 @@ export function buildingRows(
   state: WorkbenchState,
   entry: ResultEntry,
 ): BuildingRow[] {
+  const versions = entry.aggregation
+    ? state.results.scenarioVersions[entry.id]
+    : undefined
+  const adopted = new Set(entry.aggregation?.adoptedIds ?? [])
   return Object.entries(entry.result.byBuildingKwh)
     .map(([id, annualKwh]): BuildingRow => {
       const building = state.buildings[id]
@@ -164,6 +188,13 @@ export function buildingRows(
           baselineKwh === undefined
             ? null
             : Math.round(baselineKwh - annualKwh),
+        adoption: !versions
+          ? null
+          : adopted.has(id)
+            ? 'adopted'
+            : versions.alternativeKwh[id] !== undefined
+              ? 'not adopted'
+              : 'not affected',
       }
     })
     .sort((a, b) => b.annualKwh - a.annualKwh || (a.id < b.id ? -1 : 1))
@@ -255,6 +286,11 @@ export function resultCsv(
     ...(entry.compareTo
       ? [line(`# compared to baseline run: ${entry.compareTo.runId}`)]
       : []),
+    ...(entry.aggregation
+      ? [line(`# aggregated at: ${describeAggregation(entry.aggregation)}`)]
+      : entry.compareTo
+        ? [line(`# aggregated at: ${entry.note ?? ''}`)]
+        : []),
     `# building attributes: current project values; demand: this run`,
     line(`# project: ${state.project.name}`),
     line(`# exported at: ${exportedAt}`),
@@ -266,7 +302,7 @@ export function resultCsv(
       'floor_area[m2]',
       'annual_demand[kWh]',
       'eui[kWh/m2]',
-      ...(scenario ? ['saving_vs_baseline[kWh]'] : []),
+      ...(scenario ? ['saving_vs_baseline[kWh]', 'adoption'] : []),
     ].join(','),
     ...rows.map((row) =>
       [
@@ -277,7 +313,9 @@ export function resultCsv(
         csvField(row.floorAreaM2),
         csvField(row.annualKwh),
         csvField(row.euiKwhPerM2),
-        ...(scenario ? [csvField(row.savingKwh)] : []),
+        ...(scenario
+          ? [csvField(row.savingKwh), csvField(row.adoption ?? 'unknown')]
+          : []),
       ].join(','),
     ),
     [
@@ -292,6 +330,11 @@ export function resultCsv(
         ? [
             csvField(
               Math.round(entry.compareTo.totalKwh - entry.result.totalKwh),
+            ),
+            csvField(
+              entry.aggregation
+                ? `${entry.aggregation.adoptedIds.length} adopted`
+                : '',
             ),
           ]
         : []),

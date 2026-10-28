@@ -3,6 +3,10 @@ import type { ValidationIssue } from '../../domain/commands.ts'
 import { findDataset } from '../../domain/intake/datasets.ts'
 import { TARGET_FIELDS, suggestMapping } from '../../domain/intake/fusion.ts'
 import { previewAssignment } from '../../domain/archetypes/assignment.ts'
+import {
+  previewScenarioRules,
+  scenarioRules,
+} from '../../domain/scenarios/rules.ts'
 import { PART_LABELS } from '../../domain/archetypes/parts.ts'
 import type {
   FieldMapping,
@@ -99,6 +103,11 @@ export type ViewState = {
    * (decision 0032); "all" counts every part.
    */
   archetypes: { previewPart: PartKind | 'all' }
+  /**
+   * Which scenario's rules and preview the Measures and scenarios page shows
+   * (decision 0032, stage 3); null shows the first scenario.
+   */
+  scenarios: { previewScenarioId: string | null }
   /** The data intake draft: a dataset and its mapping, not sent until applied. */
   intake: { datasetId: string | null; mapping: FieldMapping }
   /** The Results page's chosen result, drilled-down building, and resolution. */
@@ -132,6 +141,7 @@ export function createInitialViewState(
     dashboard: { hiddenScenarioIds: [], charts: [] },
     jobs: { selectedTaskId: null, filter: 'all' },
     archetypes: { previewPart: 'all' },
+    scenarios: { previewScenarioId: null },
     intake: { datasetId: null, mapping: {} },
     results: { resultId: 'baseline', buildingId: null, resolution: 'monthly' },
     nextChartNumber: 1,
@@ -644,6 +654,36 @@ export const viewOperationDefinitions = {
         part === 'all' ? 'all parts' : PART_LABELS[part].toLowerCase()
       return applied(
         `Previewing ${label}: ${taking.length === 0 ? 'no rule takes a part' : taking.map((rule) => `"${rule.name}" ${rule.count}`).join(', ')}; ${unassigned} unassigned of ${preview.buildings * kinds.length}.`,
+      )
+    },
+  }),
+
+  'scenarios.setPreviewScenario': defineViewOperation({
+    title: 'Preview a scenario',
+    description:
+      'Choose which scenario the rule list and preview on the Measures and scenarios page show, by scenario id. The summary reports, before Scenario modeling runs, how many buildings each rule matches and takes measures for, how many buildings take a measure, how many of those adopt at the scenario adoption and seed, and the estimate against the baseline when it exists.',
+    input: z.object({ scenarioId: z.string().min(1, 'Choose a scenario.') }),
+    run(view, { scenarioId }, project) {
+      const scenario = project.scenarios[scenarioId]
+      if (!scenario) {
+        return rejected(`Unknown scenario "${scenarioId}".`, 'scenarioId')
+      }
+      view.scenarios.previewScenarioId = scenarioId
+      const rules = scenarioRules(project, scenario)
+      const preview = previewScenarioRules(project, {
+        id: scenario.id,
+        rules,
+        adoptionPercent: scenario.adoptionPercent,
+        adoptionSeed: scenario.adoptionSeed,
+      })
+      const taking = preview.rules
+        .map((rule) => ({
+          name: project.scenarioRules[rule.ruleId]?.name ?? rule.ruleId,
+          count: Object.values(rule.takes).reduce((sum, n) => sum + n, 0),
+        }))
+        .filter((rule) => rule.count > 0)
+      return applied(
+        `Previewing "${scenario.name}": ${rules.length === 0 ? 'it has no rules' : taking.length === 0 ? 'no rule takes a measure' : taking.map((rule) => `"${rule.name}" ${rule.count} measures`).join(', ')}; ${preview.affectedIds.length} of ${preview.buildings} buildings take a measure and ${preview.adoptedIds.length} adopt at ${scenario.adoptionPercent}%, seed ${scenario.adoptionSeed}.${preview.estimate ? ` Estimated ${preview.estimate.reductionPercent}% lower annual demand than the baseline (synthetic).` : ` ${preview.reason ?? ''}`}`,
       )
     },
   }),

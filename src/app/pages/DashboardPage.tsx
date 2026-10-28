@@ -440,6 +440,7 @@ export function DashboardPage() {
                 <Slider
                   className={cx(formStyles.slider, styles.slider)}
                   value={adoption}
+                  isDisabled={!item.canPreview}
                   minValue={0}
                   maxValue={100}
                   step={5}
@@ -471,8 +472,15 @@ export function DashboardPage() {
                   </SliderTrack>
                 </Slider>
                 <span className={styles.saved}>
-                  Saved: {scenario.adoptionPercent}%
+                  Saved: {scenario.adoptionPercent}%, seed{' '}
+                  {scenario.adoptionSeed}
                 </span>
+                {item.modeled && !item.canPreview ? (
+                  <span className={componentStyles.muted}>
+                    Saved before scenario rules: run Scenario modeling to
+                    preview adoption.
+                  </span>
+                ) : null}
                 {isPreview ? (
                   <span className={styles.previewTag}>Preview, not saved</span>
                 ) : null}

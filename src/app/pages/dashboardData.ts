@@ -1,4 +1,4 @@
-import { computeScenarioResult } from '../../domain/simulation.ts'
+import { aggregateScenario } from '../../domain/scenarios/rules.ts'
 import type { ResultSet, Scenario, WorkbenchState } from '../../domain/types.ts'
 
 /** Charts compare at most three scenarios: the palette is validated for three slots. */
@@ -32,6 +32,11 @@ export type ChartedScenario = {
   shown: ResultSet | null
   /** Unsaved what-if adoption, when it differs from the saved value. */
   previewAdoption: number | null
+  /**
+   * Whether a what-if adoption can be shown: the scenario has published
+   * alternative versions to sample from (decision 0032, stage 3).
+   */
+  canPreview: boolean
   /** Reduction of annual demand against the baseline, in percent. */
   reductionPercent: number | null
 }
@@ -69,17 +74,18 @@ export function buildDashboardData(
     .slice(0, MAX_CHARTED_SCENARIOS)
     .map((scenario, slot): ChartedScenario => {
       const modeled = state.results.scenarios[scenario.id] ?? null
+      const versions = state.results.scenarioVersions[scenario.id]
       const override = previews[scenario.id]
       const previewAdoption =
-        override !== undefined && override !== scenario.adoptionPercent
+        versions &&
+        override !== undefined &&
+        override !== scenario.adoptionPercent
           ? override
           : null
+      // A what-if adoption re-aggregates the published versions, as Apply will.
       const shown =
-        previewAdoption !== null && baseline
-          ? computeScenarioResult(state, scenario, {
-              runId: 'preview',
-              adoptionPercent: previewAdoption,
-            })
+        previewAdoption !== null && versions
+          ? aggregateScenario(scenario, versions, previewAdoption).result
           : modeled
       const reductionPercent =
         baseline && shown && baseline.totalKwh > 0
@@ -91,6 +97,7 @@ export function buildDashboardData(
         modeled,
         shown,
         previewAdoption,
+        canPreview: Boolean(versions),
         reductionPercent,
       }
     })

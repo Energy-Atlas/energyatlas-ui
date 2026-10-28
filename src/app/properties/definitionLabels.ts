@@ -21,15 +21,6 @@ export const USES = (Object.keys(USE_LABELS) as BuildingUse[]).map((value) => ({
   label: USE_LABELS[value],
 }))
 
-export const APPLIES_TO: { value: BuildingUse | 'all'; label: string }[] = [
-  { value: 'all', label: 'All buildings' },
-  ...USES,
-]
-
-export function appliesToLabel(appliesTo: Measure['appliesTo']): string {
-  return appliesTo === 'all' ? 'All buildings' : USE_LABELS[appliesTo]
-}
-
 export function measureKindLabel(kind: Measure['kind']): string {
   return KIND_LABELS[kind]
 }

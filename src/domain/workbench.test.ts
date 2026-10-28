@@ -3,7 +3,11 @@ import { GROUP } from './assets.ts'
 import { capabilities } from './capabilities.ts'
 import { describeCommands } from './commands.ts'
 import { finishJobNow } from './jobs/runNow.ts'
-import { computeScenarioResult } from './simulation.ts'
+import {
+  aggregateScenario,
+  previewScenarioRules,
+  scenarioRules,
+} from './scenarios/rules.ts'
 import type { Building } from './types.ts'
 import { createWorkbench, type Workbench } from './workbench.ts'
 import { STAGE_IDS, deriveStageStates, topologicalOrder } from './workflow.ts'
@@ -52,7 +56,6 @@ function createEnvelopeScenario(workbench: Workbench) {
         name: 'Envelope retrofit',
         kind: 'envelope',
         savingsPercent: 25,
-        appliesTo: 'residential',
       },
     }).outcome.status,
   ).toBe('applied')
@@ -290,7 +293,6 @@ describe('workbench commands', () => {
         name: 'Deep retrofit',
         kind: 'envelope',
         savingsPercent: 80,
-        appliesTo: 'all',
       },
     })
     expect(tooMuch.outcome).toMatchObject({
@@ -304,7 +306,6 @@ describe('workbench commands', () => {
           name: 'Rooftop PV',
           kind: 'pv',
           savingsPercent: 10,
-          appliesTo: 'all',
         },
       }).outcome.status,
     ).toBe('rejected')
@@ -317,7 +318,6 @@ describe('workbench commands', () => {
           name: '  envelope RETROFIT ',
           kind: 'heating',
           savingsPercent: 10,
-          appliesTo: 'all',
         },
       }).outcome,
     ).toMatchObject({ status: 'rejected', issues: [{ path: 'name' }] })
@@ -333,7 +333,11 @@ describe('workbench commands', () => {
     ).toMatchObject({ status: 'rejected', issues: [{ path: 'measureIds' }] })
 
     const scenario = Object.values(workbench.getState().scenarios)[0]
-    expect(scenario?.measureIds).toEqual([measureId])
+    expect(
+      scenario?.ruleIds.map(
+        (id) => workbench.getState().scenarioRules[id]?.measures.envelope,
+      ),
+    ).toEqual([measureId])
     const scenarioAsset =
       workbench.getState().assets[`asset:${scenario?.id ?? ''}`]
     expect(scenarioAsset).toMatchObject({
@@ -354,7 +358,6 @@ describe('workbench commands', () => {
         name: 'LED lighting',
         kind: 'lighting',
         savingsPercent: 8,
-        appliesTo: 'all',
       },
     })
     expect(states(workbench)).toMatchObject({
@@ -583,17 +586,22 @@ describe('scenario adoption', () => {
     const scenario = modelOneScenario(workbench)
     const state = workbench.getState()
     const modeled = state.results.scenarios[scenario.id]
-    const preview = computeScenarioResult(state, scenario, { runId: 'preview' })
-    expect(preview?.totalKwh).toBe(modeled?.totalKwh)
-
-    const higher = computeScenarioResult(state, scenario, {
-      runId: 'preview',
-      adoptionPercent: 100,
+    const preview = previewScenarioRules(state, {
+      id: scenario.id,
+      rules: scenarioRules(state, scenario),
+      adoptionPercent: scenario.adoptionPercent,
+      adoptionSeed: scenario.adoptionSeed,
     })
-    expect(higher?.totalKwh).toBeLessThan(modeled?.totalKwh ?? 0)
+    expect(preview.estimate?.scenarioKwh).toBe(modeled?.totalKwh)
+
+    const versions = state.results.scenarioVersions[scenario.id]
+    if (!versions) throw new Error('No versions were published')
+    const higher = aggregateScenario(scenario, versions, 100).result
+    expect(higher.totalKwh).toBeLessThan(modeled?.totalKwh ?? 0)
+    expect(preview.estimate?.fullKwh).toBe(higher.totalKwh)
   })
 
-  test('setting adoption validates input, marks scenario stages stale, and undoes', () => {
+  test('setting adoption validates input, re-aggregates without outdating stages, and undoes', () => {
     const workbench = setup()
     const scenario = modelOneScenario(workbench)
 
@@ -616,22 +624,28 @@ describe('scenario adoption', () => {
       issues: [{ path: 'adoptionPercent' }],
     })
 
+    const before = workbench.getState().results.scenarios[scenario.id]
     workbench.execute({
       type: 'scenario.setAdoption',
       input: { scenarioId: scenario.id, adoptionPercent: 80 },
     })
-    expect(workbench.getState().scenarios[scenario.id]?.adoptionPercent).toBe(
-      80,
-    )
+    const state = workbench.getState()
+    expect(state.scenarios[scenario.id]?.adoptionPercent).toBe(80)
+    // Adoption is a query-time setting: the result is re-aggregated from the
+    // same versions and run, and nothing becomes outdated.
+    const after = state.results.scenarios[scenario.id]
+    expect(after?.runId).toBe(before?.runId)
+    expect(after?.totalKwh).toBeLessThan(before?.totalKwh ?? 0)
     expect(states(workbench)).toMatchObject({
-      [S.scenarioDefinitions]: 'stale',
-      [S.scenarioModeling]: 'stale',
+      [S.scenarioDefinitions]: 'executed',
+      [S.scenarioModeling]: 'executed',
     })
 
     workbench.undo()
     expect(workbench.getState().scenarios[scenario.id]?.adoptionPercent).toBe(
       scenario.adoptionPercent,
     )
+    expect(workbench.getState().results.scenarios[scenario.id]).toEqual(before)
     expect(states(workbench)[S.scenarioModeling]).toBe('executed')
   })
 })

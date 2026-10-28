@@ -23,11 +23,7 @@ import { cx } from '../cx.ts'
 import { waitingReason } from '../service/usePendingReason.ts'
 import type { LibraryMeasure } from '../../domain/scenarios/library.ts'
 import { ActionButton } from '../components/ActionButton.tsx'
-import {
-  APPLIES_TO,
-  LIBRARY_READ_ONLY,
-  provenanceSentence,
-} from './definitionLabels.ts'
+import { LIBRARY_READ_ONLY, provenanceSentence } from './definitionLabels.ts'
 import { PropertyForm, TextProperty } from './PropertyForm.tsx'
 import { useEdits } from './useEdits.ts'
 
@@ -42,25 +38,23 @@ type MeasureFields = {
   name: string
   kind: MeasureKind
   savingsPercent: number
-  appliesTo: Measure['appliesTo']
 }
 
 const EMPTY: MeasureFields = {
   name: '',
   kind: 'envelope',
   savingsPercent: 10,
-  appliesTo: 'all',
 }
 
 function isKind(value: string): value is MeasureKind {
   return MEASURE_KINDS.some((kind) => kind.value === value)
 }
 
-function isAppliesTo(value: string): value is Measure['appliesTo'] {
-  return APPLIES_TO.some((option) => option.value === value)
-}
-
-/** A measure in Properties: its name, kind, savings, and the buildings it applies to. */
+/**
+ * A measure in Properties: its name, kind (its category), and savings.
+ * Scenario rules choose the buildings that take it (decision 0032, stage 3),
+ * so the form lists the rules that assign it.
+ */
 export function MeasureProperties({
   measure,
   library = null,
@@ -83,13 +77,18 @@ export function MeasureProperties({
   )
   const { client, workbench } = useServices()
   const pending = useClientSnapshot((snapshot) => snapshot.pending)
+  const state = useWorkbenchSnapshot((snapshot) => snapshot.state)
+  const usedBy = measure
+    ? Object.values(state.scenarioRules).filter((rule) =>
+        Object.values(rule.measures).includes(measure.id),
+      )
+    : []
   const edits = useEdits<MeasureFields>(
     measure
       ? {
           name: measure.name,
           kind: measure.kind,
           savingsPercent: measure.savingsPercent,
-          appliesTo: measure.appliesTo,
         }
       : EMPTY,
     library
@@ -277,35 +276,20 @@ export function MeasureProperties({
           {errors.savingsPercent}
         </FieldError>
       </NumberField>
-      <RadioGroup
-        className={cx(
-          formStyles.field,
-          highlight('appliesTo') && formStyles.edited,
-        )}
-        value={draft.appliesTo}
-        isReadOnly={readOnly}
-        orientation="horizontal"
-        isInvalid={Boolean(errors.appliesTo)}
-        onChange={(value) => {
-          if (isAppliesTo(value)) update('appliesTo', value)
-        }}
-      >
-        <Label className={formStyles.label}>Applies to</Label>
-        <div className={formStyles.options}>
-          {APPLIES_TO.map((option) => (
-            <Radio
-              key={option.value}
-              value={option.value}
-              className={formStyles.radio}
-            >
-              {option.label}
-            </Radio>
-          ))}
-        </div>
-        <FieldError className={formStyles.fieldError}>
-          {errors.appliesTo}
-        </FieldError>
-      </RadioGroup>
+      <p className={formStyles.description}>
+        {library
+          ? `${library.description} Scenario rules choose the buildings that take it.`
+          : usedBy.length === 0
+            ? 'No scenario rule assigns it yet. Scenario rules choose the buildings that take a measure.'
+            : `Assigned by ${usedBy.length === 1 ? 'the rule' : `${usedBy.length} rules:`} ${usedBy
+                .map(
+                  (rule) =>
+                    `"${rule.name}" in "${state.scenarios[rule.scenarioId]?.name ?? rule.scenarioId}"`,
+                )
+                .join(
+                  ', ',
+                )}. Its kind cannot change while a rule assigns it as this category.`}
+      </p>
     </PropertyForm>
   )
 }

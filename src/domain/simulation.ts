@@ -1,4 +1,4 @@
-import { GROUP, removeAsset, upsertAsset } from './assets.ts'
+import { GROUP, upsertAsset } from './assets.ts'
 import { previewAssignment } from './archetypes/assignment.ts'
 import {
   PART_LABELS,
@@ -13,11 +13,9 @@ import type {
   GridElement,
   HeldAssignmentOutput,
   HeldPreprocessingOutput,
-  HeldScenarioOutput,
   LngLat,
   Provenance,
   ResultSet,
-  Scenario,
   WorkbenchState,
 } from './types.ts'
 import { PART_KINDS } from './types.ts'
@@ -139,11 +137,14 @@ export function round(value: number, digits = 0): number {
   return Math.round(value * factor) / factor
 }
 
-function megawattHours(kwh: number): string {
+export function megawattHours(kwh: number): string {
   return `${round(kwh / 1000).toLocaleString('en-US')} MWh`
 }
 
-function fromStage(stageId: string, context: StageRunContext): Provenance {
+export function fromStage(
+  stageId: string,
+  context: StageRunContext,
+): Provenance {
   return {
     kind: 'stage',
     stageId,
@@ -185,7 +186,7 @@ function applyFloorOverrides(state: WorkbenchState): number {
   return applied
 }
 
-function makeResultSet(
+export function makeResultSet(
   id: string,
   label: string,
   runId: string,
@@ -640,14 +641,13 @@ function setUpBaseline(
   }
 }
 
-function usesPvWithoutYield(state: WorkbenchState): boolean {
-  const pvMeasureIds = new Set(
-    Object.values(state.measures)
-      .filter((measure) => measure.kind === 'pv')
-      .map((measure) => measure.id),
-  )
-  const scenariosUsePv = Object.values(state.scenarios).some((scenario) =>
-    scenario.measureIds.some((id) => pvMeasureIds.has(id)),
+/** Whether a scenario rule assigns a PV measure while no building has a PV yield. */
+export function usesPvWithoutYield(state: WorkbenchState): boolean {
+  const scenariosUsePv = Object.values(state.scenarioRules).some(
+    (rule) =>
+      rule.enabled &&
+      rule.measures.pv !== null &&
+      state.measures[rule.measures.pv]?.kind === 'pv',
   )
   const hasYield = state.buildingIds.some(
     (id) => (state.buildings[id]?.pvYieldKwh ?? null) !== null,
@@ -676,128 +676,24 @@ function confirmScenarioDefinitions(state: WorkbenchState): StageRunResult {
         'PV measures will have no effect because shading and PV yield were not estimated.',
       ]
     : []
-  return {
-    ok: true,
-    summary: `Confirmed ${scenarios.length} scenario(s) using ${Object.keys(state.measures).length} measure(s).`,
-    warnings,
-  }
-}
-
-export type ScenarioResultOptions = {
-  runId: string
-  /** Overrides the scenario's saved adoption, for what-if previews. */
-  adoptionPercent?: number
-}
-
-/**
- * Synthetic scenario demand against the baseline. Shared by the scenario
- * modeling stage and dashboard previews so both use exactly the same formula.
- */
-export function computeScenarioResult(
-  state: WorkbenchState,
-  scenario: Scenario,
-  options: ScenarioResultOptions,
-): ResultSet | null {
-  const baseline = state.results.baseline
-  if (!baseline) return null
-  const measures = scenario.measureIds.flatMap((id) => {
-    const measure = state.measures[id]
-    return measure ? [measure] : []
-  })
-  const adoption = (options.adoptionPercent ?? scenario.adoptionPercent) / 100
-  const byBuildingKwh: Record<string, number> = {}
-  for (const [buildingId, kwh] of Object.entries(baseline.byBuildingKwh)) {
-    const building = state.buildings[buildingId]
-    const applicable = measures.filter(
-      (measure) =>
-        measure.appliesTo === 'all' || measure.appliesTo === building?.use,
-    )
-    const savingsPercent = Math.min(
-      60,
-      applicable
-        .filter((measure) => measure.kind !== 'pv')
-        .reduce((sum, measure) => sum + measure.savingsPercent, 0),
-    )
-    const pvOffset = applicable.some((measure) => measure.kind === 'pv')
-      ? (building?.pvYieldKwh ?? 0) * adoption
-      : 0
-    byBuildingKwh[buildingId] = Math.max(
-      0,
-      round(kwh * (1 - (savingsPercent / 100) * adoption) - pvOffset),
-    )
-  }
-  return makeResultSet(
-    `result:${scenario.id}`,
-    scenario.name,
-    options.runId,
-    byBuildingKwh,
+  const ruleless = scenarios.filter(
+    (scenario) =>
+      scenario.included &&
+      !scenario.ruleIds.some((id) => state.scenarioRules[id]?.enabled),
   )
-}
-
-/** Why held scenario results cannot be published together, or null. */
-export function validateScenarioResults(
-  state: WorkbenchState,
-  membership: string[],
-  held: Record<string, HeldScenarioOutput>,
-): string | null {
-  if (!state.results.baseline) return 'there are no baseline results'
-  for (const id of membership) {
-    if (!state.scenarios[id]) return `scenario ${id} no longer exists`
-    if (!held[id]) return `scenario ${id} has no held result`
-  }
-  return null
-}
-
-/**
- * Publishes a requested comparison set at once: the modeled scenarios replace
- * the earlier set, and results of scenarios left out of it are withdrawn.
- */
-export function publishScenarioResults(
-  state: WorkbenchState,
-  membership: string[],
-  held: Record<string, HeldScenarioOutput>,
-  context: StageRunContext,
-): StageRunResult {
-  const baseline = state.results.baseline
-  if (!baseline) {
-    return {
-      ok: false,
-      message: 'No baseline results. Run "Baseline model setup".',
-    }
-  }
-  const provenance = fromStage(STAGE_IDS.scenarioModeling, context)
-  for (const id of Object.keys(state.results.scenarios)) {
-    if (!membership.includes(id)) removeAsset(state, `asset:result-${id}`)
-  }
-  state.results.scenarios = {}
-  let bestReduction = 0
-  for (const id of membership) {
-    const scenario = state.scenarios[id]
-    const output = held[id]
-    if (!scenario || !output) continue
-    const result = { ...output.result, runId: context.runId }
-    state.results.scenarios[id] = result
-    bestReduction = Math.max(
-      bestReduction,
-      1 - result.totalKwh / baseline.totalKwh,
+  if (ruleless.length > 0) {
+    warnings.push(
+      `${ruleless.map((scenario) => `"${scenario.name}"`).join(', ')} ${ruleless.length === 1 ? 'has' : 'have'} no enabled rule, so ${ruleless.length === 1 ? 'its results equal' : 'their results equal'} the baseline.`,
     )
-    upsertAsset(state, {
-      id: `asset:result-${id}`,
-      kind: 'energyResult',
-      name: `${scenario.name} results`,
-      parentId: GROUP.energyResults,
-      provenance,
-      capability: 'dashboard.comparison',
-      summary: `${megawattHours(result.totalKwh)}/yr (synthetic)`,
-      entityIds: [id],
-    })
   }
+  const rules = scenarios.reduce(
+    (sum, scenario) => sum + scenario.ruleIds.length,
+    0,
+  )
   return {
     ok: true,
-    summary: `Modeled ${membership.length} scenario(s) as one comparison set; largest reduction ${round(bestReduction * 100, 1)}%.`,
-    warnings: usesPvWithoutYield(state)
-      ? ['PV measures had no effect because PV yield was not estimated.']
-      : [],
+    summary: `Confirmed ${scenarios.length} scenario(s) with ${rules} rule(s) over ${Object.keys(state.measures).length} measure(s).`,
+    warnings,
   }
 }
 

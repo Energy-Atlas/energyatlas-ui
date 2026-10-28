@@ -138,6 +138,7 @@ describe('buildInspection', () => {
           byBuildingKwh: { B1: 40000 },
         },
         scenarios: {},
+        scenarioVersions: {},
       },
       gridElements: {
         T1: {
@@ -232,6 +233,7 @@ describe('buildInspection', () => {
           byBuildingKwh: {},
         },
         scenarios: {},
+        scenarioVersions: {},
       },
       selection: { entityType: 'building', ids: ['B1'] },
     })

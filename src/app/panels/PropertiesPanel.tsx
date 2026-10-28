@@ -11,6 +11,7 @@ import type { SelectableEntity } from '../../domain/types.ts'
 import { PART_KINDS } from '../../domain/types.ts'
 import { PartProperties } from '../properties/PartProperties.tsx'
 import { RuleProperties } from '../properties/RuleProperties.tsx'
+import { ScenarioRuleProperties } from '../properties/ScenarioRuleProperties.tsx'
 import { useServices, useWorkbenchSnapshot } from '../WorkbenchContext.tsx'
 import { ActionButton } from '../components/ActionButton.tsx'
 import { CapabilityBadge } from '../components/CapabilityBadge.tsx'
@@ -250,6 +251,33 @@ function DefinitionProperties() {
       />
     )
   }
+  const newRuleScenario = creating?.startsWith('scenarioRule:')
+    ? state.scenarios[creating.slice('scenarioRule:'.length)]
+    : undefined
+  if (newRuleScenario) {
+    return (
+      <ScenarioRuleProperties
+        key={`new:${newRuleScenario.id}`}
+        scenario={newRuleScenario}
+        rule={null}
+        onCreated={select('scenarioRule')}
+        onCancelCreate={cancel}
+      />
+    )
+  }
+  if (entityType === 'scenarioRule' && id && !creating) {
+    const rule = state.scenarioRules[id]
+    const scenario = rule ? state.scenarios[rule.scenarioId] : undefined
+    return rule && scenario ? (
+      <ScenarioRuleProperties
+        key={rule.id}
+        scenario={scenario}
+        rule={rule}
+        onCreated={select('scenarioRule')}
+        onCancelCreate={cancel}
+      />
+    ) : null
+  }
   const newPart = PART_KINDS.find((kind) => creating === `part:${kind}`)
   if (newPart) {
     return (
@@ -317,7 +345,6 @@ function DefinitionProperties() {
           name: entry.name,
           kind: entry.kind,
           savingsPercent: entry.savingsPercent,
-          appliesTo: entry.appliesTo,
           source: { kind: 'library', libraryId: entry.libraryId },
         }}
         library={entry}
@@ -402,9 +429,9 @@ export function PropertiesPanel() {
           </p>
           <p className={styles.muted}>
             Select buildings or grid elements on the Map or Table page, an
-            asset, or an assignment rule, archetype, part, schedule, measure, or
-            scenario to see its properties here. Definitions are edited here
-            too.
+            asset, or an assignment rule, archetype, part, schedule, measure,
+            scenario, or scenario rule to see its properties here. Definitions
+            are edited here too.
           </p>
           <div className={styles.actions}>{pageActions}</div>
         </div>

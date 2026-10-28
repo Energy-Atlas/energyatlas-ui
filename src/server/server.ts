@@ -60,6 +60,11 @@ export const SERVER_COMMANDS: ReadonlySet<Command['type']> = new Set([
   'measure.create',
   'scenario.create',
   'scenario.setAdoption',
+  'scenarioRule.save',
+  'scenarioRule.move',
+  'scenarioRule.setEnabled',
+  'scenarioRule.duplicate',
+  'scenarioRule.remove',
 ])
 
 /** Server commands that change the project model, refused while a run holds it. */
@@ -85,6 +90,11 @@ export const MODEL_COMMANDS: ReadonlySet<Command['type']> = new Set([
   'measure.create',
   'scenario.create',
   'scenario.setAdoption',
+  'scenarioRule.save',
+  'scenarioRule.move',
+  'scenarioRule.setEnabled',
+  'scenarioRule.duplicate',
+  'scenarioRule.remove',
 ])
 
 export type ServerRequest =

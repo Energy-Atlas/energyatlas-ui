@@ -25,6 +25,7 @@ export function selectableCollection(
     | 'schedules'
     | 'measures'
     | 'scenarios'
+    | 'scenarioRules'
     | 'assets'
     | 'workflow'
   >,
@@ -57,5 +58,7 @@ export function selectableCollection(
       return state.parts
     case 'assignmentRule':
       return state.rules
+    case 'scenarioRule':
+      return state.scenarioRules
   }
 }

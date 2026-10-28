@@ -90,12 +90,10 @@ describe('results view', () => {
 
   test('outdated results stay exportable and say so', () => {
     const workbench = complete()
+    const first = Object.values(workbench.getState().scenarios)[0]
     workbench.execute({
-      type: 'scenario.setAdoption',
-      input: {
-        scenarioId: Object.keys(workbench.getState().scenarios)[0] ?? '',
-        adoptionPercent: 10,
-      },
+      type: 'scenarioRule.setEnabled',
+      input: { ruleId: first?.ruleIds[0] ?? '', enabled: false },
     })
     const scenario = entries(workbench)[1]
     if (!scenario) throw new Error('Missing scenario')
@@ -103,6 +101,31 @@ describe('results view', () => {
     expect(resultCsv(workbench.getState(), scenario, 'now')).toContain(
       '# currentness: outdated; inputs changed after this run',
     )
+  })
+
+  test('a scenario export names its aggregation and each building adoption', () => {
+    const workbench = complete()
+    const first = Object.values(workbench.getState().scenarios)[0]
+    workbench.execute({
+      type: 'scenario.setAdoption',
+      input: { scenarioId: first?.id ?? '', adoptionPercent: 60 },
+    })
+    const scenario = entries(workbench)[1]
+    if (!scenario?.aggregation) throw new Error('Missing aggregation')
+    // Adoption re-aggregates; the result stays current.
+    expect(scenario.current).toBe(true)
+    const csv = resultCsv(workbench.getState(), scenario, 'now')
+    expect(csv).toContain(
+      `# aggregated at: 60% adoption, seed 42: ${scenario.aggregation.adoptedIds.length} of ${scenario.aggregation.eligible} affected buildings adopt`,
+    )
+    const lines = csv.trim().split('\n')
+    const header = lines.findIndex((text) => text.startsWith('building_id'))
+    expect(lines[header]?.endsWith(',saving_vs_baseline[kWh],adoption')).toBe(
+      true,
+    )
+    const adopted = lines.filter((text) => text.endsWith(',adopted')).length
+    expect(adopted).toBe(scenario.aggregation.adoptedIds.length)
+    expect(lines.some((text) => text.endsWith(',not adopted'))).toBe(true)
   })
 
   test('held results never appear before publication', () => {

@@ -50,7 +50,6 @@ function defineScenario(engine: Workbench) {
         name: 'Envelope retrofit',
         kind: 'envelope',
         savingsPercent: 20,
-        appliesTo: 'all',
       },
     },
     'system',

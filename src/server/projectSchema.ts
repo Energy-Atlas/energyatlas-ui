@@ -9,11 +9,13 @@ import {
   CONDITION_OPERATORS,
 } from '../domain/rules/conditions.ts'
 import {
+  MEASURE_KINDS,
   PART_KINDS,
   SELECTABLE_ENTITIES,
   type WorkbenchState,
 } from '../domain/types.ts'
 import { migrateArchetypeParts } from './migrateArchetypes.ts'
+import { migrateScenarioRules } from './migrateScenarios.ts'
 
 const id = z.string().min(1)
 const text = z.string()
@@ -107,9 +109,33 @@ const heldAssignment = z.object({
   kind: z.literal('assignment'),
   parts: buildingParts,
 })
+const measureKind = z.enum(MEASURE_KINDS)
+const measureSlots = z.object({
+  envelope: id.nullable(),
+  heating: id.nullable(),
+  lighting: id.nullable(),
+  pv: id.nullable(),
+})
+const assignedMeasure = z
+  .object({ measureId: id, ruleId: id, ruleName: text })
+  .nullable()
+const buildingMeasures = z.object({
+  envelope: assignedMeasure,
+  heating: assignedMeasure,
+  lighting: assignedMeasure,
+  pv: assignedMeasure,
+})
+const scenarioVersions = z.object({
+  runId: id,
+  baselineRunId: id,
+  baseKwh: record(number),
+  alternativeKwh: record(number),
+  measures: record(buildingMeasures),
+})
+// Saves from before scenario rules are migrated first (migrateScenarios.ts).
 const heldScenario = z.object({
-  kind: z.literal('scenarioResult'),
-  result,
+  kind: z.literal('scenarioVersions'),
+  versions: scenarioVersions,
 })
 const heldPreprocessing = z.object({
   heightM: number,
@@ -182,6 +208,21 @@ const rule = z.object({
   ),
   parts: partIds,
   origin: z.enum(['default', 'project']),
+})
+const scenarioRule = z.object({
+  id,
+  scenarioId: id,
+  name: text,
+  enabled: z.boolean(),
+  logic: z.enum(['all', 'any', 'none']),
+  conditions: z.array(
+    z.object({
+      field: z.enum(CONDITION_FIELD_IDS).nullable(),
+      operator: z.enum(CONDITION_OPERATORS),
+      value: text,
+    }),
+  ),
+  measures: measureSlots,
 })
 const hours = z.array(number).length(24)
 // Schedules saved before day types had one weekday and one weekend profile;
@@ -351,16 +392,8 @@ const savedState = z
       z.object({
         id,
         name: text,
-        kind: z.enum(['envelope', 'heating', 'lighting', 'pv']),
+        kind: measureKind,
         savingsPercent: number,
-        appliesTo: z.enum([
-          'all',
-          'residential',
-          'office',
-          'retail',
-          'school',
-          'mixed',
-        ]),
         source: definitionSource.default({
           kind: 'project',
           operationId: 'saved-before-library',
@@ -371,14 +404,17 @@ const savedState = z
       z.object({
         id,
         name: text,
-        measureIds: ids,
+        ruleIds: ids,
         adoptionPercent: number,
+        adoptionSeed: number.int().nonnegative(),
         included: z.boolean().default(true),
       }),
     ),
+    scenarioRules: record(scenarioRule),
     results: z.object({
       baseline: result.nullable(),
       scenarios: record(result),
+      scenarioVersions: record(scenarioVersions),
     }),
     gridElements: record(
       z.object({
@@ -614,6 +650,7 @@ const savedState = z
       state.archetypes,
       state.parts,
       state.rules,
+      state.scenarioRules,
       state.gridElements,
       state.runGroups,
     ]
@@ -626,8 +663,26 @@ const savedState = z
       if (asset.parentId !== null && !(asset.parentId in state.assets))
         fail('An asset parent is missing.')
     }
-    for (const scenario of Object.values(state.scenarios))
-      references(scenario.measureIds, state.measures)
+    for (const scenario of Object.values(state.scenarios)) {
+      references(scenario.ruleIds, state.scenarioRules)
+      for (const ruleId of scenario.ruleIds)
+        if (state.scenarioRules[ruleId]?.scenarioId !== scenario.id)
+          fail('A scenario lists a rule of another scenario.')
+    }
+    const listed = Object.values(state.scenarios).flatMap(
+      (scenario) => scenario.ruleIds,
+    )
+    if (listed.length !== Object.keys(state.scenarioRules).length)
+      fail('A scenario rule is missing from its scenario.')
+    for (const rule of Object.values(state.scenarioRules))
+      for (const kind of MEASURE_KINDS) {
+        const measureId = rule.measures[kind]
+        if (measureId !== null && state.measures[measureId]?.kind !== kind)
+          fail('A scenario rule refers to a missing measure.')
+      }
+    for (const key of Object.keys(state.results.scenarioVersions))
+      if (!(key in state.results.scenarios))
+        fail('Scenario versions have no published result.')
     for (const task of Object.values(state.tasks))
       if (!(task.stageId in state.workflow.stages))
         fail('A job stage is missing.')
@@ -677,9 +732,15 @@ const savedState = z
       fail('A saved graph contains a cycle.')
   })
 
-/** Saves from before archetype parts are migrated before they are checked. */
+/**
+ * Saves from before archetype parts (stage 2) and before scenario rules
+ * (stage 3) are migrated before they are checked.
+ */
 export const projectStateSchema: z.ZodType<WorkbenchState, unknown> =
-  z.preprocess(migrateArchetypeParts, savedState)
+  z.preprocess(
+    (value) => migrateScenarioRules(migrateArchetypeParts(value)),
+    savedState,
+  )
 
 /**
  * The views saved beside the model: table arrangements (decision 0029), the

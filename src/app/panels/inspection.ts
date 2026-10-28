@@ -3,7 +3,8 @@ import {
   archetypeLabel,
   effectiveParts,
 } from '../../domain/archetypes/parts.ts'
-import { PART_KINDS } from '../../domain/types.ts'
+import { isAdopted } from '../../domain/scenarios/rules.ts'
+import { MEASURE_KINDS, PART_KINDS } from '../../domain/types.ts'
 import type {
   Building,
   EditableBuildingField,
@@ -184,6 +185,27 @@ function inspectBuilding(
     results.push({
       label: `${scenario.name} demand`,
       value: `${formatDemand(kwh)}${compareWithBaseline(kwh, baselineKwh)}`,
+    })
+    // Which measures the scenario's rules gave it, and whether it adopts them.
+    const versions = state.results.scenarioVersions[scenario.id]
+    if (!versions) continue
+    const taken = versions.measures[building.id]
+    const names = taken
+      ? MEASURE_KINDS.flatMap((kind) => {
+          const measure = taken[kind]
+          return measure
+            ? [
+                `${state.measures[measure.measureId]?.name ?? measure.measureId} (rule ${measure.ruleName})`,
+              ]
+            : []
+        })
+      : []
+    results.push({
+      label: `${scenario.name} measures`,
+      value:
+        names.length === 0
+          ? 'None: no rule gives this building a measure.'
+          : `${names.join(', ')}; ${isAdopted(scenario.adoptionSeed, building.id, scenario.adoptionPercent) ? 'adopted' : 'not adopted'} at ${scenario.adoptionPercent}% adoption, seed ${scenario.adoptionSeed}.`,
     })
   }
 

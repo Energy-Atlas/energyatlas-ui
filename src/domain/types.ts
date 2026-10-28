@@ -239,24 +239,90 @@ export type Schedule = {
   source: DefinitionSource
 }
 
+/**
+ * A measure's category: a scenario rule assigns at most one measure of each
+ * (decision 0032, stage 3). The demo keeps its four kinds rather than RC's
+ * seven categories; see docs/scenario-rules.md.
+ */
 export type MeasureKind = 'envelope' | 'heating' | 'lighting' | 'pv'
 
+export const MEASURE_KINDS = [
+  'envelope',
+  'heating',
+  'lighting',
+  'pv',
+] as const satisfies readonly MeasureKind[]
+
+/**
+ * A retrofit measure. Which buildings take it is decided by scenario rules,
+ * not by the measure (decision 0032, stage 3).
+ */
 export type Measure = {
   id: string
   name: string
   kind: MeasureKind
   savingsPercent: number
-  appliesTo: BuildingUse | 'all'
   source: DefinitionSource
+}
+
+/**
+ * A scenario rule (decision 0032, stage 3), RC's measure rule shape:
+ * conditions on building attributes and at most one measure per category.
+ * A scenario's rules are tried top first; each category takes the first
+ * enabled matching rule that sets it.
+ */
+export type ScenarioRule = {
+  id: string
+  /** The scenario whose `ruleIds` list the rule. */
+  scenarioId: string
+  name: string
+  enabled: boolean
+  logic: RuleLogic
+  conditions: RuleCondition[]
+  /** The measure of each category the rule assigns; null leaves it to later rules. */
+  measures: Record<MeasureKind, string | null>
 }
 
 export type Scenario = {
   id: string
   name: string
-  measureIds: string[]
+  /** The scenario's rules in `scenarioRules`, top first. */
+  ruleIds: string[]
+  /**
+   * The share of affected buildings that adopt their alternative version,
+   * applied when results are aggregated, not in the rules (RC's penetration).
+   */
   adoptionPercent: number
+  /** The fixed seed adoption sampling hashes with each building id. */
+  adoptionSeed: number
   /** Whether Scenario modeling includes it in the requested comparison set. */
   included: boolean
+}
+
+/** A measure a rule gave a building, with the rule's name when it ran. */
+export type AssignedMeasure = {
+  measureId: string
+  ruleId: string
+  ruleName: string
+}
+
+export type BuildingMeasures = Record<MeasureKind, AssignedMeasure | null>
+
+/**
+ * What Scenario modeling publishes for a scenario: each affected building's
+ * alternative version over the baseline it modeled against. Adoption is
+ * sampled from these when results are aggregated.
+ */
+export type ScenarioVersions = {
+  runId: string
+  /** The baseline run the versions were modeled against. */
+  baselineRunId: string
+  /** Every modeled building's baseline demand, kWh a year. */
+  baseKwh: Record<string, number>
+  /** Each affected building's demand with its measures, kWh a year. */
+  alternativeKwh: Record<string, number>
+  /** The measures each affected building takes, by the rule that set each. */
+  measures: Record<string, BuildingMeasures>
 }
 
 export type ResultSet = {
@@ -441,10 +507,10 @@ export type HeldAssignmentOutput = {
   parts: BuildingParts
 }
 
-/** One scenario's held result, published with the whole comparison set. */
+/** One scenario's held alternative versions, published with the whole comparison set. */
 export type HeldScenarioOutput = {
-  kind: 'scenarioResult'
-  result: ResultSet
+  kind: 'scenarioVersions'
+  versions: ScenarioVersions
 }
 
 export type HeldOutput =
@@ -576,6 +642,7 @@ export type SelectableEntity =
   | 'libraryMeasure'
   | 'archetypePart'
   | 'assignmentRule'
+  | 'scenarioRule'
 
 export const SELECTABLE_ENTITIES = [
   'building',
@@ -591,6 +658,7 @@ export const SELECTABLE_ENTITIES = [
   'libraryMeasure',
   'archetypePart',
   'assignmentRule',
+  'scenarioRule',
 ] as const satisfies readonly SelectableEntity[]
 
 export type Selection = {
@@ -638,7 +706,15 @@ export type WorkbenchState = {
   schedules: Record<string, Schedule>
   measures: Record<string, Measure>
   scenarios: Record<string, Scenario>
-  results: { baseline: ResultSet | null; scenarios: Record<string, ResultSet> }
+  /** Scenario rules by id (decision 0032, stage 3); each scenario orders its own. */
+  scenarioRules: Record<string, ScenarioRule>
+  results: {
+    baseline: ResultSet | null
+    /** Each modeled scenario aggregated at its adoption, read by every result view. */
+    scenarios: Record<string, ResultSet>
+    /** The alternative versions each modeled scenario's aggregate is sampled from. */
+    scenarioVersions: Record<string, ScenarioVersions>
+  }
   gridElements: Record<string, GridElement>
   gridResult: GridResult | null
   overrides: Record<string, ManualOverride>

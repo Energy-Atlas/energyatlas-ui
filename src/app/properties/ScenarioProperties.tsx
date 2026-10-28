@@ -11,43 +11,73 @@ import {
   Text,
 } from 'react-aria-components'
 import {
+  DEFAULT_ADOPTION_SEED,
   KIND_LABELS,
-  compositionConflict,
-  previewScenario,
-} from '../../domain/scenarios/comparison.ts'
-import type { Scenario } from '../../domain/types.ts'
+  kindNoun,
+  emptyMeasures,
+  previewScenarioRules,
+  scenarioRules,
+} from '../../domain/scenarios/rules.ts'
+import type { Measure, Scenario, ScenarioRule } from '../../domain/types.ts'
 import {
   useClientSnapshot,
   useServices,
   useWorkbenchSnapshot,
 } from '../WorkbenchContext.tsx'
 import { splitIssues } from '../commandErrors.ts'
+import { ActionButton } from '../components/ActionButton.tsx'
 import { CapabilityBadge } from '../components/CapabilityBadge.tsx'
 import componentStyles from '../components/components.module.css'
 import formStyles from '../components/forms.module.css'
 import { cx } from '../cx.ts'
+import { formatEnergy } from '../format.ts'
 import { waitingReason } from '../service/usePendingReason.ts'
 import { PropertyForm, TextProperty } from './PropertyForm.tsx'
 import { useEdits } from './useEdits.ts'
 
 type ScenarioFields = {
   name: string
-  measureIds: string[]
   adoptionPercent: number
+  /** Text while edited; the server checks it is a whole number. */
+  adoptionSeed: string
   included: boolean
+  /** Only when creating: measures for a first rule without conditions. */
+  measureIds: string[]
 }
 
 const EMPTY: ScenarioFields = {
   name: '',
-  measureIds: [],
   adoptionPercent: 50,
+  adoptionSeed: String(DEFAULT_ADOPTION_SEED),
   included: true,
+  measureIds: [],
+}
+
+/** Two chosen measures of one category, in words, or null. */
+function categoryConflict(
+  measures: Record<string, Measure>,
+  ids: string[],
+): string | null {
+  const seen = new Map<Measure['kind'], string>()
+  for (const id of ids) {
+    const measure = measures[id]
+    if (!measure) continue
+    const other = seen.get(measure.kind)
+    if (other) {
+      return `"${other}" and "${measure.name}" are both ${kindNoun(measure.kind)} measures. A rule assigns at most one measure of each category.`
+    }
+    seen.set(measure.kind, measure.name)
+  }
+  return null
 }
 
 /**
- * A scenario in Properties: its name, its measures (one of each kind), the
- * adoption level, and whether Scenario modeling compares it, with a
- * synthetic preview of the buildings it affects.
+ * A scenario in Properties (decision 0032, stage 3): its name, whether
+ * Scenario modeling compares it, and its adoption: the share of affected
+ * buildings that adopt, sampled with a fixed seed when results are
+ * aggregated, so changing it re-aggregates without modeling again. Its rules
+ * are listed on the Measures and scenarios page and edited as scenario
+ * rules. A new scenario can start with one rule for every building.
  */
 export function ScenarioProperties({
   scenario,
@@ -59,7 +89,7 @@ export function ScenarioProperties({
   onCreated: (id: string) => void
   onCancelCreate: () => void
 }) {
-  const { client, workbench } = useServices()
+  const { client, workbench, layout, view } = useServices()
   const pending = useClientSnapshot((snapshot) => snapshot.pending)
   const state = useWorkbenchSnapshot((snapshot) => snapshot.state)
   const measures = Object.values(state.measures)
@@ -67,9 +97,10 @@ export function ScenarioProperties({
     scenario
       ? {
           name: scenario.name,
-          measureIds: scenario.measureIds,
           adoptionPercent: scenario.adoptionPercent,
+          adoptionSeed: String(scenario.adoptionSeed),
           included: scenario.included,
+          measureIds: [],
         }
       : EMPTY,
     scenario ? `scenario:${scenario.id}` : 'new:scenario',
@@ -78,8 +109,38 @@ export function ScenarioProperties({
   const [error, setError] = useState<string | null>(null)
   const draft = edits.value
   const creating = scenario === null
-  const conflict = compositionConflict(state.measures, draft.measureIds)
-  const preview = useMemo(() => previewScenario(state, draft), [state, draft])
+  const conflict = creating
+    ? categoryConflict(state.measures, draft.measureIds)
+    : null
+  const seed = Number(draft.adoptionSeed)
+  const preview = useMemo(() => {
+    // A new scenario previews the rule it would start with.
+    const rules: ScenarioRule[] = scenario
+      ? scenarioRules(state, scenario)
+      : draft.measureIds.length > 0 && !conflict
+        ? [
+            {
+              id: 'preview:all',
+              scenarioId: 'preview',
+              name: 'All buildings',
+              enabled: true,
+              logic: 'all',
+              conditions: [],
+              measures: draft.measureIds.reduce((slots, id) => {
+                const measure = state.measures[id]
+                if (measure) slots[measure.kind] = id
+                return slots
+              }, emptyMeasures()),
+            },
+          ]
+        : []
+    return previewScenarioRules(state, {
+      id: scenario?.id,
+      rules,
+      adoptionPercent: draft.adoptionPercent,
+      adoptionSeed: Number.isInteger(seed) ? seed : DEFAULT_ADOPTION_SEED,
+    })
+  }, [state, scenario, draft.measureIds, draft.adoptionPercent, seed, conflict])
   const highlight = (field: keyof ScenarioFields) =>
     !creating && edits.isEdited(field)
   const update = <K extends keyof ScenarioFields>(
@@ -96,23 +157,41 @@ export function ScenarioProperties({
   }
 
   const submit = () => {
+    const adoptionSeed =
+      draft.adoptionSeed.trim() === '' ? Number.NaN : Number(draft.adoptionSeed)
+    const before = new Set(Object.keys(workbench.getState().scenarios))
     void (
       scenario
         ? client.execute({
             type: 'scenario.update',
-            input: { ...draft, id: scenario.id },
+            input: {
+              id: scenario.id,
+              name: draft.name,
+              adoptionPercent: draft.adoptionPercent,
+              adoptionSeed,
+              included: draft.included,
+            },
           })
-        : client.execute({ type: 'scenario.create', input: draft })
+        : client.execute({
+            type: 'scenario.create',
+            input: {
+              name: draft.name,
+              adoptionPercent: draft.adoptionPercent,
+              adoptionSeed,
+              included: draft.included,
+              measureIds: draft.measureIds,
+            },
+          })
     ).then((result) => {
       if (result.outcome.status === 'applied') {
         setErrors({})
         setError(null)
         edits.reset()
         if (creating) {
-          const created = Object.values(workbench.getState().scenarios).find(
-            (item) => item.name === draft.name.trim(),
+          const created = Object.keys(workbench.getState().scenarios).find(
+            (id) => !before.has(id),
           )
-          if (created) onCreated(created.id)
+          if (created) onCreated(created)
         }
         return
       }
@@ -122,11 +201,36 @@ export function ScenarioProperties({
     })
   }
 
+  const modeled = scenario
+    ? Boolean(state.results.scenarioVersions[scenario.id])
+    : false
+  const ruleCount = scenario?.ruleIds.length ?? 0
+  const previewText = (() => {
+    if (scenario && ruleCount === 0) {
+      return 'No rules yet: the scenario changes no building. Add rules on the Measures and scenarios page.'
+    }
+    if (creating && draft.measureIds.length === 0) {
+      return 'Optionally choose measures for a first rule that applies to every building, or add rules after creating the scenario.'
+    }
+    if (preview.affectedIds.length === 0) {
+      return 'No building takes a measure with these rules.'
+    }
+    const taking = `${preview.affectedIds.length} of ${preview.buildings} buildings take a measure; ${preview.adoptedIds.length} adopt at ${draft.adoptionPercent}% adoption.`
+    return preview.estimate
+      ? `${taking} Estimated ${preview.estimate.reductionPercent}% lower annual demand than the baseline (${formatEnergy(preview.estimate.scenarioKwh)} a year; ${preview.estimate.fullReductionPercent}% if every affected building adopted). Synthetic preview.`
+      : `${taking} ${preview.reason ?? ''}`
+  })()
+
   return (
     <PropertyForm
       eyebrow="Scenario"
       title={scenario ? scenario.name : 'New scenario'}
       meta={<CapabilityBadge id="creator.scenario" />}
+      provenance={
+        scenario
+          ? `${ruleCount} rule${ruleCount === 1 ? '' : 's'}, tried top first.${modeled ? ' Adoption and seed apply when results are aggregated: saving them re-aggregates the published result without modeling again.' : ''}`
+          : undefined
+      }
       creating={creating}
       editedCount={edits.editedCount}
       error={error}
@@ -153,6 +257,23 @@ export function ScenarioProperties({
         setErrors({})
         setError(null)
       }}
+      actions={
+        scenario ? (
+          <ActionButton
+            label={`Show the rules of ${scenario.name} on the Measures and scenarios page`}
+            disabledReason={null}
+            onPress={() => {
+              view.execute({
+                type: 'scenarios.setPreviewScenario',
+                input: { scenarioId: scenario.id },
+              })
+              layout.openPage('creator')
+            }}
+          >
+            Show its rules
+          </ActionButton>
+        ) : undefined
+      }
     >
       <TextProperty
         label="Name"
@@ -161,45 +282,46 @@ export function ScenarioProperties({
         error={errors.name}
         onChange={(value) => update('name', value)}
       />
-      <CheckboxGroup
-        className={cx(
-          formStyles.field,
-          highlight('measureIds') && formStyles.edited,
-        )}
-        value={draft.measureIds}
-        isInvalid={Boolean(errors.measureIds)}
-        onChange={(measureIds) => update('measureIds', measureIds)}
-      >
-        <Label className={formStyles.label}>Measures</Label>
-        {measures.length === 0 ? (
-          <Text slot="description" className={formStyles.description}>
-            Create a measure first.
-          </Text>
-        ) : (
-          <div className={formStyles.options}>
-            {measures.map((measure) => (
-              <Checkbox
-                key={measure.id}
-                value={measure.id}
-                className={formStyles.checkbox}
-              >
-                {measure.name}{' '}
-                <span className={componentStyles.muted}>
-                  ({KIND_LABELS[measure.kind]})
-                </span>
-              </Checkbox>
-            ))}
-          </div>
-        )}
-        {conflict && !errors.measureIds ? (
-          <Text slot="description" className={formStyles.fieldError}>
-            {conflict}
-          </Text>
-        ) : null}
-        <FieldError className={formStyles.fieldError}>
-          {errors.measureIds}
-        </FieldError>
-      </CheckboxGroup>
+      {creating ? (
+        <CheckboxGroup
+          className={formStyles.field}
+          value={draft.measureIds}
+          isInvalid={Boolean(errors.measureIds)}
+          onChange={(measureIds) => update('measureIds', measureIds)}
+        >
+          <Label className={formStyles.label}>
+            First rule: measures for every building
+          </Label>
+          {measures.length === 0 ? (
+            <Text slot="description" className={formStyles.description}>
+              The project has no measures yet. Create one, or add rules later.
+            </Text>
+          ) : (
+            <div className={formStyles.options}>
+              {measures.map((measure) => (
+                <Checkbox
+                  key={measure.id}
+                  value={measure.id}
+                  className={formStyles.checkbox}
+                >
+                  {measure.name}{' '}
+                  <span className={componentStyles.muted}>
+                    ({KIND_LABELS[measure.kind]})
+                  </span>
+                </Checkbox>
+              ))}
+            </div>
+          )}
+          {conflict && !errors.measureIds ? (
+            <Text slot="description" className={formStyles.fieldError}>
+              {conflict}
+            </Text>
+          ) : null}
+          <FieldError className={formStyles.fieldError}>
+            {errors.measureIds}
+          </FieldError>
+        </CheckboxGroup>
+      ) : null}
       <Checkbox
         className={cx(
           formStyles.checkbox,
@@ -242,12 +364,17 @@ export function ScenarioProperties({
           {errors.adoptionPercent}
         </p>
       ) : null}
+      <TextProperty
+        label="Adoption seed"
+        value={draft.adoptionSeed}
+        inputMode="numeric"
+        edited={highlight('adoptionSeed')}
+        error={errors.adoptionSeed}
+        description="Which buildings adopt is fixed by this seed and each building id; another seed samples other buildings at the same share."
+        onChange={(value) => update('adoptionSeed', value)}
+      />
       <p className={formStyles.description} aria-live="polite">
-        {draft.measureIds.length === 0
-          ? 'Choose measures to preview the buildings they affect.'
-          : preview.available
-            ? `Affects ${preview.affected} modeled buildings; estimated ${preview.reductionPercent}% lower annual demand at ${draft.adoptionPercent}% adoption (synthetic preview).`
-            : `${preview.measures.map((item) => `${item.name}: ${item.buildings} buildings`).join('; ')}. ${preview.reason ?? ''}`}
+        {previewText}
       </p>
     </PropertyForm>
   )

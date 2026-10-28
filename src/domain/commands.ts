@@ -35,8 +35,19 @@ import {
   modeledSource,
 } from './calibration/calibration.ts'
 import { findDataset } from './intake/datasets.ts'
-import { compositionConflict } from './scenarios/comparison.ts'
 import { MEASURE_LIBRARY } from './scenarios/library.ts'
+import {
+  publishScenarioResults,
+  reaggregateScenario,
+  scenarioItem,
+  validateScenarioResults,
+} from './scenarios/modeling.ts'
+import {
+  DEFAULT_ADOPTION_SEED,
+  kindNoun,
+  emptyMeasures,
+  scenarioMeasureIds,
+} from './scenarios/rules.ts'
 import {
   fusionSubmitBlocker,
   prepareDataset,
@@ -54,13 +65,10 @@ import {
   signatureMismatch,
 } from './jobs/runGroups.ts'
 import {
-  computeScenarioResult,
   preprocessBuilding,
   publishAssignment,
   publishPreprocessing,
-  publishScenarioResults,
   validateAssignment,
-  validateScenarioResults,
   runSimulatedStage,
   validatePreprocessing,
   type StageRunResult,
@@ -78,15 +86,18 @@ import type {
   HeldOutput,
   HeldScenarioOutput,
   Measure,
+  MeasureKind,
   HeldPreprocessingOutput,
   PartKind,
   RunGroup,
   Scenario,
+  ScenarioRule,
   StageRecord,
   Task,
   WorkbenchState,
 } from './types.ts'
 import {
+  MEASURE_KINDS,
   PART_KINDS,
   SELECTABLE_ENTITIES,
   type SelectableEntity,
@@ -211,6 +222,7 @@ const SELECTION_NOUNS: Record<SelectableEntity, string> = {
   libraryMeasure: 'library measure(s)',
   archetypePart: 'archetype part(s)',
   assignmentRule: 'assignment rule(s)',
+  scenarioRule: 'scenario rule(s)',
 }
 
 const JOB_STATUS_WORDS: Record<Task['status'], string> = {
@@ -327,7 +339,7 @@ const isAssignmentOutput = (output: HeldOutput) =>
   'kind' in output && output.kind === 'assignment'
 
 const isScenarioOutput = (output: HeldOutput) =>
-  'kind' in output && output.kind === 'scenarioResult'
+  'kind' in output && output.kind === 'scenarioVersions'
 
 /** One building's held item output for an item stage, or why it has none. */
 function stageItem(
@@ -336,18 +348,7 @@ function stageItem(
   buildingId: string,
 ): { output: HeldOutput | null; missing: string | null } {
   if (stageId === STAGE_IDS.scenarioModeling) {
-    const scenario = state.scenarios[buildingId]
-    const result = scenario
-      ? computeScenarioResult(state, scenario, { runId: 'held' })
-      : null
-    return result
-      ? { output: { kind: 'scenarioResult', result }, missing: null }
-      : {
-          output: null,
-          missing: scenario
-            ? 'There are no baseline results to model against.'
-            : 'The scenario no longer exists.',
-        }
+    return scenarioItem(state, buildingId)
   }
   const building = state.buildings[buildingId]
   if (!building) {
@@ -781,22 +782,38 @@ const conditionSchema = z.object({
 
 const measureInputSchema = z.object({
   name: nameSchema,
-  kind: z.enum(['envelope', 'heating', 'lighting', 'pv']),
+  kind: z.enum(MEASURE_KINDS),
   savingsPercent: z
     .number({ error: 'Enter savings as a number.' })
     .min(0, 'Savings cannot be negative.')
     .max(60, 'Savings must be at most 60%.'),
-  appliesTo: z.enum([...buildingUseSchema.options, 'all']),
 })
+
+const adoptionSchema = z
+  .number({ error: 'Enter adoption as a number.' })
+  .min(0, 'Adoption cannot be negative.')
+  .max(100, 'Adoption must be at most 100%.')
+
+const seedSchema = z
+  .number({ error: 'Enter the seed as a whole number.' })
+  .int('Enter the seed as a whole number.')
+  .min(0, 'The seed cannot be negative.')
+  .max(999_999, 'Use a seed of at most 999999.')
 
 const scenarioInputSchema = z.object({
   name: nameSchema,
-  measureIds: z.array(z.string().min(1)).min(1, 'Choose at least one measure.'),
-  adoptionPercent: z
-    .number({ error: 'Enter adoption as a number.' })
-    .min(0, 'Adoption cannot be negative.')
-    .max(100, 'Adoption must be at most 100%.'),
+  adoptionPercent: adoptionSchema,
+  adoptionSeed: seedSchema.optional(),
   included: z.boolean().default(true),
+})
+
+const measureIdSchema = z.string().min(1).nullable()
+
+const measureIdsSchema = z.object({
+  envelope: measureIdSchema,
+  heating: measureIdSchema,
+  lighting: measureIdSchema,
+  pv: measureIdSchema,
 })
 
 /** A measure input's problem, or null; `id` is the measure being changed. */
@@ -823,7 +840,7 @@ function measureIssue(
 /** A scenario input's problem, or null; `id` is the scenario being changed. */
 function scenarioIssue(
   state: WorkbenchState,
-  input: z.output<typeof scenarioInputSchema>,
+  input: { name: string },
   id: string | null,
 ): CommandOutcome | null {
   const others = Object.values(state.scenarios).filter(
@@ -832,14 +849,117 @@ function scenarioIssue(
   if (!uniqueName(others, input.name)) {
     return rejected(`A scenario named "${input.name}" already exists.`, 'name')
   }
-  const unknown = input.measureIds.filter(
-    (measureId) => !state.measures[measureId],
-  )
-  if (unknown.length > 0) {
-    return rejected(`Unknown measure(s): ${unknown.join(', ')}.`, 'measureIds')
+  return null
+}
+
+/**
+ * Measures for one rule by category from a list of ids, as
+ * `scenario.create` takes them, or the first problem on `measureIds`.
+ */
+function measuresByKind(
+  state: WorkbenchState,
+  measureIds: string[],
+):
+  | { ok: true; measures: Record<MeasureKind, string | null> }
+  | { ok: false; outcome: CommandOutcome } {
+  const measures = emptyMeasures()
+  for (const measureId of new Set(measureIds)) {
+    const measure = state.measures[measureId]
+    if (!measure) {
+      return {
+        ok: false,
+        outcome: rejected(`Unknown measure "${measureId}".`, 'measureIds'),
+      }
+    }
+    const other = measures[measure.kind]
+    if (other !== null) {
+      return {
+        ok: false,
+        outcome: rejected(
+          `"${state.measures[other]?.name ?? other}" and "${measure.name}" are both ${kindNoun(measure.kind)} measures. A rule assigns at most one measure of each category.`,
+          'measureIds',
+        ),
+      }
+    }
+    measures[measure.kind] = measure.id
   }
-  const conflict = compositionConflict(state.measures, input.measureIds)
-  return conflict ? rejected(conflict, 'measureIds') : null
+  return { ok: true, measures }
+}
+
+/** A scenario rule and the scenario that lists it, with its position. */
+function ruleOwner(
+  state: WorkbenchState,
+  ruleId: string,
+): { rule: ScenarioRule; scenario: Scenario; index: number } | null {
+  const rule = state.scenarioRules[ruleId]
+  const scenario = rule ? state.scenarios[rule.scenarioId] : undefined
+  const index = scenario ? scenario.ruleIds.indexOf(ruleId) : -1
+  return rule && scenario && index >= 0 ? { rule, scenario, index } : null
+}
+
+/** The scenario rules that assign a measure. */
+function rulesUsingMeasure(
+  state: WorkbenchState,
+  measureId: string,
+): ScenarioRule[] {
+  return Object.values(state.scenarioRules).filter((rule) =>
+    MEASURE_KINDS.some((kind) => rule.measures[kind] === measureId),
+  )
+}
+
+/** A scenario rule's condition and measure problems, per field. */
+function scenarioRuleIssues(
+  state: WorkbenchState,
+  input: {
+    conditions: z.output<typeof conditionSchema>[]
+    measures: Record<MeasureKind, string | null>
+  },
+): ValidationIssue[] {
+  const issues: ValidationIssue[] = []
+  input.conditions.forEach((condition, index) => {
+    const issue = conditionIssue(CONDITION_FIELDS, condition)
+    if (issue) {
+      issues.push({
+        path: `conditions.${index}.${issue.path}`,
+        message: issue.message,
+      })
+    }
+  })
+  for (const kind of MEASURE_KINDS) {
+    const measureId = input.measures[kind]
+    if (measureId !== null && state.measures[measureId]?.kind !== kind) {
+      issues.push({
+        path: `measures.${kind}`,
+        message: `Choose an existing ${kindNoun(kind)} measure, or none.`,
+      })
+    }
+  }
+  if (MEASURE_KINDS.every((kind) => input.measures[kind] === null)) {
+    issues.push({
+      path: 'measures',
+      message: 'Choose at least one measure for the rule to assign.',
+    })
+  }
+  return issues
+}
+
+/** A rule name not yet taken in a scenario, from a base name. */
+function freeRuleName(
+  state: WorkbenchState,
+  scenario: Scenario,
+  base: string,
+  numbered = false,
+): string {
+  const names = scenario.ruleIds.flatMap((id) => {
+    const rule = state.scenarioRules[id]
+    return rule ? [rule] : []
+  })
+  if (!numbered && uniqueName(names, base)) return base
+  let name = `${base} (copy)`
+  for (let number = 2; !uniqueName(names, name); number += 1) {
+    name = `${base} (copy ${number})`
+  }
+  return name
 }
 
 function upsertMeasureAsset(
@@ -860,8 +980,8 @@ function upsertMeasureAsset(
     capability: 'creator.measure',
     summary:
       measure.kind === 'pv'
-        ? `PV from estimated yield; applies to ${measure.appliesTo}`
-        : `${measure.kind}, ${measure.savingsPercent}% savings; applies to ${measure.appliesTo}`,
+        ? 'PV from estimated yield; scenario rules choose the buildings'
+        : `${measure.kind}, ${measure.savingsPercent}% savings; scenario rules choose the buildings`,
     entityIds: [measure.id],
   })
 }
@@ -882,8 +1002,8 @@ function upsertScenarioAsset(
       operationId: context.operationId,
     },
     capability: 'creator.scenario',
-    summary: `${scenario.measureIds.length} measure(s) at ${scenario.adoptionPercent}% adoption${scenario.included ? '' : '; left out of the comparison'}`,
-    entityIds: [scenario.id, ...scenario.measureIds],
+    summary: `${scenario.ruleIds.length} rule(s) at ${scenario.adoptionPercent}% adoption, seed ${scenario.adoptionSeed}${scenario.included ? '' : '; left out of the comparison'}`,
+    entityIds: [scenario.id, ...scenarioMeasureIds(state, scenario)],
   })
 }
 
@@ -2324,7 +2444,7 @@ export const commandDefinitions = {
   'measure.update': defineCommand({
     title: 'Change measure',
     description:
-      'Change a measure by id: name, kind, savings, and the building use it applies to. Scenario definitions and results become outdated. A change that would give a scenario two measures of one kind is rejected.',
+      'Change a measure by id: name, kind (its category), and savings. Scenario rules choose the buildings that take it. Scenario definitions and results become outdated. A kind change is rejected while a scenario rule assigns the measure, because each rule slot holds one category.',
     input: measureInputSchema.extend({
       id: z.string().min(1, 'Choose a measure.'),
     }),
@@ -2334,12 +2454,20 @@ export const commandDefinitions = {
       if (!existing) return rejected(`Unknown measure "${id}".`, 'id')
       const invalid = measureIssue(state, input, id)
       if (invalid) return invalid
-      const next = { ...state.measures, [id]: { ...existing, ...input } }
-      for (const scenario of Object.values(state.scenarios)) {
-        if (!scenario.measureIds.includes(id)) continue
-        const conflict = compositionConflict(next, scenario.measureIds)
-        if (conflict) {
-          return rejected(`In "${scenario.name}": ${conflict}`, 'kind')
+      if (input.kind !== existing.kind) {
+        const using = rulesUsingMeasure(state, id)
+        if (using.length > 0) {
+          const named = using
+            .slice(0, 3)
+            .map(
+              (rule) =>
+                `"${rule.name}" in "${state.scenarios[rule.scenarioId]?.name ?? rule.scenarioId}"`,
+            )
+            .join(', ')
+          return rejected(
+            `${named}${using.length > 3 ? ` and ${using.length - 3} more` : ''} assign${using.length === 1 ? 's' : ''} it as a ${kindNoun(existing.kind)} measure. Choose another measure in ${using.length === 1 ? 'that rule' : 'those rules'} first, or create a new measure of the other kind.`,
+            'kind',
+          )
         }
       }
       state.measures[id] = {
@@ -2380,7 +2508,6 @@ export const commandDefinitions = {
         name: entry.name,
         kind: entry.kind,
         savingsPercent: entry.savingsPercent,
-        appliesTo: entry.appliesTo,
         source: { kind: 'library', libraryId: entry.libraryId },
       }
       upsertMeasureAsset(state, state.measures[id], context)
@@ -2392,32 +2519,54 @@ export const commandDefinitions = {
   'scenario.create': defineCommand({
     title: 'Create scenario',
     description:
-      'Create a scenario from existing measures (at most one of each kind) and an adoption rate. New scenarios are included in the comparison set.',
-    input: scenarioInputSchema,
+      'Create a scenario: a name, an adoption rate (the share of affected buildings that adopt, sampled when results are aggregated), an optional adoption seed (default 42), and whether the comparison set includes it (default yes). Optional measureIds (at most one of each kind) start the scenario with one rule without conditions, "All buildings", that assigns them; otherwise add rules with scenarioRule.save.',
+    input: scenarioInputSchema.extend({
+      measureIds: z.array(z.string().min(1)).default([]),
+    }),
     undoable: true,
     run(state, input, context) {
       const invalid = scenarioIssue(state, input, null)
       if (invalid) return invalid
+      const start = measuresByKind(state, input.measureIds)
+      if (!start.ok) return start.outcome
       const id = allocateId(state, 'scenario')
-      state.scenarios[id] = {
+      const scenario: Scenario = {
         id,
         name: input.name,
-        measureIds: [...new Set(input.measureIds)],
+        ruleIds: [],
         adoptionPercent: input.adoptionPercent,
+        adoptionSeed: input.adoptionSeed ?? DEFAULT_ADOPTION_SEED,
         included: input.included,
       }
-      upsertScenarioAsset(state, state.scenarios[id], context)
+      state.scenarios[id] = scenario
+      if (input.measureIds.length > 0) {
+        const ruleId = allocateId(state, 'scenarioRule')
+        state.scenarioRules[ruleId] = {
+          id: ruleId,
+          scenarioId: id,
+          name: 'All buildings',
+          enabled: true,
+          logic: 'all',
+          conditions: [],
+          measures: start.measures,
+        }
+        scenario.ruleIds.push(ruleId)
+      }
+      upsertScenarioAsset(state, scenario, context)
       touchScenarioInputs(state)
-      return applied(`Created scenario "${input.name}".`)
+      return applied(
+        `Created scenario "${input.name}"${scenario.ruleIds.length > 0 ? ' with the rule "All buildings"' : ' without rules; add a rule to choose buildings and measures'}.`,
+      )
     },
   }),
 
   'scenario.update': defineCommand({
     title: 'Change scenario',
     description:
-      'Change a scenario by id: name, measures (at most one of each kind), adoption, and whether Scenario modeling includes it in the comparison set. Scenario definitions and results become outdated.',
+      'Change a scenario by id: name, adoption, adoption seed, and whether Scenario modeling includes it in the comparison set. Adoption and seed are applied when results are aggregated: a modeled scenario is re-aggregated at once without modeling again, and nothing becomes outdated. A new name or inclusion outdates Scenario definitions and results. Rules change with the scenarioRule commands.',
     input: scenarioInputSchema.extend({
       id: z.string().min(1, 'Choose a scenario.'),
+      adoptionSeed: seedSchema,
       included: z.boolean(),
     }),
     undoable: true,
@@ -2426,29 +2575,36 @@ export const commandDefinitions = {
       if (!existing) return rejected(`Unknown scenario "${id}".`, 'id')
       const invalid = scenarioIssue(state, input, id)
       if (invalid) return invalid
-      state.scenarios[id] = {
-        id,
-        name: input.name,
-        measureIds: [...new Set(input.measureIds)],
-        adoptionPercent: input.adoptionPercent,
-        included: input.included,
+      const definitions =
+        existing.name !== input.name || existing.included !== input.included
+      const sampling =
+        existing.adoptionPercent !== input.adoptionPercent ||
+        existing.adoptionSeed !== input.adoptionSeed
+      if (!definitions && !sampling) {
+        return rejected(`"${existing.name}" already has these values.`)
       }
-      upsertScenarioAsset(state, state.scenarios[id], context)
-      touchScenarioInputs(state)
-      return applied(`Changed scenario "${input.name}".`)
+      existing.name = input.name
+      existing.included = input.included
+      existing.adoptionPercent = input.adoptionPercent
+      existing.adoptionSeed = input.adoptionSeed
+      const reaggregated = sampling && reaggregateScenario(state, existing)
+      upsertScenarioAsset(state, existing, context)
+      if (definitions || (sampling && !reaggregated)) {
+        touchScenarioInputs(state)
+      }
+      return applied(
+        `Changed scenario "${input.name}"${reaggregated ? `; its published result was re-aggregated at ${input.adoptionPercent}% adoption, seed ${input.adoptionSeed}, without modeling again` : ''}.`,
+      )
     },
   }),
 
   'scenario.setAdoption': defineCommand({
     title: 'Set scenario adoption',
     description:
-      'Change a scenario adoption rate. Scenario definitions and downstream results become outdated.',
+      'Change a scenario adoption rate: the share of affected buildings that adopt their alternative version, sampled by the scenario seed when results are aggregated. A modeled scenario is re-aggregated at once, without modeling again, and no stage becomes outdated.',
     input: z.object({
       scenarioId: z.string().min(1, 'Choose a scenario.'),
-      adoptionPercent: z
-        .number()
-        .min(0, 'Adoption cannot be negative.')
-        .max(100, 'Adoption must be at most 100%.'),
+      adoptionPercent: adoptionSchema,
     }),
     undoable: true,
     run(state, { scenarioId, adoptionPercent }, context) {
@@ -2464,11 +2620,197 @@ export const commandDefinitions = {
       }
       const previous = scenario.adoptionPercent
       scenario.adoptionPercent = adoptionPercent
+      const reaggregated = reaggregateScenario(state, scenario)
+      upsertScenarioAsset(state, scenario, context)
+      // A result saved before versions cannot be re-aggregated; it is outdated instead.
+      if (!reaggregated && state.results.scenarios[scenarioId]) {
+        touchScenarioInputs(state)
+      }
+      return applied(
+        `Set adoption for "${scenario.name}" from ${previous}% to ${adoptionPercent}%${reaggregated ? '; its published result was re-aggregated without modeling again' : ''}.`,
+      )
+    },
+  }),
+
+  'scenarioRule.save': defineCommand({
+    title: 'Save scenario rule',
+    description:
+      'Create a rule in a scenario, or change one by id: a name (unique in the scenario), enabled (left out: on for a new rule, unchanged for an existing one), logic (all, any, or none of the conditions), conditions of field (use, yearBuilt, floors, floorAreaM2, heightM, footprintAreaM2, name, or null for a blank one), operator (larger, smaller, equals, contains, notContains; numbers take larger, smaller, equals; use takes equals, notContains; text takes contains, notContains, equals), and value, and the measure of each category it assigns (envelope, heating, lighting, pv: a measure id of that kind, or null). No conditions match every building. A scenario’s rules are tried top first and each category takes the first enabled matching rule that sets it; a new rule goes to position (default 0, the top), and a changed rule moves only when position is given. Scenario definitions and results become outdated.',
+    input: z.object({
+      scenarioId: z.string().min(1, 'Choose a scenario.'),
+      id: z.string().min(1).optional(),
+      name: nameSchema,
+      enabled: z.boolean().optional(),
+      logic: z.enum(['all', 'any', 'none']),
+      conditions: z
+        .array(conditionSchema)
+        .max(20, 'Use at most 20 conditions.'),
+      measures: measureIdsSchema,
+      position: z.number().int().min(0).optional(),
+    }),
+    undoable: true,
+    run(state, input, context) {
+      const scenario = state.scenarios[input.scenarioId]
+      if (!scenario) {
+        return rejected(`Unknown scenario "${input.scenarioId}".`, 'scenarioId')
+      }
+      const existing = input.id ? state.scenarioRules[input.id] : undefined
+      if (input.id && (!existing || existing.scenarioId !== scenario.id)) {
+        return rejected(`"${scenario.name}" has no rule "${input.id}".`, 'id')
+      }
+      const others = scenario.ruleIds
+        .filter((ruleId) => ruleId !== input.id)
+        .flatMap((ruleId) => {
+          const rule = state.scenarioRules[ruleId]
+          return rule ? [rule] : []
+        })
+      if (!uniqueName(others, input.name)) {
+        return rejected(
+          `"${scenario.name}" already has a rule named "${input.name}".`,
+          'name',
+        )
+      }
+      const issues = scenarioRuleIssues(state, input)
+      if (issues.length > 0) return { status: 'rejected', issues }
+      const id = existing?.id ?? allocateId(state, 'scenarioRule')
+      state.scenarioRules[id] = {
+        id,
+        scenarioId: scenario.id,
+        name: input.name,
+        // Left out, a new rule is on and a changed rule keeps its switch.
+        enabled: input.enabled ?? existing?.enabled ?? true,
+        logic: input.logic,
+        conditions: input.conditions.map((condition) => ({
+          field: condition.field,
+          operator: condition.operator,
+          value: condition.value.trim(),
+        })),
+        measures: { ...input.measures },
+      }
+      if (!existing) {
+        const position = Math.min(input.position ?? 0, scenario.ruleIds.length)
+        scenario.ruleIds.splice(position, 0, id)
+      } else if (input.position !== undefined) {
+        const rest = scenario.ruleIds.filter((ruleId) => ruleId !== id)
+        rest.splice(Math.min(input.position, rest.length), 0, id)
+        scenario.ruleIds = rest
+      }
       upsertScenarioAsset(state, scenario, context)
       touchScenarioInputs(state)
       return applied(
-        `Set adoption for "${scenario.name}" from ${previous}% to ${adoptionPercent}%.`,
+        `${existing ? 'Updated' : 'Created'} rule "${input.name}" at position ${scenario.ruleIds.indexOf(id) + 1} of "${scenario.name}"; run Scenario modeling to model it.`,
       )
+    },
+  }),
+
+  'scenarioRule.move': defineCommand({
+    title: 'Move scenario rule',
+    description:
+      'Move a scenario rule to a position counted from the top of its scenario (0 is tried first). Scenario definitions and results become outdated.',
+    input: z.object({
+      ruleId: z.string().min(1, 'Choose a rule.'),
+      position: z.number().int().min(0),
+    }),
+    undoable: true,
+    run(state, { ruleId, position }, context) {
+      const owner = ruleOwner(state, ruleId)
+      if (!owner)
+        return rejected(`Unknown scenario rule "${ruleId}".`, 'ruleId')
+      const { rule, scenario, index } = owner
+      if (position >= scenario.ruleIds.length) {
+        return rejected(
+          `Choose a position from 1 to ${scenario.ruleIds.length}.`,
+          'position',
+        )
+      }
+      if (position === index) {
+        return rejected(`"${rule.name}" is already there.`, 'position')
+      }
+      scenario.ruleIds.splice(index, 1)
+      scenario.ruleIds.splice(position, 0, ruleId)
+      upsertScenarioAsset(state, scenario, context)
+      touchScenarioInputs(state)
+      return applied(
+        `Moved "${rule.name}" to position ${position + 1} of ${scenario.ruleIds.length} in "${scenario.name}".`,
+      )
+    },
+  }),
+
+  'scenarioRule.setEnabled': defineCommand({
+    title: 'Switch scenario rule',
+    description:
+      'Switch a scenario rule on or off; a rule that is off is skipped. Scenario definitions and results become outdated.',
+    input: z.object({
+      ruleId: z.string().min(1, 'Choose a rule.'),
+      enabled: z.boolean(),
+    }),
+    undoable: true,
+    run(state, { ruleId, enabled }, context) {
+      const owner = ruleOwner(state, ruleId)
+      if (!owner)
+        return rejected(`Unknown scenario rule "${ruleId}".`, 'ruleId')
+      const { rule, scenario } = owner
+      if (rule.enabled === enabled) {
+        return rejected(
+          `"${rule.name}" is already ${enabled ? 'on' : 'off'}.`,
+          'enabled',
+        )
+      }
+      rule.enabled = enabled
+      upsertScenarioAsset(state, scenario, context)
+      touchScenarioInputs(state)
+      return applied(
+        `Switched "${rule.name}" in "${scenario.name}" ${enabled ? 'on' : 'off'}.`,
+      )
+    },
+  }),
+
+  'scenarioRule.duplicate': defineCommand({
+    title: 'Duplicate scenario rule',
+    description:
+      'Copy a scenario rule just below it in the same scenario. Scenario definitions and results become outdated.',
+    input: z.object({ ruleId: z.string().min(1, 'Choose a rule.') }),
+    undoable: true,
+    run(state, { ruleId }, context) {
+      const owner = ruleOwner(state, ruleId)
+      if (!owner)
+        return rejected(`Unknown scenario rule "${ruleId}".`, 'ruleId')
+      const { rule, scenario, index } = owner
+      const name = freeRuleName(state, scenario, rule.name, true)
+      const id = allocateId(state, 'scenarioRule')
+      // The rule is a draft here, so it is copied field by field.
+      state.scenarioRules[id] = {
+        id,
+        scenarioId: scenario.id,
+        name,
+        enabled: rule.enabled,
+        logic: rule.logic,
+        conditions: rule.conditions.map((condition) => ({ ...condition })),
+        measures: { ...rule.measures },
+      }
+      scenario.ruleIds.splice(index + 1, 0, id)
+      upsertScenarioAsset(state, scenario, context)
+      touchScenarioInputs(state)
+      return applied(`Duplicated "${rule.name}" as "${name}".`)
+    },
+  }),
+
+  'scenarioRule.remove': defineCommand({
+    title: 'Remove scenario rule',
+    description:
+      'Remove a scenario rule. Published results keep the measures it assigned until Scenario modeling runs again; undo brings the rule back.',
+    input: z.object({ ruleId: z.string().min(1, 'Choose a rule.') }),
+    undoable: true,
+    run(state, { ruleId }, context) {
+      const owner = ruleOwner(state, ruleId)
+      if (!owner)
+        return rejected(`Unknown scenario rule "${ruleId}".`, 'ruleId')
+      const { rule, scenario } = owner
+      delete state.scenarioRules[ruleId]
+      scenario.ruleIds = scenario.ruleIds.filter((id) => id !== ruleId)
+      upsertScenarioAsset(state, scenario, context)
+      touchScenarioInputs(state)
+      return applied(`Removed "${rule.name}" from "${scenario.name}".`)
     },
   }),
 }

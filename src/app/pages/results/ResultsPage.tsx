@@ -228,6 +228,13 @@ export function ResultsPage() {
             unit: 'kWh',
             empty: '—',
           },
+          {
+            id: 'adoption',
+            header: 'Adoption',
+            value: (row: BuildingRow) => row.adoption,
+            type: 'enum' as const,
+            empty: 'Unknown',
+          },
         ]
       : []),
     {

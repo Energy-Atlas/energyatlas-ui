@@ -50,14 +50,16 @@ const modeled: Partial<WorkbenchState> = {
     'scenario-1': {
       id: 'scenario-1',
       name: 'Half retrofitted',
-      measureIds: ['measure-1'],
+      ruleIds: [],
       adoptionPercent: 50,
+      adoptionSeed: 42,
       included: true,
     },
   },
   results: {
     baseline: result('baseline', 12000),
     scenarios: { 'scenario-1': result('scenario-1', 9000) },
+    scenarioVersions: {},
   },
 }
 
@@ -472,7 +474,11 @@ describe('chart specifications', () => {
     const project = {
       ...createInitialState(),
       ...modeled,
-      results: { baseline: result('baseline', 12000), scenarios: {} },
+      results: {
+        baseline: result('baseline', 12000),
+        scenarios: {},
+        scenarioVersions: {},
+      },
     }
     const compiled = compileChartSpec(
       {

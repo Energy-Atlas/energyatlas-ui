@@ -57,7 +57,6 @@ describe('jobs on the mock server', () => {
         name: 'Lights',
         kind: 'lighting',
         savingsPercent: 10,
-        appliesTo: 'all',
       },
     })
     await manual.settle(20)
@@ -74,7 +73,6 @@ describe('jobs on the mock server', () => {
         name: 'Lights',
         kind: 'lighting',
         savingsPercent: 10,
-        appliesTo: 'all',
       },
     })
     await manual.settle()

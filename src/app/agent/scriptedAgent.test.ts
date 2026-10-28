@@ -107,6 +107,9 @@ describe('scripted agent', () => {
     expect(matchSession('Add an assignment rule for heat pumps')?.id).toBe(
       'assignmentRules',
     )
+    expect(matchSession('Give older homes heat pumps')?.id).toBe(
+      'scenarioRules',
+    )
     expect(matchSession('Pick a preset')).toBeNull()
   })
 
@@ -218,6 +221,76 @@ describe('scripted agent', () => {
     expect(JSON.stringify(transcript())).toMatch(
       / [1-9]\d* buildings now use the heat pump/,
     )
+  })
+
+  it('adds a scenario rule after approval, previews it, and models the scenario', async () => {
+    const { workbench, manual, agent, lastApproval, agentEntries, transcript } =
+      setup()
+    agent.startPreset('scenarioRules')
+    await manual.settle(50)
+    expect(lastApproval().title).toMatch(/^Run \d+ missing stages$/)
+    agent.approve(lastApproval().id)
+    await manual.settle(20000)
+    expect(lastApproval().title).toBe('Give older homes heat pumps')
+    agent.approve(lastApproval().id)
+    await manual.settle(500)
+    const state = workbench.getState()
+    const scenario = Object.values(state.scenarios).find(
+      (item) => item.name === 'Heat pumps for older homes',
+    )
+    expect(
+      state.scenarioRules[scenario?.ruleIds[0] ?? '']?.measures.heating,
+    ).toBeTruthy()
+    expect(JSON.stringify(transcript())).toContain(
+      'taking the heating measure of',
+    )
+    // Modeling the scenario is a second approved run.
+    expect(lastApproval().title).toMatch(/^Run \d+ outdated or missing/)
+    agent.approve(lastApproval().id)
+    await manual.settle(20000)
+    expect(agent.store.getState().status).toBe('idle')
+    expect(
+      agentEntries()
+        .map((entry) => entry.type)
+        .filter((type) => type !== 'workflow.runStage'),
+    ).toEqual([
+      'layout.openPage',
+      'measure.addFromLibrary',
+      'scenario.create',
+      'scenarioRule.save',
+      'scenarios.setPreviewScenario',
+    ])
+    expect(
+      workbench.getState().results.scenarioVersions[scenario?.id ?? ''],
+    ).toBeDefined()
+    expect(JSON.stringify(transcript())).toMatch(
+      /Scenario modeling published \*\*Heat pumps for older homes\*\*/,
+    )
+  })
+
+  it('changes a modeled scenario adoption without outdating any stage', async () => {
+    const { workbench, manual, agent, lastApproval, transcript } = setup()
+    agent.startPreset('modelChange')
+    await manual.settle(50)
+    agent.approve(lastApproval().id)
+    await manual.settle(200)
+    agent.approve(lastApproval().id)
+    await manual.settle(20000)
+    const scenario = Object.values(workbench.getState().scenarios)[0]!
+    const before = workbench.getState().results.scenarios[scenario.id]
+    agent.startPreset('modelChange')
+    await manual.settle(50)
+    expect(lastApproval().title).toBe(
+      `Set "${scenario.name}" adoption to ${scenario.adoptionPercent + 20}%`,
+    )
+    agent.approve(lastApproval().id)
+    await manual.settle(500)
+    const after = workbench.getState().results.scenarios[scenario.id]
+    expect(after?.runId).toBe(before?.runId)
+    expect(after?.totalKwh).toBeLessThan(before?.totalKwh ?? 0)
+    expect(JSON.stringify(transcript())).toContain('No stage became outdated')
+    await manual.settle(2000)
+    expect(agent.store.getState().status).toBe('idle')
   })
 
   it('fits the baseline as a job after approval, leaves it unadopted, and drills into results', async () => {

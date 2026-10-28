@@ -1,4 +1,9 @@
 import { previewAssignment } from '../../domain/archetypes/assignment.ts'
+import { MEASURE_LIBRARY } from '../../domain/scenarios/library.ts'
+import {
+  previewScenarioRules,
+  scenarioRules,
+} from '../../domain/scenarios/rules.ts'
 import type { Requirement } from '../../domain/stagePlan.ts'
 import type { StageState, WorkbenchState } from '../../domain/types.ts'
 import { STAGE_IDS } from '../../domain/workflow.ts'
@@ -248,13 +253,24 @@ const representationSession: ScriptedSession = {
 const NEW_MEASURE = 'Envelope retrofit'
 const NEW_SCENARIO = 'Envelope retrofit at 50%'
 
+/** Reduction of a published scenario against the baseline, in percent, or null. */
+function publishedReduction(
+  state: WorkbenchState,
+  scenarioId: string,
+): number | null {
+  const baseline = state.results.baseline
+  const result = state.results.scenarios[scenarioId]
+  if (!baseline || !result || baseline.totalKwh <= 0) return null
+  return Math.round((1 - result.totalKwh / baseline.totalKwh) * 1000) / 10
+}
+
 const modelChangeSession: ScriptedSession = {
   id: 'modelChange',
   label: 'Propose a scenario change',
   prompt:
-    'Propose a higher adoption for a scenario and show what becomes outdated.',
+    'Propose a higher adoption for a scenario and show how the results change.',
   description:
-    'Proposes a model change that waits for approval, then shows outdated stages and offers to rerun them.',
+    'Proposes a model change that waits for approval, then shows what it outdates; adoption is applied when results are aggregated, so a modeled scenario updates without a new run.',
   keywords: [
     /\badoption\b/,
     /\bpropose\b/,
@@ -283,7 +299,6 @@ const modelChangeSession: ScriptedSession = {
                 name: NEW_MEASURE,
                 kind: 'envelope',
                 savingsPercent: 15,
-                appliesTo: 'all',
               },
             }),
           })
@@ -303,15 +318,16 @@ const modelChangeSession: ScriptedSession = {
           },
         })
         context.memory.scenarioName = NEW_SCENARIO
+        context.memory.created = true
         return [
           reason(
-            'The project has no scenario yet, so the smallest useful model change is to create one.',
+            'The project has no scenario yet, so the smallest useful model change is to create one, with one rule that gives every building the measure.',
           ),
           propose(
             measure ? 'Create a scenario' : 'Create a measure and a scenario',
             measure
-              ? `Create the scenario "${NEW_SCENARIO}" from the existing measure "${measure.name}".`
-              : `Create the measure "${NEW_MEASURE}" (envelope, 15% savings, all buildings) and the scenario "${NEW_SCENARIO}" that uses it.`,
+              ? `Create the scenario "${NEW_SCENARIO}" with the rule "All buildings", which gives every building the existing measure "${measure.name}".`
+              : `Create the measure "${NEW_MEASURE}" (envelope, 15% savings) and the scenario "${NEW_SCENARIO}" with the rule "All buildings", which gives every building that measure.`,
             calls,
           ),
         ]
@@ -321,14 +337,16 @@ const modelChangeSession: ScriptedSession = {
           ? scenario.adoptionPercent + 20
           : scenario.adoptionPercent - 20
       context.memory.scenarioName = scenario.name
+      context.memory.reductionBefore = publishedReduction(state, scenario.id)
+      const modeled = Boolean(state.results.scenarioVersions[scenario.id])
       const title = `Set "${scenario.name}" adoption to ${next}%`
       return [
         reason(
-          `"${scenario.name}" uses ${scenario.adoptionPercent}% adoption. Changing it to ${next}% shows how a model change propagates.`,
+          `"${scenario.name}" uses ${scenario.adoptionPercent}% adoption with seed ${scenario.adoptionSeed}. Adoption samples which affected buildings adopt when results are aggregated, so it is not an input of Scenario modeling.`,
         ),
         propose(
           title,
-          `Change adoption from ${scenario.adoptionPercent}% to ${next}%. "Scenario definitions" and the stages after it become outdated until they run again.`,
+          `Change adoption from ${scenario.adoptionPercent}% to ${next}%. ${modeled ? 'Its published result is re-aggregated at once from the modeled alternative versions; no stage becomes outdated.' : 'It has no modeled versions yet, so the new adoption applies when Scenario modeling publishes.'}`,
           [
             {
               title,
@@ -347,6 +365,16 @@ const modelChangeSession: ScriptedSession = {
       const outdated = state.workflow.stageIds.filter(
         (id) => states[id] === 'stale',
       )
+      const scenario = Object.values(state.scenarios).find(
+        (item) => item.name === context.memory.scenarioName,
+      )
+      const after = scenario ? publishedReduction(state, scenario.id) : null
+      const before = context.memory.reductionBefore
+      if (!context.memory.created && scenario && after !== null) {
+        return say(
+          `No stage became outdated: adoption is applied when results are aggregated. **${scenario.name}** now reduces annual demand by ${after}% against the baseline${typeof before === 'number' ? ` (${before}% before)` : ''}, from the same modeled versions (synthetic numbers).`,
+        )
+      }
       if (outdated.length === 0) {
         return say(
           'No stage became outdated, because the scenario stages had not run on the previous inputs.',
@@ -379,18 +407,207 @@ const modelChangeSession: ScriptedSession = {
         ) ??
         Object.values(state.scenarios).find((item) => item.included) ??
         Object.values(state.scenarios)[0]
-      const baseline = state.results.baseline
-      const result = scenario ? state.results.scenarios[scenario.id] : undefined
-      if (!scenario || !baseline || !result || baseline.totalKwh <= 0) {
+      const reduction = scenario ? publishedReduction(state, scenario.id) : null
+      if (!scenario || reduction === null) {
         return say(
           'Scenario results are not available, so I cannot report the effect.',
         )
       }
-      const reduction =
-        Math.round((1 - result.totalKwh / baseline.totalKwh) * 1000) / 10
       return [
         say(
-          `Scenario modeling is current. **${scenario.name}** reduces annual demand by ${reduction}% against the baseline (synthetic numbers).`,
+          `Scenario modeling is current. **${scenario.name}** reduces annual demand by ${reduction}% against the baseline at ${scenario.adoptionPercent}% adoption, seed ${scenario.adoptionSeed} (synthetic numbers).`,
+        ),
+        reference('Open the Dashboard', { type: 'page', page: 'dashboard' }),
+      ]
+    },
+  ],
+}
+
+const OLDER_HOMES_RULE = 'Older homes: heat pumps'
+const HEAT_PUMP_LIBRARY_ID = 'measure:heat-pumps'
+const HEAT_PUMP_SCENARIO = 'Heat pumps for older homes'
+
+/** The library heat pump measure in the project, if it is there. */
+function heatPumpMeasureId(state: WorkbenchState): string | null {
+  const entry = MEASURE_LIBRARY.find(
+    (item) => item.libraryId === HEAT_PUMP_LIBRARY_ID,
+  )
+  return (
+    Object.values(state.measures).find(
+      (measure) => measure.kind === 'heating' && measure.name === entry?.name,
+    )?.id ?? null
+  )
+}
+
+/** The scenario the rule session adds its rule to: an included one, or the one it creates. */
+function ruleSessionScenario(state: WorkbenchState) {
+  const scenarios = Object.values(state.scenarios)
+  return (
+    scenarios.find((item) => item.name === HEAT_PUMP_SCENARIO) ??
+    scenarios.find((item) => item.included) ??
+    null
+  )
+}
+
+const scenarioRulesSession: ScriptedSession = {
+  id: 'scenarioRules',
+  label: 'Add a scenario rule',
+  prompt: 'Give older homes heat pumps with a scenario rule.',
+  description:
+    'Previews a scenario, proposes a rule that gives residential buildings built before 1980 heat pumps (it waits for approval), and models the scenario.',
+  keywords: [
+    /\bscenario rules?\b/,
+    /\bmeasure rules?\b/,
+    /\bolder (homes|houses|residential)\b/,
+  ],
+  steps: [
+    reason(
+      'Scenario rules choose buildings by their attributes and give each at most one measure per category, tried top first. A rule that sets only heating leaves envelope, lighting, and PV to the rules below it. Estimates need baseline results.',
+    ),
+    ensure(
+      [STAGE_IDS.baseline],
+      'Estimating the scenario against the baseline',
+    ),
+    tool(
+      'Open Measures and scenarios',
+      layoutCall({ type: 'layout.openPage', input: { page: 'creator' } }),
+    ),
+    (context) => {
+      const state = context.state()
+      const scenario = ruleSessionScenario(state)
+      const calls: TitledCall[] = []
+      if (!heatPumpMeasureId(state)) {
+        calls.push({
+          title: 'Add "Air-source heat pumps" from the measure library',
+          call: command({
+            type: 'measure.addFromLibrary',
+            input: { libraryId: HEAT_PUMP_LIBRARY_ID },
+          }),
+        })
+      }
+      if (!scenario) {
+        calls.push({
+          title: `Create the scenario "${HEAT_PUMP_SCENARIO}"`,
+          call: command({
+            type: 'scenario.create',
+            input: { name: HEAT_PUMP_SCENARIO, adoptionPercent: 50 },
+          }),
+        })
+      }
+      const existing = scenario
+        ? scenario.ruleIds
+            .map((id) => state.scenarioRules[id])
+            .find((rule) => rule?.name === OLDER_HOMES_RULE)
+        : undefined
+      calls.push({
+        title: existing
+          ? `Update the rule "${OLDER_HOMES_RULE}" and move it to the top`
+          : `Add the rule "${OLDER_HOMES_RULE}" at the top`,
+        call: (current) => {
+          const now = current.state()
+          const target = ruleSessionScenario(now)
+          return command({
+            type: 'scenarioRule.save',
+            input: {
+              scenarioId: target?.id ?? '',
+              name: OLDER_HOMES_RULE,
+              ...(existing ? { id: existing.id, enabled: true } : {}),
+              logic: 'all',
+              conditions: [
+                { field: 'use', operator: 'equals', value: 'residential' },
+                { field: 'yearBuilt', operator: 'smaller', value: '1980' },
+              ],
+              measures: {
+                envelope: null,
+                heating: heatPumpMeasureId(now),
+                lighting: null,
+                pv: null,
+              },
+              position: 0,
+            },
+          })
+        },
+      })
+      const older = state.buildingIds.filter((id) => {
+        const building = state.buildings[id]
+        return (
+          building?.use === 'residential' &&
+          building.yearBuilt !== null &&
+          building.yearBuilt < 1980
+        )
+      }).length
+      return [
+        reason(
+          `${older} residential buildings were built before 1980. A rule at the top of ${scenario ? `"${scenario.name}"` : 'a new scenario'} that sets only their heating measure keeps the other categories from the rules below.`,
+        ),
+        propose(
+          'Give older homes heat pumps',
+          `${heatPumpMeasureId(state) ? '' : 'Add "Air-source heat pumps" from the library, '}${scenario ? '' : `create the scenario "${HEAT_PUMP_SCENARIO}" at 50% adoption, `}${existing ? `update the rule "${OLDER_HOMES_RULE}" (use equals residential and year built smaller than 1980, sets heating) and move it to the top${existing.enabled ? '' : ', switched on'}` : `add the rule "${OLDER_HOMES_RULE}" (use equals residential and year built smaller than 1980, sets heating) at the top${scenario ? ` of "${scenario.name}"` : ''}`}. Scenario definitions and results become outdated until they run again.`,
+          calls,
+        ),
+      ]
+    },
+    (context) => {
+      const scenario = ruleSessionScenario(context.state())
+      if (!scenario) {
+        return say(
+          'The scenario was not created, so there is nothing to preview.',
+        )
+      }
+      context.memory.scenarioName = scenario.name
+      return tool(
+        `Preview "${scenario.name}"`,
+        viewCall({
+          type: 'scenarios.setPreviewScenario',
+          input: { scenarioId: scenario.id },
+        }),
+      )
+    },
+    (context) => {
+      const state = context.state()
+      const scenario = ruleSessionScenario(state)
+      const rule = scenario
+        ? scenarioRules(state, scenario).find(
+            (each) => each.name === OLDER_HOMES_RULE,
+          )
+        : undefined
+      if (!scenario || !rule) {
+        return say('The rule was not added, so there is nothing to preview.')
+      }
+      const preview = previewScenarioRules(state, {
+        id: scenario.id,
+        rules: scenarioRules(state, scenario),
+        adoptionPercent: scenario.adoptionPercent,
+        adoptionSeed: scenario.adoptionSeed,
+      })
+      const own = preview.rules.find((each) => each.ruleId === rule.id)
+      return [
+        say(
+          `The preview shows **${OLDER_HOMES_RULE}** taking the heating measure of ${own?.takes.heating ?? 0} buildings. ${preview.affectedIds.length} buildings take a measure in **${scenario.name}**, and ${preview.adoptedIds.length} adopt at ${scenario.adoptionPercent}%, seed ${scenario.adoptionSeed}.${preview.estimate ? ` Estimated ${preview.estimate.reductionPercent}% lower annual demand than the baseline (synthetic).` : ''}`,
+        ),
+        reference('Show the rules on Measures and scenarios', {
+          type: 'page',
+          page: 'creator',
+        }),
+      ]
+    },
+    ensure(
+      [STAGE_IDS.scenarioModeling],
+      'Modeling the scenario with the new rule',
+      'current',
+    ),
+    (context) => {
+      const state = context.state()
+      const scenario = ruleSessionScenario(state)
+      const reduction = scenario ? publishedReduction(state, scenario.id) : null
+      if (!scenario || reduction === null) {
+        return say(
+          'The scenario has no published result, so I cannot report the effect.',
+        )
+      }
+      return [
+        say(
+          `Scenario modeling published **${scenario.name}**: ${reduction}% lower annual demand than the baseline at ${scenario.adoptionPercent}% adoption (synthetic numbers). Changing its adoption later re-aggregates the result without another run.`,
         ),
         reference('Open the Dashboard', { type: 'page', page: 'dashboard' }),
       ]
@@ -633,6 +850,7 @@ export const SESSIONS: ScriptedSession[] = [
   modelChangeSession,
   calibrationSession,
   rulesSession,
+  scenarioRulesSession,
   restoreSession,
 ]
 
@@ -642,6 +860,7 @@ const MATCH_ORDER = [
   calibrationSession,
   layoutSession,
   representationSession,
+  scenarioRulesSession,
   rulesSession,
   modelChangeSession,
 ]

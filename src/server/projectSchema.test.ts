@@ -6,6 +6,15 @@ import { createWorkbench } from '../domain/workbench.ts'
 import { STAGE_IDS, deriveStageStates } from '../domain/workflow.ts'
 import { buildFixture } from './fixtures.ts'
 import { legacySave } from '../testing/legacySave.ts'
+import { legacyScenarioSave } from '../testing/legacyScenarioSave.ts'
+import {
+  previewScenarioRules,
+  scenarioRules,
+} from '../domain/scenarios/rules.ts'
+import {
+  SCENARIO_MIGRATION_ISSUE_ID,
+  migratedScenarioRuleId,
+} from './migrateScenarios.ts'
 import { MIGRATION_ISSUE_ID, migratedRuleId } from './migrateArchetypes.ts'
 import { projectStateSchema } from './projectSchema.ts'
 
@@ -151,6 +160,136 @@ describe('saved project schema', () => {
     expect(parsed.selection).toEqual({
       entityType: 'archetype',
       ids: [archetypeId],
+    })
+  })
+})
+
+describe('saves from before scenario rules', () => {
+  function oldProject() {
+    const workbench = createWorkbench({
+      initialState: buildFixture('complete', () => new Date()),
+    })
+    workbench.execute({
+      type: 'measure.addFromLibrary',
+      input: { libraryId: 'measure:heat-pumps' },
+    })
+    const state = workbench.getState()
+    const envelope = Object.values(state.measures).find(
+      (measure) => measure.kind === 'envelope',
+    )!
+    const pumps = Object.values(state.measures).find(
+      (measure) => measure.kind === 'heating',
+    )!
+    workbench.execute({
+      type: 'scenario.create',
+      input: {
+        name: 'Homes',
+        measureIds: [envelope.id, pumps.id],
+        adoptionPercent: 30,
+      },
+    })
+    return { state: workbench.getState(), envelope, pumps }
+  }
+
+  test('turns each measure list into rules by the use the measures applied to', () => {
+    const { state, envelope, pumps } = oldProject()
+    const saved = legacyScenarioSave(state, { [pumps.id]: 'residential' })
+    const parsed = projectStateSchema.parse(saved)
+    const homes = Object.values(parsed.scenarios).find(
+      (scenario) => scenario.name === 'Homes',
+    )!
+    expect(homes.adoptionSeed).toBe(42)
+    expect(homes.ruleIds).toEqual([
+      migratedScenarioRuleId(homes.id, 'residential'),
+      migratedScenarioRuleId(homes.id, 'all'),
+    ])
+    expect(parsed.scenarioRules[homes.ruleIds[0]!]).toMatchObject({
+      name: 'Residential buildings',
+      conditions: [{ field: 'use', operator: 'equals', value: 'residential' }],
+      measures: { heating: pumps.id, envelope: null },
+    })
+    expect(parsed.scenarioRules[homes.ruleIds[1]!]).toMatchObject({
+      name: 'All buildings',
+      conditions: [],
+      measures: { envelope: envelope.id, heating: null },
+    })
+    expect(parsed.measures[pumps.id]).not.toHaveProperty('appliesTo')
+    // Each building takes the measures its use took before.
+    const preview = previewScenarioRules(parsed, {
+      id: homes.id,
+      rules: scenarioRules(parsed, homes),
+      adoptionPercent: homes.adoptionPercent,
+      adoptionSeed: homes.adoptionSeed,
+    })
+    for (const [id, measures] of Object.entries(preview.byBuilding)) {
+      const residential = parsed.buildings[id]?.use === 'residential'
+      expect(measures.envelope?.measureId).toBe(envelope.id)
+      expect(measures.heating?.measureId ?? null).toBe(
+        residential ? pumps.id : null,
+      )
+    }
+  })
+
+  test('marks scenario results outdated with an issue and keeps them readable', () => {
+    const state = buildFixture('complete', () => new Date())
+    const parsed = projectStateSchema.parse(legacyScenarioSave(state))
+    const stages = deriveStageStates(parsed.workflow, parsed.tasks)
+    expect(stages[STAGE_IDS.baseline]).toBe('executed')
+    expect(stages[STAGE_IDS.scenarioDefinitions]).toBe('stale')
+    expect(stages[STAGE_IDS.scenarioModeling]).toBe('stale')
+    expect(
+      parsed.issues.find((issue) => issue.id === SCENARIO_MIGRATION_ISSUE_ID),
+    ).toMatchObject({
+      severity: 'warning',
+      stageId: STAGE_IDS.scenarioModeling,
+    })
+    expect(Object.keys(parsed.results.scenarios)).toHaveLength(1)
+    expect(parsed.results.scenarioVersions).toEqual({})
+    // Without versions, a new adoption cannot re-aggregate; it stays outdated.
+    const workbench = createWorkbench({ initialState: parsed })
+    const scenario = Object.values(parsed.scenarios)[0]!
+    workbench.execute({
+      type: 'scenario.setAdoption',
+      input: { scenarioId: scenario.id, adoptionPercent: 70 },
+    })
+    expect(workbench.getState().results.scenarios[scenario.id]).toEqual(
+      parsed.results.scenarios[scenario.id],
+    )
+    // Modeling again publishes versions, and adoption re-aggregates from then on.
+    runStageNow(workbench, STAGE_IDS.scenarioDefinitions)
+    runStageNow(workbench, STAGE_IDS.scenarioModeling)
+    expect(
+      workbench.getState().results.scenarioVersions[scenario.id],
+    ).toBeDefined()
+    // A save from after scenario rules is left alone.
+    const current = projectStateSchema.parse(JSON.parse(JSON.stringify(state)))
+    expect(
+      deriveStageStates(current.workflow, current.tasks)[
+        STAGE_IDS.scenarioModeling
+      ],
+    ).toBe('executed')
+  })
+
+  test('invalidates an open Scenario modeling run saved before versions', () => {
+    const state = buildFixture('complete', () => new Date())
+    const saved = legacyScenarioSave(state)
+    const taskId = state.taskIds.find(
+      (id) => state.tasks[id]?.stageId === STAGE_IDS.scenarioModeling,
+    )!
+    const groupId = state.tasks[taskId]!.groupId!
+    const group = saved.runGroups[groupId] ?? {}
+    group.status = 'open'
+    const scenarioId = Object.keys(state.scenarios)[0]!
+    group.held = {
+      [scenarioId]: {
+        kind: 'scenarioResult',
+        result: state.results.scenarios[scenarioId],
+      },
+    }
+    const parsed = projectStateSchema.parse(saved)
+    expect(parsed.runGroups[groupId]).toMatchObject({
+      status: 'invalidated',
+      held: {},
     })
   })
 })

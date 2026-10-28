@@ -32,7 +32,6 @@ function modeledProject(scenarioCount: number): Workbench {
       name: 'Lighting',
       kind: 'lighting',
       savingsPercent: 20,
-      appliesTo: 'all',
     },
   })
   const measureId = Object.keys(workbench.getState().measures)[0] ?? ''
@@ -68,7 +67,9 @@ describe('buildDashboardData', () => {
       ['Scenario 3', 2],
     ])
     expect(data.uncharted).toEqual(['Scenario 4'])
-    expect(data.scenarios[1]?.reductionPercent).toBeCloseTo(8, 0)
+    // 40% of buildings sampled to adopt a 20% saving: about 8% overall.
+    expect(data.scenarios[1]?.reductionPercent).toBeGreaterThan(6)
+    expect(data.scenarios[1]?.reductionPercent).toBeLessThan(10)
   })
 
   test('previews a different adoption without changing the model', () => {

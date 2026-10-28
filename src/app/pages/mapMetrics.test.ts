@@ -47,7 +47,6 @@ describe('computeMetric', () => {
         name: 'Lighting',
         kind: 'lighting',
         savingsPercent: 20,
-        appliesTo: 'all',
       },
     })
     const measureId = Object.keys(workbench.getState().measures)[0] ?? ''

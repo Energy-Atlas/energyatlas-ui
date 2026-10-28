@@ -39,6 +39,13 @@ const COLUMNS: DataColumn<ComparisonRow>[] = [
     empty: '—',
   },
   {
+    id: 'adoption',
+    header: 'Aggregated at',
+    value: (row) => row.adoption,
+    wrap: true,
+    empty: '—',
+  },
+  {
     id: 'currentness',
     header: 'Currentness',
     value: (row) => (row.current ? 'Current' : 'Outdated'),
@@ -46,7 +53,10 @@ const COLUMNS: DataColumn<ComparisonRow>[] = [
   },
 ]
 
-/** Baseline and modeled scenarios side by side, each labeled current or outdated. */
+/**
+ * Baseline and modeled scenarios side by side, each labeled current or
+ * outdated, with the adoption and seed each scenario was aggregated at.
+ */
 export function ScenarioComparison() {
   const headingId = useId()
   const state = useWorkbenchSnapshot((snapshot) => snapshot.state)

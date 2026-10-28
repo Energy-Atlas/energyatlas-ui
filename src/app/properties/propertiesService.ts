@@ -10,6 +10,8 @@ export type DefinitionKind =
   | 'scenario'
   | 'assignmentRule'
   | `part:${PartKind}`
+  /** A new rule in the scenario with this id (decision 0032, stage 3). */
+  | `scenarioRule:${string}`
 
 export type PropertiesSnapshot = {
   /** A blank definition of this kind is shown for creating, or null. */
