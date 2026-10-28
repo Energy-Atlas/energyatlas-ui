@@ -25,6 +25,14 @@ async function chooseDataset(page: Page, name: string) {
   await page.keyboard.press('Space')
 }
 
+/** Suggested matches wait for review in the shared mapping review (decision 0032, stage 4). */
+async function acceptSuggestions(page: Page) {
+  await page
+    .getByRole('region', { name: 'Dataset field mapping' })
+    .getByRole('button', { name: /^Accept all suggestions/ })
+    .click()
+}
+
 test('maps, validates, previews, and applies a dataset as a job', async ({
   page,
 }) => {
@@ -33,13 +41,19 @@ test('maps, validates, previews, and applies a dataset as a job', async ({
   await expect(intake).toContainText('No dataset has been applied.')
   await chooseDataset(page, 'Assessor attributes')
 
-  const mapping = intake.getByRole('table', { name: 'Field mapping' })
-  await expect(mapping.getByRole('combobox', { name: 'osm_ref' })).toHaveValue(
-    'sourceId',
-  )
+  const mapping = intake.getByRole('region', { name: 'Dataset field mapping' })
+  await expect(mapping).toContainText('4 suggested matches wait for review')
   await expect(
-    mapping.getByRole('combobox', { name: 'assessed_note' }),
+    mapping.getByRole('combobox', { name: 'Source ID' }),
   ).toHaveValue('')
+  await acceptSuggestions(page)
+  await expect(
+    mapping.getByRole('combobox', { name: 'Source ID' }),
+  ).toHaveValue('osm_ref')
+  await expect(mapping.getByRole('combobox', { name: 'Name' })).toHaveValue('')
+  // The shared review lists the unrecognised use code with its count.
+  await expect(mapping).toContainText('1 value is not recognised')
+  await expect(mapping.getByRole('rowheader', { name: 'IND' })).toBeVisible()
   await expect(intake).toContainText('60 records: 53 valid, 7 rejected.')
   const rejected = intake.getByRole('grid', { name: 'Rejected records' })
   await expect(rejected).toContainText('appears 2 times')
@@ -49,7 +63,7 @@ test('maps, validates, previews, and applies a dataset as a job', async ({
   ).toContainText(`${464 - 53} buildings no record matches`)
 
   // Removing the identifier blocks the whole dataset, on the field.
-  await mapping.getByRole('combobox', { name: 'osm_ref' }).selectOption('')
+  await mapping.getByRole('combobox', { name: 'Source ID' }).selectOption('')
   await expect(intake.getByRole('alert')).toContainText(
     'Map a field to Source ID',
   )
@@ -59,8 +73,8 @@ test('maps, validates, previews, and applies a dataset as a job', async ({
   await expect(apply).toHaveAttribute('aria-disabled', 'true')
   await expect(apply).toHaveAttribute('title', /Fix the mapping first/)
   await mapping
-    .getByRole('combobox', { name: 'osm_ref' })
-    .selectOption('sourceId')
+    .getByRole('combobox', { name: 'Source ID' })
+    .selectOption('osm_ref')
   await expect(apply).not.toHaveAttribute('aria-disabled', 'true')
 
   await apply.click()
@@ -105,6 +119,7 @@ test('holds fused records when some fail and retries only those', async ({
   test.setTimeout(60_000)
   const intake = await openIntake(page, '&jobs=itemFailures')
   await chooseDataset(page, 'Assessor attributes')
+  await acceptSuggestions(page)
   await intake
     .getByRole('button', { name: 'Apply Assessor attributes' })
     .click()
@@ -141,6 +156,7 @@ test('intake renders in every appearance and a narrow pane without serious axe v
     }, appearance)
     const intake = await openIntake(page)
     await chooseDataset(page, 'Planned infill buildings')
+    await acceptSuggestions(page)
     await expect(intake).toContainText('10 records: 9 valid, 1 rejected.')
     await page.evaluate(async () => {
       await Promise.all(

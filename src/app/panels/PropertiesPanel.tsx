@@ -109,7 +109,7 @@ function SingleView({
         </Section>
       ) : null}
       {inspection.sourceAttributes && inspection.sourceAttributes.length > 0 ? (
-        <Section title="Source attributes">
+        <Section title="Captured tags">
           <p className={styles.muted}>
             Captured with the footprint; Schema matching copies values from them
             and keeps them unchanged.

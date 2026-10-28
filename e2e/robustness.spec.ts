@@ -37,6 +37,8 @@ test('a slow server shows pending requests and explains waiting controls', async
   const intake = page.getByRole('region', { name: 'Data intake' })
   await page.getByRole('radio', { name: /^Assessor attributes/ }).focus()
   await page.keyboard.press('Space')
+  // Suggested matches wait for review (decision 0032, stage 4).
+  await intake.getByRole('button', { name: /^Accept all suggestions/ }).click()
   const apply = intake.getByRole('button', {
     name: 'Apply Assessor attributes',
   })

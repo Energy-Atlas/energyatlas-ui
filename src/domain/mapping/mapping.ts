@@ -172,11 +172,19 @@ export function distribution(
       ...missing,
     ]
   }
-  if (attribute.type === 'integer' || attribute.type === 'number') {
-    const numbers = values.flatMap((value) => {
-      const number = numberOf(value)
-      return number === null ? [] : [number]
-    })
+  const numbers = values.flatMap((value) => {
+    const number = numberOf(value)
+    return number === null ? [] : [number]
+  })
+  // Mostly numeric text ("15.6" beside "48 ft") is binned too.
+  const numeric =
+    attribute.type === 'integer' ||
+    attribute.type === 'number' ||
+    (attribute.distinct > 12 && numbers.length >= attribute.present * 0.8)
+  if (numeric && numbers.length > 0) {
+    const other = attribute.present - numbers.length
+    const notNumbers: Bucket[] =
+      other > 0 ? [{ label: 'Not a number', count: other }] : []
     const min = Math.min(...numbers)
     const max = Math.max(...numbers)
     if (attribute.type === 'integer' && max - min < BINS) {
@@ -187,7 +195,7 @@ export function distribution(
           count: numbers.filter((number) => number === value).length,
         })
       }
-      return [...buckets, ...missing]
+      return [...buckets, ...notNumbers, ...missing]
     }
     const width = (max - min) / BINS || 1
     const digits = attribute.type === 'integer' || width >= 10 ? 0 : 1
@@ -203,7 +211,7 @@ export function distribution(
       const bucket = buckets[index]
       if (bucket) bucket.count += 1
     }
-    return [...buckets, ...missing]
+    return [...buckets, ...notNumbers, ...missing]
   }
   const counts = new Map<string, number>()
   for (const value of values) {
