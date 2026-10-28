@@ -8,7 +8,7 @@ import {
   type Page,
 } from './test.ts'
 
-// Measures and scenarios (jobs rollout plan, slice 6; decision 0032, stage
+// Scenarios (jobs rollout plan, slice 6; decision 0032, stage
 // 3): library, editing, a first rule with one measure of each category,
 // previews, the comparison set, and the modeled comparison.
 
@@ -29,7 +29,7 @@ async function openCreator(page: Page) {
 
 async function addFromLibrary(page: Page, name: string) {
   const creator = page.getByRole('region', {
-    name: 'Measures and scenarios',
+    name: 'Scenarios',
     exact: true,
   })
   await creator

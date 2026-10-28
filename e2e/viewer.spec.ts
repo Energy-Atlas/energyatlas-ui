@@ -1,10 +1,10 @@
 import { readFile } from 'node:fs/promises'
 import { AxeBuilder } from '@axe-core/playwright'
-import { expect, test, type Page } from './test.ts'
+import { expect, test, type Locator, type Page } from './test.ts'
 
 // The viewer page and handover package (decision 0032, stage 5): Hand over
 // in the modeller, the package list on viewer.html, a view-only shell with no
-// model controls, personal layouts and the reset to the handed-over layout,
+// model controls, handed-over layouts and the reset to the handed-over layout,
 // package files, and the errors a viewer can meet.
 
 async function seriousViolations(page: Page) {
@@ -32,12 +32,20 @@ async function openMenu(page: Page, name: string) {
   return page.getByRole('menu').first()
 }
 
+/** Shows the Layouts panel (decision 0033). */
 async function openLayouts(page: Page) {
+  const panel = page.getByRole('region', { name: 'Layouts', exact: true })
+  if (await panel.isVisible()) return panel
   await page.getByRole('main', { name: 'Workspace' }).focus()
   await page.keyboard.press('Control+Alt+l')
-  const dialog = page.getByRole('dialog', { name: 'Layouts' })
-  await expect(dialog).toBeVisible()
-  return dialog
+  await expect(panel).toBeVisible()
+  return panel
+}
+
+function layoutRow(panel: Locator, name: string) {
+  return panel
+    .getByRole('grid', { name: 'Layouts' })
+    .getByRole('row', { name: new RegExp(name) })
 }
 
 /** Saves the open project in this browser. */
@@ -87,34 +95,25 @@ test('hands over, lists, opens, and explores a package view only', async ({
   // A project layout that opens the project on Results travels with it.
   await runFromPalette(page, 'Results')
   await expect(tab(page, 'Results')).toHaveAttribute('aria-selected', 'true')
-  let dialog = await openLayouts(page)
-  await dialog
+  let panel = await openLayouts(page)
+  await panel
     .getByRole('textbox', { name: 'Layout name' })
     .fill('Results first')
-  await dialog.getByRole('button', { name: 'Save layout' }).click()
-  await dialog
-    .getByRole('listbox', { name: 'Project layouts' })
-    .getByRole('option', { name: /Results first/ })
-    .click()
-  const opensWith = dialog.getByRole('checkbox', {
-    name: 'Open the project with this layout',
+  await panel.getByRole('button', { name: 'Save layout' }).click()
+  const opensWith = layoutRow(panel, 'Results first').getByRole('checkbox', {
+    name: 'Open the project with the layout Results first',
   })
-  await opensWith.focus()
-  await page.keyboard.press('Space')
+  await opensWith.locator('xpath=ancestor::label[1]').click()
   await expect(opensWith).toBeChecked()
-  await page.keyboard.press('Escape')
+  await page.getByRole('main', { name: 'Workspace' }).focus()
   await save(page)
 
   // A layout saved after that is an unsaved change, which stays out.
-  dialog = await openLayouts(page)
-  await dialog.getByRole('textbox', { name: 'Layout name' }).fill('Not saved')
-  await dialog.getByRole('button', { name: 'Save layout' }).click()
-  await expect(
-    dialog
-      .getByRole('listbox', { name: 'Project layouts' })
-      .getByRole('option', { name: /Not saved/ }),
-  ).toBeVisible()
-  await page.keyboard.press('Escape')
+  panel = await openLayouts(page)
+  await panel.getByRole('textbox', { name: 'Layout name' }).fill('Not saved')
+  await panel.getByRole('button', { name: 'Save layout' }).click()
+  await expect(layoutRow(panel, 'Not saved')).toBeVisible()
+  await page.getByRole('main', { name: 'Workspace' }).focus()
   const handover = await openHandover(page)
   await expect(handover).toContainText('Unsaved changes stay out')
   await handover.getByRole('button', { name: 'Hand over the project' }).click()
@@ -164,7 +163,7 @@ test('hands over, lists, opens, and explores a package view only', async ({
     'About this handover…',
   ])
   await page.keyboard.press('Escape')
-  for (const name of ['Roadmap', 'Measures and scenarios', 'Jobs']) {
+  for (const name of ['Roadmap', 'Scenarios', 'Jobs']) {
     await expect(tab(page, name)).toHaveCount(0)
   }
 
@@ -183,50 +182,26 @@ test('hands over, lists, opens, and explores a package view only', async ({
   ).toHaveCount(0)
   expect(await seriousViolations(page)).toEqual([])
 
-  // A personal layout for this package, then back to the handed-over one.
-  dialog = await openLayouts(page)
+  // The handed-over layouts apply only; saving and changing are left out.
+  panel = await openLayouts(page)
+  await expect(panel).toContainText('Handed over with the package.')
+  await expect(layoutRow(panel, 'Not saved')).toHaveCount(0)
+  const row = layoutRow(panel, 'Results first')
+  await expect(row.getByRole('button')).toHaveCount(1)
   await expect(
-    dialog.getByRole('heading', { name: 'Handed-over layouts' }),
+    row.getByRole('button', { name: 'Apply the layout Results first' }),
   ).toBeVisible()
-  await expect(
-    dialog
-      .getByRole('listbox', { name: 'Project layouts' })
-      .getByRole('option', { name: /Not saved/ }),
-  ).toHaveCount(0)
-  await dialog
-    .getByRole('listbox', { name: 'Project layouts' })
-    .getByRole('option', { name: /Results first/ })
-    .click()
-  const actions = dialog.getByRole('toolbar', {
-    name: 'Actions for the layout Results first',
-  })
-  await expect(actions.getByRole('button')).toHaveText([
-    'Apply',
-    'Copy to personal',
-  ])
-  await dialog.getByRole('textbox', { name: 'Layout name' }).fill('Mine')
-  await expect(dialog.getByRole('radio')).toHaveCount(0)
-  await dialog.getByRole('button', { name: 'Save layout' }).click()
-  await expect(
-    dialog
-      .getByRole('listbox', { name: 'Personal layouts' })
-      .getByRole('option', { name: /Mine/ }),
-  ).toBeVisible()
-  await page.keyboard.press('Escape')
+  await expect(row.getByRole('checkbox')).toHaveCount(0)
+  await expect(panel.getByRole('textbox', { name: 'Layout name' })).toHaveCount(
+    0,
+  )
+  await page.getByRole('main', { name: 'Workspace' }).focus()
   await runFromPalette(page, 'Reset to handed-over layout')
   await expect(tab(page, 'Results')).toHaveAttribute('aria-selected', 'true')
   await tab(page, 'Table').click()
   await expect(
     page.getByRole('searchbox', { name: 'Search buildings' }),
   ).toHaveValue('')
-  dialog = await openLayouts(page)
-  await expect(
-    dialog
-      .getByRole('listbox', { name: 'Personal layouts' })
-      .getByRole('option', { name: /Mine/ }),
-  ).toBeVisible()
-  await dialog.getByRole('button', { name: 'Close', exact: true }).click()
-  await expect(dialog).toBeHidden()
 
   // The agent answers questions and refuses model changes.
   if ((await tab(page, 'Reasoning').getAttribute('aria-selected')) !== 'true')

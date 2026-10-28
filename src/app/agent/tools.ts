@@ -28,7 +28,6 @@ import type {
 } from '../service/projectLifecycle.ts'
 import type { ViewStore } from '../view/viewStore.ts'
 import type { LayoutLibrary } from '../layouts/layoutLibrary.ts'
-import { SCOPE_LABELS, type LayoutScope } from '../layouts/savedLayout.ts'
 
 // Agent tool calls go through the same paths as manual controls: project
 // commands through the project client (the server, decision 0023), view
@@ -43,27 +42,18 @@ export type LayoutToolOperation =
   | { type: 'layout.openPage'; input: { page: PageId } }
   | { type: 'layout.reset'; input: Record<string, never> }
 
-/** Saved layouts (decision 0032), through the same service as the menus. */
+/**
+ * Saved layouts (decisions 0032 and 0033), kept with the project, through the
+ * same service as the menus and the Layouts panel.
+ */
 export type LayoutsToolOperation =
   | { type: 'layouts.list'; input: Record<string, never> }
-  | { type: 'layouts.save'; input: { name: string; scope: LayoutScope } }
-  | { type: 'layouts.apply'; input: { scope: LayoutScope; layoutId: string } }
-  | {
-      type: 'layouts.update'
-      input: { scope: LayoutScope; layoutId: string }
-    }
-  | {
-      type: 'layouts.rename'
-      input: { scope: LayoutScope; layoutId: string; name: string }
-    }
-  | {
-      type: 'layouts.duplicate'
-      input: { scope: LayoutScope; layoutId: string; toScope?: LayoutScope }
-    }
-  | {
-      type: 'layouts.delete'
-      input: { scope: LayoutScope; layoutId: string }
-    }
+  | { type: 'layouts.save'; input: { name: string } }
+  | { type: 'layouts.apply'; input: { layoutId: string } }
+  | { type: 'layouts.update'; input: { layoutId: string } }
+  | { type: 'layouts.rename'; input: { layoutId: string; name: string } }
+  | { type: 'layouts.duplicate'; input: { layoutId: string } }
+  | { type: 'layouts.delete'; input: { layoutId: string } }
   | { type: 'layouts.setDefault'; input: { layoutId: string | null } }
   | { type: 'layouts.reset'; input: Record<string, never> }
   /** The viewer's reset to the layouts and views as handed over (decision 0032, stage 5). */
@@ -176,8 +166,13 @@ function isModellerViewOperation(type: string): boolean {
   return MODELLER_VIEW_PREFIXES.some((prefix) => type.startsWith(prefix))
 }
 
-/** Project layout settings a viewer cannot change; its own layouts are personal. */
+/** Layout changes the viewer leaves out: handed-over layouts are read-only. */
 const MODELLER_LAYOUTS_TOOLS: ReadonlySet<string> = new Set([
+  'layouts.save',
+  'layouts.update',
+  'layouts.rename',
+  'layouts.duplicate',
+  'layouts.delete',
   'layouts.setDefault',
 ])
 
@@ -382,20 +377,17 @@ function runLayoutsTool(
     }
   }
   if (operation.type === 'layouts.list') {
-    const { project, personal, defaultId, applied } = library.store.getState()
-    const describe = (scope: LayoutScope) =>
-      (scope === 'project' ? project : personal).layouts.map((layout) => ({
-        layoutId: layout.id,
-        name: layout.name,
-        scope,
-        updatedAt: layout.updatedAt,
-        isDefault: scope === 'project' && layout.id === defaultId,
-        isApplied: applied?.ref.scope === scope && applied.ref.id === layout.id,
-      }))
-    const layouts = [...describe('project'), ...describe('personal')]
+    const { project, defaultId, applied } = library.store.getState()
+    const layouts = project.layouts.map((layout) => ({
+      layoutId: layout.id,
+      name: layout.name,
+      updatedAt: layout.updatedAt,
+      isDefault: layout.id === defaultId,
+      isApplied: applied?.id === layout.id,
+    }))
     return {
       status: 'applied',
-      summary: `Found ${project.layouts.length} ${SCOPE_LABELS.project.toLowerCase()} and ${personal.layouts.length} ${SCOPE_LABELS.personal.toLowerCase()} layout(s).`,
+      summary: `Found ${layouts.length} layout(s) saved with the project.`,
       issues: [],
       operationIds: [],
       data: { layouts },
@@ -406,23 +398,19 @@ function runLayoutsTool(
       case 'layouts.save':
         return library.save(operation.input, 'agent')
       case 'layouts.apply':
-        return library.apply(refOf(operation.input), 'agent')
+        return library.apply(operation.input.layoutId, 'agent')
       case 'layouts.update':
-        return library.update(refOf(operation.input), 'agent')
+        return library.update(operation.input.layoutId, 'agent')
       case 'layouts.rename':
         return library.rename(
-          refOf(operation.input),
+          operation.input.layoutId,
           operation.input.name,
           'agent',
         )
       case 'layouts.duplicate':
-        return library.duplicate(
-          refOf(operation.input),
-          'agent',
-          operation.input.toScope,
-        )
+        return library.duplicate(operation.input.layoutId, 'agent')
       case 'layouts.delete':
-        return library.remove(refOf(operation.input), 'agent')
+        return library.remove(operation.input.layoutId, 'agent')
       case 'layouts.setDefault':
         return library.setDefault(operation.input.layoutId, 'agent')
       case 'layouts.reset':
@@ -437,10 +425,6 @@ function runLayoutsTool(
     issues: outcome.status === 'rejected' ? outcome.issues : [],
     operationIds: [outcome.operationId],
   }
-}
-
-function refOf(input: { scope: LayoutScope; layoutId: string }) {
-  return { scope: input.scope, id: input.layoutId }
 }
 
 const PAGE_IDS = Object.keys(PAGES) as [PageId, ...PageId[]]
@@ -473,23 +457,22 @@ function layoutTools(pages: [PageId, ...PageId[]]) {
   ]
 }
 
-const scope = z.enum(['project', 'personal'])
-const layoutRef = { scope, layoutId: z.string().min(1) }
+const layoutRef = { layoutId: z.string().min(1) }
 
 const LAYOUTS_TOOLS = [
   {
     name: 'layouts.list',
     title: 'List saved layouts',
     description:
-      'List the project layouts (saved with the project) and personal layouts (kept in this browser for every project), with which one the project opens with and which was applied last.',
+      'List the layouts saved with the project, with which one the project opens with and which was applied last.',
     input: z.object({}),
   },
   {
     name: 'layouts.save',
     title: 'Save layout',
     description:
-      'Save the current panel arrangement and view settings (table arrangements, map layers and 3D, terrain, and lighting settings, the Table, Jobs, Dashboard, and Results choices) as a new named layout. Scope "project" saves it with the project once the project is saved; "personal" keeps it in this browser.',
-    input: z.object({ name: z.string().min(1).max(60), scope }),
+      'Save the current panel arrangement and view settings (table arrangements, map layers and 3D, terrain, and lighting settings, the Table, Jobs, Dashboard, and Results choices) as a new named layout, kept with the project once the project is saved.',
+    input: z.object({ name: z.string().min(1).max(60) }),
   },
   {
     name: 'layouts.apply',
@@ -508,15 +491,14 @@ const LAYOUTS_TOOLS = [
   {
     name: 'layouts.rename',
     title: 'Rename layout',
-    description: 'Rename a saved layout; names are unique within a scope.',
+    description: 'Rename a saved layout; names are unique in the project.',
     input: z.object({ ...layoutRef, name: z.string().min(1).max(60) }),
   },
   {
     name: 'layouts.duplicate',
     title: 'Duplicate layout',
-    description:
-      'Copy a saved layout, in the same scope or into the other one (toScope), for example a project layout into the personal layouts.',
-    input: z.object({ ...layoutRef, toScope: scope.optional() }),
+    description: 'Copy a saved layout under a new name ("<name> copy").',
+    input: z.object(layoutRef),
   },
   {
     name: 'layouts.delete',
@@ -528,7 +510,7 @@ const LAYOUTS_TOOLS = [
     name: 'layouts.setDefault',
     title: 'Set default layout',
     description:
-      'Choose the project layout the project opens with, or null for none. Saved with the project.',
+      'Choose the layout the project opens with, or null for none. Saved with the project.',
     input: z.object({ layoutId: z.string().min(1).nullable() }),
   },
   {
@@ -545,7 +527,7 @@ const VIEWER_LAYOUTS_TOOL = {
   name: 'layouts.resetToHandover',
   title: 'Reset to handed-over layout',
   description:
-    'Viewer page: return the panels and view settings to the handed-over layout (the package default layout, or the default arrangement with the package table settings and map layers). Personal layouts are kept.',
+    'Viewer page: return the panels and view settings to the handed-over layout (the package default layout, or the default arrangement with the package table settings and map layers).',
   input: z.object({}),
 }
 
@@ -616,10 +598,7 @@ function describeViewerTools(): AgentToolDescription[] {
         name: tool.name,
         kind: 'layouts' as const,
         title: tool.title,
-        description:
-          tool.name === 'layouts.save'
-            ? `${tool.description} On the viewer page only "personal" works: handed-over project layouts are read-only.`
-            : tool.description,
+        description: tool.description,
         requiresApproval: IRREVERSIBLE_LAYOUT_TOOLS.has(tool.name),
         inputSchema: z.toJSONSchema(tool.input, { io: 'input' }),
       })),

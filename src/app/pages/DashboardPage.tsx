@@ -419,11 +419,11 @@ export function DashboardPage() {
                 scenario stages.
               </span>
               <ActionButton
-                label="Open the Measures and scenarios page"
+                label="Open the Scenarios page"
                 disabledReason={null}
                 onPress={() => layout.openPage('creator')}
               >
-                Open Measures and scenarios
+                Open Scenarios
               </ActionButton>
             </div>
           )
@@ -568,7 +568,7 @@ export function DashboardPage() {
             {data.leftOut.join(', ')}.
             {viewOnly
               ? ''
-              : ' Include them in Measures and scenarios to model and chart them.'}
+              : ' Include them in Scenarios to model and chart them.'}
           </p>
         ) : null}
       </section>

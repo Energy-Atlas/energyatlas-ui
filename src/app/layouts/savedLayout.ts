@@ -20,22 +20,14 @@ import { TABLE_VIEWS, type TableView } from '../view/tableViews.ts'
 import type { JobFilter, ViewState } from '../view/viewOperations.ts'
 
 // A saved layout (decision 0032): a named panel arrangement plus the view
-// settings shown with it. Project layouts are saved with the project and will
-// travel in a handover package; personal layouts stay in this browser and
-// work in every project. Both share this shape and its validation.
+// settings shown with it. Layouts are saved with the project only and travel
+// in its handover package (decision 0033 dropped personal layouts).
 
 /** Bumped when a change makes older layouts unreadable; they then fall back. */
 export const LAYOUT_FORMAT = 1
 
-export type LayoutScope = 'project' | 'personal'
-
-export const SCOPE_LABELS: Record<LayoutScope, string> = {
-  project: 'Project',
-  personal: 'Personal',
-}
-
-/** Most layouts kept per scope, so menus and saved projects stay small. */
-export const MAX_LAYOUTS_PER_SCOPE = 50
+/** Most layouts a project keeps, so menus and saved projects stay small. */
+export const MAX_LAYOUTS = 50
 export const MAX_LAYOUT_NAME = 60
 
 /**
@@ -72,7 +64,8 @@ export type SavedLayout = {
   format: typeof LAYOUT_FORMAT
   id: string
   name: string
-  scope: LayoutScope
+  /** Always 'project'; kept so layouts saved before decision 0033 still read. */
+  scope: 'project'
   createdAt: string
   updatedAt: string
   /** Who saved it, for provenance in the asset tree. */
@@ -100,7 +93,7 @@ export const savedLayoutSchema = z.looseObject({
   format: z.literal(LAYOUT_FORMAT),
   id: z.string().min(1).max(100),
   name: layoutNameSchema,
-  scope: z.enum(['project', 'personal']),
+  scope: z.literal('project'),
   createdAt: z.string(),
   updatedAt: z.string(),
   createdBy: z.enum(['manual', 'agent', 'system']),
@@ -108,28 +101,20 @@ export const savedLayoutSchema = z.looseObject({
   view: z.record(z.string(), z.unknown()),
 })
 
-/** Valid layouts of one scope, and the entries that are not, kept as stored. */
+/** Valid layouts, and the entries that are not, kept as stored. */
 export type LayoutList = { layouts: SavedLayout[]; unreadable: unknown[] }
 
 /**
- * Reads stored layouts. An entry that does not parse, belongs to another
- * scope, or repeats an id is kept aside unchanged, so saving never erases
- * what a newer version wrote.
+ * Reads stored layouts. An entry that does not parse or repeats an id is
+ * kept aside unchanged, so saving never erases what a newer version wrote.
  */
-export function parseLayoutList(
-  value: unknown,
-  scope: LayoutScope,
-): LayoutList {
+export function parseLayoutList(value: unknown): LayoutList {
   const list: LayoutList = { layouts: [], unreadable: [] }
   if (!Array.isArray(value)) return list
   const ids = new Set<string>()
   for (const entry of value) {
     const parsed = savedLayoutSchema.safeParse(entry)
-    if (
-      parsed.success &&
-      parsed.data.scope === scope &&
-      !ids.has(parsed.data.id)
-    ) {
+    if (parsed.success && !ids.has(parsed.data.id)) {
       ids.add(parsed.data.id)
       // The stored entry as written, so nothing in it is lost on saving.
       list.layouts.push(entry as SavedLayout)
@@ -140,12 +125,12 @@ export function parseLayoutList(
   return list
 }
 
-/** What a scope saves: readable layouts, then unreadable ones as found. */
+/** What the project saves: readable layouts, then unreadable ones as found. */
 export function storedLayouts(list: LayoutList): unknown[] {
   return [...list.layouts, ...list.unreadable]
 }
 
-/** Whether two lists of one scope would save differently. */
+/** Whether two lists would save differently. */
 export function layoutListsDiffer(a: LayoutList, b: LayoutList): boolean {
   return JSON.stringify(storedLayouts(a)) !== JSON.stringify(storedLayouts(b))
 }

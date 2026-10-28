@@ -251,7 +251,7 @@ export const capabilities = {
     label: 'Saved layouts',
     status: 'working',
     explanation:
-      'Project layouts are saved with the project and shown here as View assets; personal layouts stay in this browser for every project.',
+      'Layouts are saved with the project, managed in the Layouts panel, and shown here as View assets.',
   },
   'settings.modelProvider': {
     label: 'Model provider',

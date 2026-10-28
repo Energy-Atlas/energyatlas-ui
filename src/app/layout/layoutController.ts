@@ -26,8 +26,9 @@ export const PAGES = {
   table: { name: 'Table', component: 'page.table' },
   dashboard: { name: 'Dashboard', component: 'page.dashboard' },
   roadmap: { name: 'Roadmap', component: 'page.roadmap' },
-  // Creator became Measures and scenarios (decision 0028); the id stays.
-  creator: { name: 'Measures and scenarios', component: 'page.creator' },
+  // Creator became Measures and scenarios (decision 0028), then Scenarios
+  // (decision 0033); the id stays page.creator.
+  creator: { name: 'Scenarios', component: 'page.creator' },
   settings: { name: 'Settings', component: 'page.settings' },
   issues: { name: 'Issues', component: 'page.issues' },
   // Tasks became Jobs (decision 0023); the component id stays page.tasks.
@@ -50,6 +51,8 @@ export const PANELS = {
   inspection: { name: 'Properties', component: 'panel.inspection' },
   // The history of every message and toast (decision 0027).
   messages: { name: 'Messages', component: 'panel.messages' },
+  // Saved layouts, kept with the project (decision 0033).
+  layouts: { name: 'Layouts', component: 'panel.layouts' },
 } as const
 
 export type PageId = keyof typeof PAGES
@@ -93,7 +96,7 @@ export type LayoutShape = {
 export const MODELLER_LAYOUT: LayoutShape = {
   pages: Object.keys(PAGES) as PageId[],
   left: ['assets', 'workflow'],
-  right: ['reasoning', 'inspection', 'messages'],
+  right: ['reasoning', 'inspection', 'messages', 'layouts'],
 }
 
 /** What the view-only viewer page shows (decision 0032, stage 5). */
@@ -107,7 +110,7 @@ export const VIEWER_PAGES: readonly PageId[] = [
 export const VIEWER_LAYOUT: LayoutShape = {
   pages: VIEWER_PAGES,
   left: ['assets'],
-  right: ['reasoning', 'inspection', 'messages'],
+  right: ['reasoning', 'inspection', 'messages', 'layouts'],
 }
 
 /** The viewer keeps its own arrangement, apart from the modeller's. */
@@ -165,6 +168,7 @@ const PANEL_HOME: Record<PanelId, 'left' | 'right'> = {
   reasoning: 'right',
   inspection: 'right',
   messages: 'right',
+  layouts: 'right',
 }
 
 export function createDefaultLayout(

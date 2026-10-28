@@ -499,7 +499,7 @@ const scenarioRulesSession: ScriptedSession = {
       'Estimating the scenario against the baseline',
     ),
     tool(
-      'Open Measures and scenarios',
+      'Open the Scenarios page',
       layoutCall({ type: 'layout.openPage', input: { page: 'creator' } }),
     ),
     (context) => {
@@ -615,7 +615,7 @@ const scenarioRulesSession: ScriptedSession = {
         say(
           `The preview shows **${OLDER_HOMES_RULE}** taking the heating measure of ${own?.takes.heating ?? 0} buildings. ${preview.affectedIds.length} buildings take a measure in **${scenario.name}**, and ${preview.adoptedIds.length} adopt at ${scenario.adoptionPercent}%, seed ${scenario.adoptionSeed}.${preview.estimate ? ` Estimated ${preview.estimate.reductionPercent}% lower annual demand than the baseline (synthetic).` : ''}`,
         ),
-        reference('Show the rules on Measures and scenarios', {
+        reference('Show the rules on the Scenarios page', {
           type: 'page',
           page: 'creator',
         }),
@@ -1227,7 +1227,7 @@ const viewerRestoreSession: ScriptedSession = {
   label: 'Reset to the handed-over layout',
   prompt: 'Reset to the handed-over layout.',
   description:
-    'Returns the panels and views to the layout the package was handed over with; personal layouts stay.',
+    'Returns the panels and views to the layout the package was handed over with.',
   keywords: [
     /\brestore\b/,
     /\breset\b/,
@@ -1243,7 +1243,7 @@ const viewerRestoreSession: ScriptedSession = {
       layoutsCall({ type: 'layouts.resetToHandover', input: {} }),
     ),
     say(
-      'The panels and views are back as they were handed over. Your personal layouts for this package are still in View > Layouts.',
+      'The panels and views are back as they were handed over. The handed-over layouts are still in the Layouts panel.',
     ),
   ],
 }

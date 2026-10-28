@@ -2,7 +2,6 @@ import { TabNode } from 'flexlayout-react'
 import { describe, expect, it } from 'vitest'
 import { createWorkbench } from '../../domain/workbench.ts'
 import { parseSavedView } from '../../server/projectCatalog.ts'
-import { memoryStorage } from '../../testing/memoryStorage.ts'
 import {
   describeAgentTools,
   executeToolCall,
@@ -25,16 +24,16 @@ import { createViewStore } from '../view/viewStore.ts'
 import { createInitialState } from '../../domain/initialState.ts'
 import type { ProjectClient } from '../service/projectClient.ts'
 import { createLayoutLibrary, type LayoutLibrary } from './layoutLibrary.ts'
-import { PERSONAL_LAYOUTS_KEY } from './personalLayouts.ts'
 import {
   applyViewSnapshot,
   captureViewSnapshot,
+  MAX_LAYOUTS,
   parseLayoutList,
   uniqueLayoutName,
   type SavedLayout,
 } from './savedLayout.ts'
 
-function setup(storage: Storage | null = memoryStorage()) {
+function setup() {
   const workbench = createWorkbench()
   const layout = createLayoutController(workbench, null)
   const view = createViewStore(workbench)
@@ -43,18 +42,17 @@ function setup(storage: Storage | null = memoryStorage()) {
     workbench,
     layout,
     view,
-    storage,
     warn: (text) => warnings.push(text),
   })
-  return { workbench, layout, view, library, warnings, storage }
+  return { workbench, layout, view, library, warnings }
 }
 
 function lastLog(workbench: ReturnType<typeof createWorkbench>) {
   return workbench.store.getState().log.at(-1)
 }
 
-function saved(library: LayoutLibrary, scope: 'project' | 'personal') {
-  return library.store.getState()[scope].layouts
+function saved(library: LayoutLibrary) {
+  return library.store.getState().project.layouts
 }
 
 describe('saved layout shape', () => {
@@ -77,24 +75,26 @@ describe('saved layout shape', () => {
     ])
   })
 
-  it('keeps unreadable, foreign-scope, and repeated entries aside unchanged', () => {
+  it('keeps unreadable, personal, and repeated entries aside unchanged', () => {
     const { library } = setup()
-    library.save({ name: 'A', scope: 'personal' })
-    const good = saved(library, 'personal')[0] as SavedLayout
-    const list = parseLayoutList(
-      [good, { ...good }, { ...good, id: 'x', scope: 'project' }, 'junk'],
-      'personal',
-    )
+    library.save({ name: 'A' })
+    const good = saved(library)[0] as SavedLayout
+    expect(good.scope).toBe('project')
+    // Personal layouts are gone (decision 0033): one stored so is unreadable.
+    const list = parseLayoutList([
+      good,
+      { ...good },
+      { ...good, id: 'x', scope: 'personal' },
+      'junk',
+    ])
     expect(list.layouts).toHaveLength(1)
     expect(list.unreadable).toHaveLength(3)
-    expect(parseLayoutList(undefined, 'project')).toEqual({
+    expect(parseLayoutList(undefined)).toEqual({
       layouts: [],
       unreadable: [],
     })
     // A later format is not read by this version.
-    expect(
-      parseLayoutList([{ ...good, format: 2 }], 'personal').unreadable,
-    ).toHaveLength(1)
+    expect(parseLayoutList([{ ...good, format: 2 }]).unreadable).toHaveLength(1)
   })
 
   it('numbers repeated names', () => {
@@ -104,18 +104,6 @@ describe('saved layout shape', () => {
     expect(uniqueLayoutName('Other', layouts)).toBe('Other')
   })
 })
-
-/** Memory storage whose writes can be made to fail, as a full quota does. */
-function failingStorage() {
-  const storage = memoryStorage()
-  const control = { fail: false }
-  const setItem = storage.setItem.bind(storage)
-  storage.setItem = (key, value) => {
-    if (control.fail) throw new Error('Quota exceeded')
-    setItem(key, value)
-  }
-  return { storage, control }
-}
 
 describe('preparing a saved arrangement', () => {
   it('keeps the selected tab selected after others are dropped, and names repeated tabs', () => {
@@ -298,15 +286,11 @@ describe('applying view settings', () => {
 })
 
 describe('layout library', () => {
-  it('saves a personal layout in the browser and a project layout in memory', () => {
-    const { library, storage, workbench } = setup()
-    expect(library.save({ name: 'Mine', scope: 'personal' }).status).toBe(
-      'applied',
-    )
-    expect(storage?.getItem(PERSONAL_LAYOUTS_KEY)).toContain('"Mine"')
-    expect(library.save({ name: 'Team', scope: 'project' })).toMatchObject({
+  it('saves a layout with the project, in memory until the project is saved', () => {
+    const { library, workbench } = setup()
+    expect(library.save({ name: 'Team' })).toMatchObject({
       status: 'applied',
-      summary: 'Saved the project layout "Team". Save the project to keep it.',
+      summary: 'Saved the layout "Team". Save the project to keep it.',
     })
     expect(lastLog(workbench)).toMatchObject({
       type: 'layouts.save',
@@ -321,27 +305,55 @@ describe('layout library', () => {
 
   it('refuses an empty or repeated name on its field', () => {
     const { library } = setup()
-    expect(library.save({ name: '  ', scope: 'personal' })).toMatchObject({
+    expect(library.save({ name: '  ' })).toMatchObject({
       status: 'rejected',
       issues: [{ path: 'name', message: 'Enter a layout name.' }],
     })
-    library.save({ name: 'Review', scope: 'personal' })
-    expect(library.save({ name: 'review', scope: 'personal' })).toMatchObject({
+    library.save({ name: 'Review' })
+    expect(library.save({ name: 'review' })).toMatchObject({
       status: 'rejected',
       issues: [{ path: 'name' }],
     })
-    // The same name is fine in the other scope.
-    expect(library.save({ name: 'Review', scope: 'project' }).status).toBe(
-      'applied',
-    )
+    const other = library.save({ name: 'Other' })
+    if (other.status !== 'applied' || !other.id) throw new Error('not saved')
+    expect(library.rename(other.id, 'REVIEW')).toMatchObject({
+      status: 'rejected',
+      issues: [{ path: 'name' }],
+    })
+    expect(library.rename(other.id, 'Other')).toMatchObject({
+      status: 'rejected',
+      issues: [
+        { path: 'name', message: 'The layout is already named "Other".' },
+      ],
+    })
+  })
+
+  it(`keeps at most ${MAX_LAYOUTS} layouts in a project`, () => {
+    const { library } = setup()
+    for (let index = 0; index < MAX_LAYOUTS; index += 1) {
+      library.save({ name: `Layout ${index}` })
+    }
+    const full = `This project already has ${MAX_LAYOUTS} layouts. Delete one first.`
+    expect(library.saveBlocker()).toBe(full)
+    expect(library.save({ name: 'One more' })).toMatchObject({
+      status: 'rejected',
+      issues: [{ message: full }],
+    })
+    const first = saved(library)[0] as SavedLayout
+    expect(library.duplicate(first.id)).toMatchObject({
+      status: 'rejected',
+      issues: [{ message: full }],
+    })
+    expect(library.remove(first.id).status).toBe('applied')
+    expect(library.saveBlocker()).toBeNull()
   })
 
   it('applies the arrangement and view settings as one logged operation, and resets to it', () => {
     const { library, layout, view, workbench } = setup()
     view.execute({ type: 'table.setQuickFilter', input: { text: 'office' } })
     layout.placePage('table', 'map', 'right')
-    const save = library.save({ name: 'Side by side', scope: 'personal' })
-    if (save.status !== 'applied' || !save.ref) throw new Error('not saved')
+    const save = library.save({ name: 'Side by side' })
+    if (save.status !== 'applied' || !save.id) throw new Error('not saved')
     expect(library.changedSinceApplied()).toBe(false)
 
     layout.reset()
@@ -349,13 +361,13 @@ describe('layout library', () => {
     expect(library.changedSinceApplied()).toBe(true)
 
     const before = workbench.store.getState().log.length
-    const applied = library.apply(save.ref, 'agent')
-    expect(applied.status).toBe('applied')
+    const applied = library.apply(save.id, 'agent')
+    expect(applied).toMatchObject({ status: 'applied', id: save.id })
     expect(workbench.store.getState().log.length).toBe(before + 1)
     expect(lastLog(workbench)).toMatchObject({
       type: 'layouts.apply',
       source: 'agent',
-      summary: 'Applied the personal layout "Side by side".',
+      summary: 'Applied the layout "Side by side".',
     })
     expect(view.getState().table.quickFilter).toBe('office')
     const map = layout.getModel().getNodeById(pageTabId('map'))
@@ -368,15 +380,35 @@ describe('layout library', () => {
 
     view.execute({ type: 'jobs.setFilter', input: { filter: 'finished' } })
     expect(library.changedSinceApplied()).toBe(true)
-    expect(library.resetToApplied().status).toBe('applied')
+    expect(library.resetToApplied()).toMatchObject({
+      status: 'applied',
+      summary: 'Reset the panels and views to the layout "Side by side".',
+    })
     expect(view.getState().jobs.filter).toBe('all')
     expect(lastLog(workbench)?.type).toBe('layouts.reset')
   })
 
+  it('updates a layout with the current panels and views', () => {
+    const { library, view } = setup()
+    const save = library.save({ name: 'Working' })
+    if (save.status !== 'applied' || !save.id) throw new Error('not saved')
+    view.execute({ type: 'table.setQuickFilter', input: { text: 'library' } })
+    expect(library.changedSinceApplied()).toBe(true)
+    expect(library.update(save.id)).toMatchObject({
+      status: 'applied',
+      summary:
+        'Updated the layout "Working" with the current panels and views.',
+    })
+    expect(library.changedSinceApplied()).toBe(false)
+    view.execute({ type: 'table.setQuickFilter', input: { text: '' } })
+    library.apply(save.id)
+    expect(view.getState().table.quickFilter).toBe('library')
+  })
+
   it('reports tabs it left out as a warning and keeps the current layout on a broken arrangement', () => {
     const { library, layout, warnings, workbench } = setup()
-    const save = library.save({ name: 'Old', scope: 'project' })
-    if (save.status !== 'applied' || !save.ref) throw new Error('not saved')
+    const save = library.save({ name: 'Old' })
+    if (save.status !== 'applied' || !save.id) throw new Error('not saved')
     const stored = library.forSave().layouts[0] as SavedLayout
     const arrangement = structuredClone(stored.arrangement) as {
       layout: { children: { children: unknown[] }[] }
@@ -401,54 +433,64 @@ describe('layout library', () => {
       },
       'key',
     )
-    expect(library.apply({ scope: 'project', id: stored.id }).status).toBe(
-      'applied',
-    )
+    expect(library.apply(stored.id).status).toBe('applied')
     expect(warnings[0]).toContain('"Removed page"')
+    expect(lastLog(workbench)?.summary).toBe(
+      'Applied the layout "Old". Some parts were left out.',
+    )
 
     const model = layout.getModel()
-    const outcome = library.apply({ scope: 'project', id: 'broken' })
+    const outcome = library.apply('broken')
     expect(outcome.status).toBe('rejected')
     expect(layout.getModel()).toBe(model)
     expect(lastLog(workbench)?.issues[0]?.message).toContain(
       'The current layout is unchanged.',
     )
+    expect(library.apply('missing')).toMatchObject({
+      status: 'rejected',
+      issues: [{ path: 'layoutId', message: 'There is no layout "missing".' }],
+    })
   })
 
-  it('renames, duplicates, copies across scopes, and deletes', () => {
+  it('renames, duplicates, and deletes', () => {
     const { library } = setup()
-    const save = library.save({ name: 'A', scope: 'project' })
-    if (save.status !== 'applied' || !save.ref) throw new Error('not saved')
-    expect(library.rename(save.ref, 'B').status).toBe('applied')
+    const save = library.save({ name: 'A' })
+    if (save.status !== 'applied' || !save.id) throw new Error('not saved')
+    expect(library.rename(save.id, 'B')).toMatchObject({
+      status: 'applied',
+      summary: 'Renamed the layout "A" to "B".',
+    })
     expect(library.store.getState().applied?.name).toBe('B')
-    expect(library.duplicate(save.ref)).toMatchObject({
+    expect(library.duplicate(save.id)).toMatchObject({
       status: 'applied',
       summary: 'Duplicated the layout "B" as "B copy".',
     })
-    expect(library.duplicate(save.ref, 'manual', 'personal')).toMatchObject({
+    // A second copy gets a numbered name.
+    expect(library.duplicate(save.id)).toMatchObject({
       status: 'applied',
-      summary: 'Copied the project layout "B" to the personal layouts as "B".',
+      summary: 'Duplicated the layout "B" as "B copy (2)".',
     })
-    expect(library.setDefault(save.ref.id).status).toBe('applied')
-    expect(library.remove(save.ref)).toMatchObject({
+    expect(library.setDefault(save.id).status).toBe('applied')
+    expect(library.remove(save.id)).toMatchObject({
       status: 'applied',
       summary:
-        'Deleted the project layout "B". The project no longer opens with a default layout.',
+        'Deleted the layout "B". The project no longer opens with a default layout.',
     })
     expect(library.store.getState().defaultId).toBeNull()
     expect(library.store.getState().applied).toBeNull()
     expect(library.resetBlocker()).toContain('No saved layout has been applied')
-    expect(saved(library, 'project').map((each) => each.name)).toEqual([
+    expect(saved(library).map((each) => each.name)).toEqual([
       'B copy',
+      'B copy (2)',
     ])
   })
 
   it('opens a project with its default layout and treats those views as saved', () => {
     const { library, view } = setup()
     view.execute({ type: 'table.setQuickFilter', input: { text: 'school' } })
-    const save = library.save({ name: 'Default', scope: 'project' })
-    if (save.status !== 'applied' || !save.ref) throw new Error('not saved')
-    library.setDefault(save.ref.id)
+    const save = library.save({ name: 'Default' })
+    if (save.status !== 'applied' || !save.id) throw new Error('not saved')
+    library.setDefault(save.id)
     const stored = { tables: {}, ...library.forSave() }
     view.execute({ type: 'table.setQuickFilter', input: { text: '' } })
 
@@ -464,69 +506,47 @@ describe('layout library', () => {
     expect(library.store.getState().applied).toBeNull()
   })
 
-  it('explains blocked and unreadable browser storage, and recovers only when asked', () => {
-    const blocked = setup(null)
-    expect(
-      blocked.library.save({ name: 'X', scope: 'personal' }),
-    ).toMatchObject({ status: 'rejected' })
-    expect(blocked.library.saveBlocker('personal')).toContain(
-      'Browser storage is unavailable',
-    )
-    expect(blocked.library.save({ name: 'X', scope: 'project' }).status).toBe(
-      'applied',
-    )
-
-    const storage = memoryStorage()
-    storage.setItem(PERSONAL_LAYOUTS_KEY, '{not json')
-    const broken = setup(storage)
-    expect(broken.library.store.getState().personalStatus.kind).toBe(
-      'unreadable',
-    )
-    expect(broken.library.save({ name: 'X', scope: 'personal' }).status).toBe(
-      'rejected',
-    )
-    expect(storage.getItem(PERSONAL_LAYOUTS_KEY)).toBe('{not json')
-    expect(broken.library.removeUnreadablePersonal().status).toBe('applied')
-    expect(storage.getItem(PERSONAL_LAYOUTS_KEY)).toBeNull()
-    expect(broken.library.save({ name: 'X', scope: 'personal' }).status).toBe(
-      'applied',
-    )
-  })
-
   it('keeps project layouts read-only where they are not writable', () => {
     const workbench = createWorkbench()
     const layout = createLayoutController(workbench, null)
     const view = createViewStore(workbench)
-    const writable = createLayoutLibrary({
-      workbench,
-      layout,
-      view,
-      storage: memoryStorage(),
-    })
-    writable.save({ name: 'Handed over', scope: 'project' })
+    const writable = createLayoutLibrary({ workbench, layout, view })
+    writable.save({ name: 'Handed over' })
     const viewer = createLayoutLibrary({
       workbench,
       layout,
       view,
-      storage: memoryStorage(),
-      projectWritable: false,
+      writable: false,
     })
+    expect(viewer.writable).toBe(false)
     viewer.resetForProject({ tables: {}, ...writable.forSave() }, 'k')
-    const ref = {
-      scope: 'project' as const,
-      id: saved(viewer, 'project')[0]?.id ?? '',
+    const id = saved(viewer)[0]?.id ?? ''
+    expect(viewer.apply(id).status).toBe('applied')
+    const readOnly = {
+      status: 'rejected',
+      issues: [
+        {
+          message:
+            'Handed-over layouts are read-only here; apply one to use it.',
+        },
+      ],
     }
-    expect(viewer.apply(ref).status).toBe('applied')
-    expect(viewer.remove(ref).status).toBe('rejected')
-    expect(viewer.save({ name: 'Y', scope: 'project' }).status).toBe('rejected')
-    expect(viewer.duplicate(ref, 'manual', 'personal').status).toBe('applied')
+    expect(viewer.saveBlocker()).toBe(readOnly.issues[0]?.message)
+    expect(viewer.changeBlocker(id)).toBe(readOnly.issues[0]?.message)
+    expect(viewer.save({ name: 'Y' })).toMatchObject(readOnly)
+    expect(viewer.update(id)).toMatchObject(readOnly)
+    expect(viewer.rename(id, 'Z')).toMatchObject(readOnly)
+    expect(viewer.duplicate(id)).toMatchObject(readOnly)
+    expect(viewer.remove(id)).toMatchObject(readOnly)
+    expect(viewer.setDefault(id)).toMatchObject(readOnly)
+    expect(saved(viewer).map((each) => each.name)).toEqual(['Handed over'])
   })
 })
 
 describe('keeping what others wrote', () => {
   it('keeps fields a later version added, and a default naming an unreadable layout', () => {
     const { library } = setup()
-    library.save({ name: 'A', scope: 'project' })
+    library.save({ name: 'A' })
     const stored = library.forSave().layouts[0] as SavedLayout
     const future = { ...stored, futureField: { kept: true } }
     const unreadable = { ...stored, id: 'from-later', format: 2 }
@@ -546,50 +566,6 @@ describe('keeping what others wrote', () => {
     // Choosing a default replaces the kept one.
     library.setDefault(stored.id)
     expect(library.forSave().defaultLayoutId).toBe(stored.id)
-  })
-
-  it('keeps a personal layout another tab saved meanwhile', () => {
-    const storage = memoryStorage()
-    const first = setup(storage)
-    const second = setup(storage)
-    first.library.save({ name: 'From the first tab', scope: 'personal' })
-    // The second tab has not seen it yet, and saves its own.
-    expect(saved(second.library, 'personal')).toHaveLength(0)
-    second.library.save({ name: 'From the second tab', scope: 'personal' })
-    expect(
-      saved(second.library, 'personal').map((layout) => layout.name),
-    ).toEqual(['From the first tab', 'From the second tab'])
-    expect(storage.getItem(PERSONAL_LAYOUTS_KEY)).toContain(
-      'From the first tab',
-    )
-  })
-
-  it('leaves personal layouts as they were when storing fails', () => {
-    const { storage, control } = failingStorage()
-    const { library, workbench } = setup(storage)
-    const save = library.save({ name: 'Kept', scope: 'personal' })
-    if (save.status !== 'applied' || !save.ref) throw new Error('not saved')
-    const before = storage.getItem(PERSONAL_LAYOUTS_KEY)
-    control.fail = true
-    for (const outcome of [
-      library.rename(save.ref, 'Other'),
-      library.update(save.ref),
-      library.remove(save.ref),
-    ]) {
-      expect(outcome).toMatchObject({
-        status: 'rejected',
-        issues: [
-          {
-            message: 'Personal layouts could not be stored: Quota exceeded',
-          },
-        ],
-      })
-    }
-    expect(lastLog(workbench)?.status).toBe('rejected')
-    expect(storage.getItem(PERSONAL_LAYOUTS_KEY)).toBe(before)
-    expect(saved(library, 'personal').map((layout) => layout.name)).toEqual([
-      'Kept',
-    ])
   })
 })
 
@@ -620,12 +596,13 @@ describe('saved layouts with the project and for the agent', () => {
     expect(
       tools.filter((tool) => tool.requiresApproval).map((tool) => tool.name),
     ).toEqual(['layouts.update', 'layouts.delete'])
+    // No layout tool takes a scope any more (decision 0033).
+    expect(JSON.stringify(tools.map((tool) => tool.inputSchema))).not.toContain(
+      'scope',
+    )
     expect(
       requiresApproval(
-        layoutsCall({
-          type: 'layouts.delete',
-          input: { scope: 'personal', layoutId: 'x' },
-        }),
+        layoutsCall({ type: 'layouts.delete', input: { layoutId: 'x' } }),
       ),
     ).toBe(true)
 
@@ -640,10 +617,7 @@ describe('saved layouts with the project and for the agent', () => {
     }
     const result = await executeToolCall(
       deps,
-      layoutsCall({
-        type: 'layouts.save',
-        input: { name: 'Agent view', scope: 'personal' },
-      }),
+      layoutsCall({ type: 'layouts.save', input: { name: 'Agent view' } }),
     )
     expect(result).toMatchObject({ status: 'applied' })
     expect(lastLog(workbench)?.source).toBe('agent')
@@ -652,7 +626,21 @@ describe('saved layouts with the project and for the agent', () => {
       layoutsCall({ type: 'layouts.list', input: {} }),
     )
     expect(listed.data).toMatchObject({
-      layouts: [{ name: 'Agent view', scope: 'personal', isApplied: true }],
+      layouts: [{ name: 'Agent view', isApplied: true, isDefault: false }],
+    })
+    const [item] = (listed.data as { layouts: Record<string, unknown>[] })
+      .layouts
+    expect(item).not.toHaveProperty('scope')
+    const duplicated = await executeToolCall(
+      deps,
+      layoutsCall({
+        type: 'layouts.duplicate',
+        input: { layoutId: String(item?.layoutId) },
+      }),
+    )
+    expect(duplicated).toMatchObject({
+      status: 'applied',
+      summary: 'Duplicated the layout "Agent view" as "Agent view copy".',
     })
     expect(layout.getModel().getNodeById(panelTabId('assets'))).toBeDefined()
   })

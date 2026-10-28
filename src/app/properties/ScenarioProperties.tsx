@@ -76,7 +76,7 @@ function categoryConflict(
  * Scenario modeling compares it, and its adoption: the share of affected
  * buildings that adopt, sampled with a fixed seed when results are
  * aggregated, so changing it re-aggregates without modeling again. Its rules
- * are listed on the Measures and scenarios page and edited as scenario
+ * are listed on the Scenarios page and edited as scenario
  * rules. A new scenario can start with one rule for every building.
  */
 export function ScenarioProperties({
@@ -207,7 +207,7 @@ export function ScenarioProperties({
   const ruleCount = scenario?.ruleIds.length ?? 0
   const previewText = (() => {
     if (scenario && ruleCount === 0) {
-      return 'No rules yet: the scenario changes no building. Add rules on the Measures and scenarios page.'
+      return 'No rules yet: the scenario changes no building. Add rules on the Scenarios page.'
     }
     if (creating && draft.measureIds.length === 0) {
       return 'Optionally choose measures for a first rule that applies to every building, or add rules after creating the scenario.'
@@ -260,7 +260,7 @@ export function ScenarioProperties({
       actions={
         scenario ? (
           <ActionButton
-            label={`Show the rules of ${scenario.name} on the Measures and scenarios page`}
+            label={`Show the rules of ${scenario.name} on the Scenarios page`}
             disabledReason={null}
             onPress={() => {
               view.execute({

@@ -32,7 +32,6 @@ import {
 import {
   catalogSummaries,
   readHandoverCatalog,
-  viewerLayoutsKey,
   writeHandoverCatalog,
   type HandoverCatalog,
 } from './handoverCatalog.ts'
@@ -657,12 +656,6 @@ export function createMockServer(options: {
     }
     const written = writeHandoverCatalog(options.storage, next)
     if (!written.ok) return { ok: false, ...serverError(written.message, 503) }
-    // The viewer's personal layouts for it go too; they fit no other package.
-    try {
-      options.storage?.removeItem(viewerLayoutsKey(request.packageId))
-    } catch {
-      // Blocked storage: the layouts stay, harmless and unreachable.
-    }
     setPackages({ catalog: next, error: null })
     // A modeller session reports it as an update, so its dialog lists follow.
     emit([])

@@ -37,7 +37,6 @@ import {
   createHandoverService,
   type HandoverService,
 } from './handover/handoverService.ts'
-import { viewerLayoutsKey } from './layouts/personalLayouts.ts'
 import { initialConditions } from '../server/conditions.ts'
 import { FIXTURES } from '../server/fixtures.ts'
 import { hasOutdatedProject } from '../server/persistence.ts'
@@ -107,7 +106,7 @@ type CoreServices = {
   messages: MessageCenter
   /** A definition being created in the Properties panel (decision 0028). */
   properties: PropertiesService
-  /** Project and personal saved layouts (decision 0032). */
+  /** Saved layouts, kept with the project (decisions 0032 and 0033). */
   layouts: LayoutLibrary
   /** Freezes the project into a view-only handover package (decision 0032, stage 5). */
   handover: HandoverService
@@ -221,9 +220,8 @@ function createCoreServices(mode: AppMode): CoreServices {
     workbench,
     layout,
     view,
-    storage,
-    // Handed-over layouts are read-only; a viewer's own are personal.
-    projectWritable: !viewOnly,
+    // Handed-over layouts are read-only.
+    writable: !viewOnly,
     warn: (text, operationId, source) => {
       messageCenter?.post({
         tone: 'warning',
@@ -309,10 +307,6 @@ function createCoreServices(mode: AppMode): CoreServices {
   // default layout stays on screen in the project it belongs to.
   client.store.subscribe((snapshot, previous) => {
     if (snapshot.projectGeneration !== previous.projectGeneration) {
-      // A viewer's personal layouts belong to the package they were made in.
-      if (viewOnly && snapshot.meta.handover) {
-        layouts.setPersonalKey(viewerLayoutsKey(snapshot.meta.handover.id))
-      }
       layouts.resetForProject(
         snapshot.meta.view,
         sessionKey(snapshot.projectGeneration, snapshot.meta.savedAt),

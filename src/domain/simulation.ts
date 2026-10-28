@@ -692,14 +692,14 @@ function confirmScenarioDefinitions(state: WorkbenchState): StageRunResult {
     return {
       ok: false,
       message:
-        'Define at least one scenario before confirming definitions. Open Measures and scenarios to add a measure and a scenario.',
+        'Define at least one scenario before confirming definitions. Open Scenarios to add a measure and a scenario.',
     }
   }
   if (!scenarios.some((scenario) => scenario.included)) {
     return {
       ok: false,
       message:
-        'Include at least one scenario in the comparison set. Open Measures and scenarios to include one.',
+        'Include at least one scenario in the comparison set. Open Scenarios to include one.',
     }
   }
   const warnings = usesPvWithoutYield(state)

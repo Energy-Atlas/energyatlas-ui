@@ -7,8 +7,9 @@ import {
   type Page,
 } from './test.ts'
 
-// Saved layouts (decision 0032): personal layouts in the browser, project
-// layouts saved with the project, apply, reset, delete, and broken storage.
+// Saved layouts (decisions 0032 and 0033): kept with the project only and
+// managed in the Layouts panel, whose table holds each layout's details and
+// actions; View > Layouts > Save layout… asks for a name in a prompt.
 
 async function seriousViolations(page: Page) {
   const results = await new AxeBuilder({ page }).analyze()
@@ -20,47 +21,47 @@ async function seriousViolations(page: Page) {
     .map((violation) => `${violation.id} (${violation.nodes.length})`)
 }
 
-function layoutsDialog(page: Page) {
-  return page.getByRole('dialog', { name: 'Layouts' })
+function layoutsPanel(page: Page) {
+  return page.getByRole('region', { name: 'Layouts', exact: true })
 }
 
 async function openLayouts(page: Page) {
+  if (await layoutsPanel(page).isVisible()) return layoutsPanel(page)
   // The shortcut is not taken from a text field, as typing there must work.
   await page.getByRole('main', { name: 'Workspace' }).focus()
   await page.keyboard.press('Control+Alt+l')
-  await expect(layoutsDialog(page)).toBeVisible()
-  return layoutsDialog(page)
+  await expect(layoutsPanel(page)).toBeVisible()
+  return layoutsPanel(page)
 }
 
 async function runFromPalette(page: Page, text: string) {
+  await page.getByRole('main', { name: 'Workspace' }).focus()
   await page.keyboard.press('Control+k')
   await page.keyboard.type(text)
   await page.keyboard.press('Enter')
 }
 
-async function saveLayout(
-  page: Page,
-  name: string,
-  scope: 'project' | 'personal',
-) {
-  const dialog = await openLayouts(page)
-  await dialog.getByRole('textbox', { name: 'Layout name' }).fill(name)
-  const radio = dialog.getByRole('radio', {
-    name:
-      scope === 'project'
-        ? 'With the project'
-        : 'In this browser, for every project',
-  })
-  await radio.focus()
-  await page.keyboard.press('Space')
-  await dialog.getByRole('button', { name: 'Save layout' }).click()
-  const list = dialog.getByRole('listbox', {
-    name: scope === 'project' ? 'Project layouts' : 'Personal layouts',
-  })
-  await expect(
-    list.getByRole('option', { name: new RegExp(name) }),
-  ).toBeVisible()
-  return dialog
+/** Saves from the panel's own form: a name, then Save layout. */
+async function saveFromPanel(page: Page, name: string) {
+  const panel = await openLayouts(page)
+  await panel.getByRole('textbox', { name: 'Layout name' }).fill(name)
+  await panel.getByRole('button', { name: 'Save layout' }).click()
+  await expect(layoutRow(page, name)).toBeVisible()
+  return panel
+}
+
+function layoutRow(page: Page, name: string) {
+  return layoutsPanel(page)
+    .getByRole('grid', { name: 'Layouts' })
+    .getByRole('row', { name: new RegExp(name) })
+}
+
+/** Chooses Update, Rename…, Duplicate, or Delete… from a layout row's menu. */
+async function rowAction(page: Page, name: string, action: string) {
+  await layoutRow(page, name)
+    .getByRole('button', { name: `More actions for the layout ${name}` })
+    .click()
+  await page.getByRole('menuitem', { name: new RegExp(`^${action}`) }).click()
 }
 
 const mapTab = (page: Page) =>
@@ -69,86 +70,118 @@ const tableTab = (page: Page) =>
   page.getByRole('tab', { name: 'Table', exact: true })
 const search = (page: Page) =>
   page.getByRole('searchbox', { name: 'Search buildings' })
+const notice = (page: Page) => page.getByTestId('status-notice')
 
-test('saves a personal layout, applies it after changes, resets to it, and deletes it', async ({
+test('saves a layout in the panel, applies it after changes, resets to it, and deletes it', async ({
   page,
 }) => {
   test.setTimeout(90_000)
   await page.goto('/?fixture=complete')
 
   // Empty states first.
-  let dialog = await openLayouts(page)
-  await expect(dialog).toContainText('No saved layout is applied')
-  await expect(dialog).toContainText('No project layouts yet.')
-  await expect(dialog).toContainText('No personal layouts yet.')
-  await page.keyboard.press('Escape')
+  let panel = await openLayouts(page)
+  await expect(panel).toContainText('No saved layout is applied')
+  await expect(panel).toContainText('No layouts yet.')
+  // A name is required.
+  await panel.getByRole('button', { name: 'Save layout' }).click()
+  await expect(panel).toContainText('Enter a layout name.')
 
   // An arrangement and a view setting to keep.
   await runFromPalette(page, 'place map beside table')
   await expect(mapTab(page)).toHaveAttribute('aria-selected', 'true')
   await expect(tableTab(page)).toHaveAttribute('aria-selected', 'true')
   await search(page).fill('office')
-  await expect(page.getByTestId('status-notice')).toContainText(
+  await expect(notice(page)).toContainText(
     'Filtered the buildings table by "office"',
   )
 
-  dialog = await saveLayout(page, 'Side by side', 'personal')
-  await expect(page.getByTestId('status-notice')).toContainText(
-    'Saved the personal layout "Side by side" in this browser.',
+  panel = await saveFromPanel(page, 'Side by side')
+  await expect(notice(page)).toContainText(
+    'Saved the layout "Side by side". Save the project to keep it.',
   )
-  await expect(dialog).toContainText('Applied: Side by side (personal)')
+  await expect(panel).toContainText('Applied: Side by side')
+  await expect(layoutRow(page, 'Side by side')).toContainText('Applied')
+  await expect(layoutRow(page, 'Side by side')).toContainText('A person')
   expect(await seriousViolations(page)).toEqual([])
-  await page.keyboard.press('Escape')
 
-  // Change both, then apply the layout from the list with the keyboard.
+  // A taken name is refused at the field.
+  await panel.getByRole('textbox', { name: 'Layout name' }).fill('side by side')
+  await panel.getByRole('button', { name: 'Save layout' }).click()
+  await expect(panel).toContainText('already exists')
+  await panel.getByRole('textbox', { name: 'Layout name' }).fill('')
+
+  // Change both, then apply the layout from its row.
   await runFromPalette(page, 'reset layout')
   await expect(tableTab(page)).toHaveAttribute('aria-selected', 'false')
   await tableTab(page).click()
   await search(page).fill('')
   await mapTab(page).click()
-  dialog = await openLayouts(page)
-  await expect(dialog).toContainText('changed since applied')
-  const option = dialog
-    .getByRole('listbox', { name: 'Personal layouts' })
-    .getByRole('option', { name: /Side by side/ })
-  await option.focus()
-  await page.keyboard.press('Enter')
-  await expect(page.getByTestId('status-notice')).toContainText(
-    'Applied the personal layout "Side by side".',
-  )
-  await expect(dialog).not.toContainText('changed since applied')
-  await page.keyboard.press('Escape')
+  panel = await openLayouts(page)
+  await expect(panel).toContainText('changed since applied')
+  await layoutRow(page, 'Side by side')
+    .getByRole('button', { name: 'Apply the layout Side by side' })
+    .click()
+  await expect(notice(page)).toContainText('Applied the layout "Side by side".')
   await expect(mapTab(page)).toHaveAttribute('aria-selected', 'true')
   await expect(tableTab(page)).toHaveAttribute('aria-selected', 'true')
   await expect(search(page)).toHaveValue('office')
 
   // Reset to the layout from the palette after another change.
   await search(page).fill('school')
-  await expect(page.getByTestId('status-notice')).toContainText('"school"')
+  await expect(notice(page)).toContainText('"school"')
   await runFromPalette(page, 'reset to layout')
-  await expect(page.getByTestId('status-notice')).toContainText(
-    'Reset the panels and views to the personal layout "Side by side".',
+  await expect(notice(page)).toContainText(
+    'Reset the panels and views to the layout "Side by side".',
   )
   await expect(search(page)).toHaveValue('office')
 
-  // Personal layouts stay in this browser across reloads and projects.
-  await page.reload()
-  dialog = await openLayouts(page)
-  const personal = dialog.getByRole('listbox', { name: 'Personal layouts' })
-  await personal.getByRole('option', { name: /Side by side/ }).click()
-  await dialog
-    .getByRole('button', { name: 'Delete the layout Side by side' })
-    .click()
+  // Delete from the row, confirmed in the panel.
+  panel = await openLayouts(page)
+  await rowAction(page, 'Side by side', 'Delete')
   // The safe choice has focus, so Enter twice keeps the layout.
-  await expect(dialog.getByRole('button', { name: 'Keep it' })).toBeFocused()
-  await dialog.getByRole('button', { name: 'Delete layout' }).click()
-  await expect(dialog).toContainText('No personal layouts yet.')
-  await expect(page.getByTestId('status-notice')).toContainText(
-    'Deleted the personal layout "Side by side".',
-  )
+  await expect(panel.getByRole('button', { name: 'Keep it' })).toBeFocused()
+  await panel.getByRole('button', { name: 'Delete layout' }).click()
+  await expect(panel).toContainText('No layouts yet.')
+  await expect(notice(page)).toContainText('Deleted the layout "Side by side".')
 })
 
-test('keeps project layouts and the default with the project across save and reopen', async ({
+test('renames, duplicates, and updates layouts from their rows', async ({
+  page,
+}) => {
+  test.setTimeout(90_000)
+  await page.goto('/?fixture=complete')
+  const panel = await saveFromPanel(page, 'Draft')
+
+  await rowAction(page, 'Draft', 'Rename')
+  const rename = panel.getByRole('textbox', { name: /New name for/ })
+  await expect(rename).toBeFocused()
+  await rename.fill('Review')
+  await page.keyboard.press('Enter')
+  await expect(notice(page)).toContainText(
+    'Renamed the layout "Draft" to "Review".',
+  )
+  await expect(layoutRow(page, 'Review')).toBeVisible()
+
+  await rowAction(page, 'Review', 'Duplicate')
+  await expect(notice(page)).toContainText(
+    'Duplicated the layout "Review" as "Review copy".',
+  )
+  await expect(
+    panel.getByRole('grid', { name: 'Layouts' }).getByRole('row'),
+  ).toHaveCount(3)
+
+  await tableTab(page).click()
+  await search(page).fill('office')
+  // The search reports itself after a pause; wait so it cannot replace the next notice.
+  await expect(notice(page)).toContainText('"office"')
+  await rowAction(page, 'Review copy', 'Update')
+  await expect(notice(page)).toContainText(
+    'Updated the layout "Review copy" with the current panels and views.',
+  )
+  await expect(layoutRow(page, 'Review copy')).toContainText('Applied')
+})
+
+test('saves from the View menu prompt and keeps layouts and the default with the project', async ({
   page,
 }) => {
   test.setTimeout(90_000)
@@ -157,21 +190,33 @@ test('keeps project layouts and the default with the project across save and reo
 
   await runFromPalette(page, 'place map beside table')
   await expect(tableTab(page)).toHaveAttribute('aria-selected', 'true')
-  const dialog = await saveLayout(page, 'Team view', 'project')
-  await dialog
-    .getByRole('listbox', { name: 'Project layouts' })
-    .getByRole('option', { name: /Team view/ })
+  // View > Layouts > Save layout… asks for the name in a prompt.
+  await page
+    .getByRole('toolbar', { name: 'Workbench commands' })
+    .getByRole('button', { name: 'View', exact: true })
     .click()
-  const opensWith = dialog.getByRole('checkbox', {
-    name: 'Open the project with this layout',
+  await page.getByRole('menuitem', { name: 'Layouts', exact: true }).click()
+  await page.getByRole('menuitem', { name: /^Save layout/ }).click()
+  const prompt = page.getByRole('dialog', { name: 'Save layout' })
+  await expect(
+    prompt.getByRole('textbox', { name: 'Layout name' }),
+  ).toBeFocused()
+  expect(await seriousViolations(page)).toEqual([])
+  await page.keyboard.type('Team view')
+  await page.keyboard.press('Enter')
+  await expect(prompt).toBeHidden()
+  await expect(notice(page)).toContainText('Saved the layout "Team view".')
+
+  const panel = await openLayouts(page)
+  const opensWith = layoutRow(page, 'Team view').getByRole('checkbox', {
+    name: 'Open the project with the layout Team view',
   })
-  await opensWith.focus()
-  await page.keyboard.press('Space')
+  // Focus entering the table lands on the row first, as React Aria's grid does.
+  await opensWith.locator('xpath=ancestor::label[1]').click()
   await expect(opensWith).toBeChecked()
-  await expect(page.getByTestId('status-notice')).toContainText(
+  await expect(notice(page)).toContainText(
     'The project opens with the layout "Team view".',
   )
-  await page.keyboard.press('Escape')
 
   // A different arrangement before saving: reopening restores the default.
   await runFromPalette(page, 'reset layout')
@@ -187,70 +232,24 @@ test('keeps project layouts and the default with the project across save and reo
   if ((await assetsTab.getAttribute('aria-selected')) !== 'true') {
     await assetsTab.click()
   }
+  const layoutsTab = page.getByRole('tab', { name: 'Layouts', exact: true })
+  if ((await layoutsTab.getAttribute('aria-selected')) === 'true') {
+    await layoutsTab.click()
+  }
+  await expect(panel).toBeHidden()
   const tree = page.getByRole('treegrid', { name: 'Project assets' })
-  // Arrowing through the layout rows selects nothing and opens nothing.
+  // Arrowing through the layout rows opens nothing.
   await tree.getByRole('row', { name: /^Reports/ }).click()
   await page.keyboard.press('ArrowDown')
   await page.keyboard.press('ArrowDown')
   await expect(
     tree.getByRole('row', { name: 'Team view (default)' }),
   ).toBeFocused()
-  await page.keyboard.press('ArrowDown')
-  await page.keyboard.press('ArrowUp')
-  await page.keyboard.press('ArrowUp')
-  await expect(layoutsDialog(page)).toBeHidden()
-  // Enter opens the Layouts dialog on the layout.
-  await page.keyboard.press('ArrowDown')
-  await page.keyboard.press('ArrowDown')
-  await expect(
-    tree.getByRole('row', { name: 'Team view (default)' }),
-  ).toBeFocused()
+  await expect(panel).toBeHidden()
+  // Enter shows the Layouts panel with the layout marked.
   await page.keyboard.press('Enter')
-  await expect(layoutsDialog(page)).toBeVisible()
-  await expect(
-    layoutsDialog(page).getByRole('option', { name: /Team view/ }),
-  ).toContainText('Default · Applied')
-  await expect(layoutsDialog(page)).toContainText('Opens with the project')
-  expect(await seriousViolations(page)).toEqual([])
-})
-
-test('explains unreadable personal layouts and recovers only when asked', async ({
-  page,
-}) => {
-  await page.addInitScript(() => {
-    if (!window.sessionStorage.getItem('layouts-seeded')) {
-      window.localStorage.setItem('eaui.layouts.v1', '{not json')
-      window.sessionStorage.setItem('layouts-seeded', '1')
-    }
-  })
-  await page.goto('/?fixture=new')
-  const dialog = await openLayouts(page)
-  await expect(dialog.getByRole('alert')).toContainText(
-    'Personal layouts stored in this browser could not be read.',
-  )
-  const radio = dialog.getByRole('radio', {
-    name: 'In this browser, for every project',
-  })
-  await radio.focus()
-  await page.keyboard.press('Space')
-  await dialog.getByRole('textbox', { name: 'Layout name' }).fill('Mine')
-  await dialog.getByRole('button', { name: 'Save layout' }).click()
-  await expect(dialog.getByRole('alert').last()).toContainText(
-    'could not be read',
-  )
-  expect(
-    await page.evaluate(() => window.localStorage.getItem('eaui.layouts.v1')),
-  ).toBe('{not json')
-
-  await dialog
-    .getByRole('button', { name: 'Remove stored personal layouts' })
-    .click()
-  await expect(dialog).toContainText('No personal layouts yet.')
-  await dialog.getByRole('button', { name: 'Save layout' }).click()
-  await expect(
-    dialog
-      .getByRole('listbox', { name: 'Personal layouts' })
-      .getByRole('option', { name: /Mine/ }),
-  ).toBeVisible()
+  await expect(panel).toBeVisible()
+  await expect(layoutRow(page, 'Team view').getByRole('checkbox')).toBeChecked()
+  await expect(layoutRow(page, 'Team view')).toContainText('Applied')
   expect(await seriousViolations(page)).toEqual([])
 })

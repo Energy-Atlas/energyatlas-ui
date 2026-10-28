@@ -8,38 +8,28 @@ import type { MapLayer } from '../pages/mapLayers.ts'
 import type { TableSettings } from '../tables/tableSettings.ts'
 import type { ViewStore } from '../view/viewStore.ts'
 import {
-  PERSONAL_LAYOUTS_KEY,
-  readPersonalLayouts,
-  removePersonalLayouts,
-  writePersonalLayouts,
-  type PersonalStatus,
-} from './personalLayouts.ts'
-import {
   captureViewSnapshot,
   LAYOUT_FORMAT,
   layoutListsDiffer,
   layoutNameSchema,
-  MAX_LAYOUTS_PER_SCOPE,
+  MAX_LAYOUTS,
   newLayoutId,
   parseLayoutList,
-  SCOPE_LABELS,
   storedLayouts,
   uniqueLayoutName,
   type LayoutList,
-  type LayoutScope,
   type SavedLayout,
 } from './savedLayout.ts'
 
-// Saved layouts (decision 0032): one service for menus, the Layouts dialog,
-// the asset tree, and the agent. Every operation records one entry in the
+// Saved layouts (decisions 0032 and 0033): one service for menus, the
+// Layouts panel, the save prompt, the asset tree, and the agent. Layouts are
+// saved with the project only. Every operation records one entry in the
 // operation log with its source; applying goes through the layout controller
 // for the arrangement and the `view.applyLayout` view operation for the view
 // settings, and still records a single entry.
 
-export type LayoutRef = { scope: LayoutScope; id: string }
-
 export type AppliedLayout = {
-  ref: LayoutRef
+  id: string
   name: string
   /** The arrangement and view settings right after applying, to see later changes. */
   fingerprint: string
@@ -48,12 +38,10 @@ export type AppliedLayout = {
 export type LayoutLibrarySnapshot = {
   /** The open project's layouts, saved with it. */
   project: LayoutList
-  /** The project layout the project opens with. */
+  /** The layout the project opens with. */
   defaultId: string | null
   /** A stored default naming a layout this version cannot read, kept as stored. */
   keptDefaultId: string | null
-  personal: LayoutList
-  personalStatus: PersonalStatus
   /** The layout last applied in this project session; Reset returns to it. */
   applied: AppliedLayout | null
   /**
@@ -69,48 +57,29 @@ export type LayoutLibrarySnapshot = {
 }
 
 export type LayoutOutcome =
-  | { status: 'applied'; summary: string; operationId: string; ref?: LayoutRef }
+  | { status: 'applied'; summary: string; operationId: string; id?: string }
   | { status: 'rejected'; issues: ValidationIssue[]; operationId: string }
 
 export type LayoutLibrary = {
   store: StoreApi<LayoutLibrarySnapshot>
-  /** Whether project layouts can be changed here; a viewer keeps them read-only. */
-  projectWritable: boolean
-  /**
-   * Keeps personal layouts under another key from now on, such as one per
-   * handover package on the viewer page (decision 0032, stage 5).
-   */
-  setPersonalKey: (key: string) => void
+  /** Whether layouts can be changed here; a viewer keeps them read-only. */
+  writable: boolean
   /**
    * The viewer's reset (decision 0032, stage 5): back to the layouts and
    * views as handed over, the default layout when the package has one, else
-   * the default arrangement with the views saved in the package. Personal
-   * layouts and the handed-over layouts stay unchanged.
+   * the default arrangement with the views saved in the package.
    */
   resetToHandedOver: (source?: CommandSource) => LayoutOutcome
-  find: (ref: LayoutRef) => SavedLayout | null
-  save: (
-    input: { name: string; scope: LayoutScope },
-    source?: CommandSource,
-  ) => LayoutOutcome
-  apply: (ref: LayoutRef, source?: CommandSource) => LayoutOutcome
-  update: (ref: LayoutRef, source?: CommandSource) => LayoutOutcome
-  rename: (
-    ref: LayoutRef,
-    name: string,
-    source?: CommandSource,
-  ) => LayoutOutcome
-  duplicate: (
-    ref: LayoutRef,
-    source?: CommandSource,
-    toScope?: LayoutScope,
-  ) => LayoutOutcome
-  remove: (ref: LayoutRef, source?: CommandSource) => LayoutOutcome
+  find: (id: string) => SavedLayout | null
+  save: (input: { name: string }, source?: CommandSource) => LayoutOutcome
+  apply: (id: string, source?: CommandSource) => LayoutOutcome
+  update: (id: string, source?: CommandSource) => LayoutOutcome
+  rename: (id: string, name: string, source?: CommandSource) => LayoutOutcome
+  duplicate: (id: string, source?: CommandSource) => LayoutOutcome
+  remove: (id: string, source?: CommandSource) => LayoutOutcome
   setDefault: (id: string | null, source?: CommandSource) => LayoutOutcome
   /** Returns to the layout last applied, as it is saved now. */
   resetToApplied: (source?: CommandSource) => LayoutOutcome
-  /** Removes an unreadable personal value from storage, the only way past it. */
-  removeUnreadablePersonal: (source?: CommandSource) => LayoutOutcome
   /**
    * Loads the project's layouts when a project session starts, and applies
    * its default layout. `key` names the session for `openedView`.
@@ -122,18 +91,17 @@ export type LayoutLibrary = {
   projectDiffers: (saved: SavedView | null) => boolean
   /** Whether the arrangement or view settings changed since the last apply. */
   changedSinceApplied: () => boolean
-  /** Why a layout of this scope cannot be saved now, or null. */
-  saveBlocker: (scope: LayoutScope) => string | null
+  /** Why a layout cannot be saved now, or null. */
+  saveBlocker: () => string | null
   /** Why this layout cannot be changed (updated, renamed, deleted), or null. */
-  changeBlocker: (ref: LayoutRef) => string | null
+  changeBlocker: (id: string) => string | null
   /** Why Reset to layout cannot run, or null. */
   resetBlocker: () => string | null
 }
 
-const PROJECT_READ_ONLY =
-  'Project layouts are read-only here. Copy one to your personal layouts to change it.'
+const READ_ONLY = 'Handed-over layouts are read-only here; apply one to use it.'
 
-/** The stored default when it names a readable project layout, or null. */
+/** The stored default when it names a readable layout, or null. */
 function defaultFrom(saved: SavedView | null, list: LayoutList): string | null {
   const id = saved?.defaultLayoutId ?? null
   return id && list.layouts.some((layout) => layout.id === id) ? id : null
@@ -163,36 +131,26 @@ export function createLayoutLibrary(options: {
   workbench: Workbench
   layout: LayoutController
   view: ViewStore
-  storage: Storage | null
   /** Posts a warning about parts of a layout that could not be applied. */
   warn?: (text: string, operationId: string, source: CommandSource) => void
-  projectWritable?: boolean
-  /** Where personal layouts are kept; the modeller's key by default. */
-  personalKey?: string
+  writable?: boolean
   now?: () => Date
 }): LayoutLibrary {
-  const { workbench, layout, view, storage } = options
-  const projectWritable = options.projectWritable ?? true
+  const { workbench, layout, view } = options
+  const writable = options.writable ?? true
   const now = options.now ?? (() => new Date())
-  let personalKey = options.personalKey ?? PERSONAL_LAYOUTS_KEY
   /** The views the project session opened with, for the viewer's reset. */
   let sessionView: SavedView | null = null
-  const personal = readPersonalLayouts(storage, personalKey)
   const store = createStore<LayoutLibrarySnapshot>()(() => ({
     project: { layouts: [], unreadable: [] },
     defaultId: null,
     keptDefaultId: null,
-    personal: personal.list,
-    personalStatus: personal.status,
     applied: null,
     openedView: null,
   }))
 
-  const listOf = (scope: LayoutScope): LayoutList =>
-    scope === 'project' ? store.getState().project : store.getState().personal
-
-  const find = (ref: LayoutRef): SavedLayout | null =>
-    listOf(ref.scope).layouts.find((layout) => layout.id === ref.id) ?? null
+  const find = (id: string): SavedLayout | null =>
+    store.getState().project.layouts.find((layout) => layout.id === id) ?? null
 
   const record = (
     type: string,
@@ -232,8 +190,7 @@ export function createLayoutLibrary(options: {
     operationId: record(type, title, input, source, { message, path }),
   })
 
-  const missing = (ref: LayoutRef) =>
-    `There is no ${SCOPE_LABELS[ref.scope].toLowerCase()} layout "${ref.id}".`
+  const missing = (id: string) => `There is no layout "${id}".`
 
   const fingerprint = () =>
     JSON.stringify({
@@ -241,89 +198,51 @@ export function createLayoutLibrary(options: {
       view: captureViewSnapshot(view.getState()),
     })
 
-  const saveBlocker = (scope: LayoutScope): string | null => {
-    if (scope === 'project' && !projectWritable) return PROJECT_READ_ONLY
-    if (scope === 'personal') {
-      const status = store.getState().personalStatus
-      if (status.kind !== 'ready') return status.message
-    }
-    if (listOf(scope).layouts.length >= MAX_LAYOUTS_PER_SCOPE) {
-      return `There are already ${MAX_LAYOUTS_PER_SCOPE} ${SCOPE_LABELS[scope].toLowerCase()} layouts. Delete one first.`
+  const saveBlocker = (): string | null => {
+    if (!writable) return READ_ONLY
+    if (store.getState().project.layouts.length >= MAX_LAYOUTS) {
+      return `This project already has ${MAX_LAYOUTS} layouts. Delete one first.`
     }
     return null
   }
 
-  const changeBlocker = (ref: LayoutRef): string | null => {
-    if (!find(ref)) return missing(ref)
-    if (ref.scope === 'project' && !projectWritable) return PROJECT_READ_ONLY
-    if (ref.scope === 'personal') {
-      const status = store.getState().personalStatus
-      if (status.kind !== 'ready') return status.message
-    }
+  const changeBlocker = (id: string): string | null => {
+    if (!find(id)) return missing(id)
+    if (!writable) return READ_ONLY
     return null
   }
 
-  /**
-   * Applies a change to a scope's list and stores it: personal layouts in the
-   * browser, project ones in memory until the project is saved. Personal
-   * layouts are read again first, so a layout another tab added since is kept
-   * rather than overwritten.
-   */
+  /** Changes the list, kept in memory until the project is saved. */
   const commit = (
-    scope: LayoutScope,
     change: (list: LayoutList) => LayoutList,
     extra: Partial<LayoutLibrarySnapshot> = {},
-  ): string | null => {
-    if (scope === 'project') {
-      store.setState({ project: change(store.getState().project), ...extra })
-      return null
-    }
-    const fresh = readPersonalLayouts(storage, personalKey)
-    if (fresh.status.kind !== 'ready') {
-      store.setState({ personal: fresh.list, personalStatus: fresh.status })
-      return fresh.status.message
-    }
-    const list = change(fresh.list)
-    const written = writePersonalLayouts(storage, list, personalKey)
-    if (!written.ok) return written.message
-    store.setState({ personal: list, ...extra })
-    return null
+  ): void => {
+    store.setState({ project: change(store.getState().project), ...extra })
   }
 
-  // Another tab changed the personal layouts: show them as stored now.
-  if (typeof window !== 'undefined' && storage) {
-    window.addEventListener('storage', (event) => {
-      if (event.key !== null && event.key !== personalKey) return
-      const fresh = readPersonalLayouts(storage, personalKey)
-      store.setState({ personal: fresh.list, personalStatus: fresh.status })
-    })
-  }
-
-  const nameIssue = (
-    scope: LayoutScope,
-    name: string,
-    exceptId?: string,
-  ): string | null => {
-    const taken = listOf(scope).layouts.some(
-      (layout) =>
-        layout.id !== exceptId &&
-        layout.name.toLowerCase() === name.toLowerCase(),
-    )
+  const nameIssue = (name: string, exceptId?: string): string | null => {
+    const taken = store
+      .getState()
+      .project.layouts.some(
+        (layout) =>
+          layout.id !== exceptId &&
+          layout.name.toLowerCase() === name.toLowerCase(),
+      )
     return taken
-      ? `A ${SCOPE_LABELS[scope].toLowerCase()} layout named "${name}" already exists. Choose another name, or update that layout.`
+      ? `A layout named "${name}" already exists. Choose another name, or update that layout.`
       : null
   }
 
   const applyLayout = (
-    ref: LayoutRef,
+    id: string,
     source: CommandSource,
     type: 'layouts.apply' | 'layouts.reset',
   ): LayoutOutcome => {
     const title = type === 'layouts.apply' ? 'Apply layout' : 'Reset to layout'
-    const input = { scope: ref.scope, layoutId: ref.id }
-    const saved = find(ref)
+    const input = { layoutId: id }
+    const saved = find(id)
     if (!saved) {
-      return rejectWith(type, title, input, source, missing(ref), 'layoutId')
+      return rejectWith(type, title, input, source, missing(id), 'layoutId')
     }
     const arranged = layout.loadArrangement(saved.arrangement)
     if (arranged.status === 'rejected') {
@@ -357,13 +276,12 @@ export function createLayoutLibrary(options: {
       )
     }
     store.setState({
-      applied: { ref, name: saved.name, fingerprint: fingerprint() },
+      applied: { id, name: saved.name, fingerprint: fingerprint() },
     })
-    const scope = SCOPE_LABELS[ref.scope].toLowerCase()
     const summary =
       type === 'layouts.apply'
-        ? `Applied the ${scope} layout "${saved.name}".`
-        : `Reset the panels and views to the ${scope} layout "${saved.name}".`
+        ? `Applied the layout "${saved.name}".`
+        : `Reset the panels and views to the layout "${saved.name}".`
     const operationId = record(
       type,
       title,
@@ -376,37 +294,20 @@ export function createLayoutLibrary(options: {
     if (notes.length > 0) {
       options.warn?.(`"${saved.name}": ${notes.join(' ')}`, operationId, source)
     }
-    return { status: 'applied', summary, operationId, ref }
+    return { status: 'applied', summary, operationId, id }
   }
 
   return {
     store,
-    projectWritable,
+    writable,
     find,
-
-    setPersonalKey: (key) => {
-      if (key === personalKey) return
-      personalKey = key
-      const fresh = readPersonalLayouts(storage, key)
-      const applied = store.getState().applied
-      store.setState({
-        personal: fresh.list,
-        personalStatus: fresh.status,
-        ...(applied?.ref.scope === 'personal' ? { applied: null } : {}),
-      })
-    },
 
     resetToHandedOver: (source = 'manual') => {
       const type = 'layouts.resetToHandover'
       const title = 'Reset to handed-over layout'
       const { defaultId } = store.getState()
-      if (defaultId && find({ scope: 'project', id: defaultId })) {
-        const outcome = applyLayout(
-          { scope: 'project', id: defaultId },
-          source,
-          'layouts.reset',
-        )
-        return outcome
+      if (defaultId && find(defaultId)) {
+        return applyLayout(defaultId, source, 'layouts.reset')
       }
       layout.reset(source)
       view.execute(
@@ -427,10 +328,10 @@ export function createLayoutLibrary(options: {
       }
     },
 
-    save: ({ name, scope }, source = 'manual') => {
+    save: ({ name }, source = 'manual') => {
       const type = 'layouts.save'
       const title = 'Save layout'
-      const input = { name, scope }
+      const input = { name }
       const parsed = layoutNameSchema.safeParse(name)
       if (!parsed.success) {
         return rejectWith(
@@ -442,92 +343,82 @@ export function createLayoutLibrary(options: {
           'name',
         )
       }
-      const blocker = saveBlocker(scope)
+      const blocker = saveBlocker()
       if (blocker) return rejectWith(type, title, input, source, blocker)
-      const taken = nameIssue(scope, parsed.data)
+      const taken = nameIssue(parsed.data)
       if (taken) return rejectWith(type, title, input, source, taken, 'name')
       const at = now().toISOString()
       const created: SavedLayout = {
         format: LAYOUT_FORMAT,
         id: newLayoutId(),
         name: parsed.data,
-        scope,
+        scope: 'project',
         createdAt: at,
         updatedAt: at,
         createdBy: source,
         arrangement: layout.getArrangement(),
         view: captureViewSnapshot(view.getState()),
       }
-      const failure = commit(scope, (list) => ({
-        ...list,
-        layouts: [...list.layouts, created],
-      }))
-      if (failure) return rejectWith(type, title, input, source, failure)
-      const ref = { scope, id: created.id }
+      commit((list) => ({ ...list, layouts: [...list.layouts, created] }))
       // The saved layout is now what Reset returns to.
       store.setState({
-        applied: { ref, name: created.name, fingerprint: fingerprint() },
+        applied: {
+          id: created.id,
+          name: created.name,
+          fingerprint: fingerprint(),
+        },
       })
-      const summary =
-        scope === 'project'
-          ? `Saved the project layout "${created.name}". Save the project to keep it.`
-          : `Saved the personal layout "${created.name}" in this browser.`
+      const summary = `Saved the layout "${created.name}". Save the project to keep it.`
       return {
         status: 'applied',
         summary,
-        ref,
+        id: created.id,
         operationId: record(
           type,
           title,
           { ...input, layoutId: created.id },
           source,
-          {
-            summary,
-          },
+          { summary },
         ),
       }
     },
 
-    apply: (ref, source = 'manual') =>
-      applyLayout(ref, source, 'layouts.apply'),
+    apply: (id, source = 'manual') => applyLayout(id, source, 'layouts.apply'),
 
-    update: (ref, source = 'manual') => {
+    update: (id, source = 'manual') => {
       const type = 'layouts.update'
       const title = 'Update layout'
-      const input = { scope: ref.scope, layoutId: ref.id }
-      const blocker = changeBlocker(ref)
+      const input = { layoutId: id }
+      const blocker = changeBlocker(id)
       if (blocker) return rejectWith(type, title, input, source, blocker)
-      const saved = find(ref)!
+      const saved = find(id)!
       const updated: SavedLayout = {
         ...saved,
         updatedAt: now().toISOString(),
         arrangement: layout.getArrangement(),
         view: captureViewSnapshot(view.getState()),
       }
-      const failure = commit(ref.scope, (list) => ({
+      commit((list) => ({
         ...list,
-        layouts: list.layouts.map((each) =>
-          each.id === ref.id ? updated : each,
-        ),
+        layouts: list.layouts.map((each) => (each.id === id ? updated : each)),
       }))
-      if (failure) return rejectWith(type, title, input, source, failure)
       store.setState({
-        applied: { ref, name: updated.name, fingerprint: fingerprint() },
+        applied: { id, name: updated.name, fingerprint: fingerprint() },
       })
-      const summary = `Updated the ${SCOPE_LABELS[ref.scope].toLowerCase()} layout "${updated.name}" with the current panels and views.`
+      const summary = `Updated the layout "${updated.name}" with the current panels and views.`
       return {
         status: 'applied',
         summary,
-        ref,
+        id,
         operationId: record(type, title, input, source, { summary }),
       }
     },
 
-    rename: (ref, name, source = 'manual') => {
+    rename: (id, name, source = 'manual') => {
       const type = 'layouts.rename'
       const title = 'Rename layout'
-      const input = { scope: ref.scope, layoutId: ref.id, name }
-      const blocker = changeBlocker(ref)
+      const input = { layoutId: id, name }
+      const blocker = changeBlocker(id)
       if (blocker) return rejectWith(type, title, input, source, blocker)
       const parsed = layoutNameSchema.safeParse(name)
       if (!parsed.success) {
@@ -540,7 +431,7 @@ export function createLayoutLibrary(options: {
           'name',
         )
       }
-      const saved = find(ref)!
+      const saved = find(id)!
       if (parsed.data === saved.name) {
         return rejectWith(
           type,
@@ -551,70 +442,59 @@ export function createLayoutLibrary(options: {
           'name',
         )
       }
-      const taken = nameIssue(ref.scope, parsed.data, ref.id)
+      const taken = nameIssue(parsed.data, id)
       if (taken) return rejectWith(type, title, input, source, taken, 'name')
       const applied = store.getState().applied
-      const failure = commit(
-        ref.scope,
+      commit(
         (list) => ({
           ...list,
           layouts: list.layouts.map((each) =>
-            each.id === ref.id
+            each.id === id
               ? { ...each, name: parsed.data, updatedAt: now().toISOString() }
               : each,
           ),
         }),
-        applied && applied.ref.scope === ref.scope && applied.ref.id === ref.id
+        applied?.id === id
           ? { applied: { ...applied, name: parsed.data } }
           : {},
       )
-      if (failure) return rejectWith(type, title, input, source, failure)
       const summary = `Renamed the layout "${saved.name}" to "${parsed.data}".`
       return {
         status: 'applied',
         summary,
-        ref,
+        id,
         operationId: record(type, title, input, source, { summary }),
       }
     },
 
-    duplicate: (ref, source = 'manual', toScope = ref.scope) => {
+    duplicate: (id, source = 'manual') => {
       const type = 'layouts.duplicate'
       const title = 'Duplicate layout'
-      const input = { scope: ref.scope, layoutId: ref.id, toScope }
-      const saved = find(ref)
+      const input = { layoutId: id }
+      const saved = find(id)
       if (!saved) {
-        return rejectWith(type, title, input, source, missing(ref), 'layoutId')
+        return rejectWith(type, title, input, source, missing(id), 'layoutId')
       }
-      const blocker = saveBlocker(toScope)
+      const blocker = saveBlocker()
       if (blocker) return rejectWith(type, title, input, source, blocker)
-      const list = listOf(toScope)
       const at = now().toISOString()
       const copy: SavedLayout = {
         ...structuredClone(saved),
         id: newLayoutId(),
-        scope: toScope,
         name: uniqueLayoutName(
-          toScope === ref.scope ? `${saved.name} copy` : saved.name,
-          list.layouts,
+          `${saved.name} copy`,
+          store.getState().project.layouts,
         ),
         createdAt: at,
         updatedAt: at,
         createdBy: source,
       }
-      const failure = commit(toScope, (current) => ({
-        ...current,
-        layouts: [...current.layouts, copy],
-      }))
-      if (failure) return rejectWith(type, title, input, source, failure)
-      const summary =
-        toScope === ref.scope
-          ? `Duplicated the layout "${saved.name}" as "${copy.name}".`
-          : `Copied the ${SCOPE_LABELS[ref.scope].toLowerCase()} layout "${saved.name}" to the ${SCOPE_LABELS[toScope].toLowerCase()} layouts as "${copy.name}".`
+      commit((list) => ({ ...list, layouts: [...list.layouts, copy] }))
+      const summary = `Duplicated the layout "${saved.name}" as "${copy.name}".`
       return {
         status: 'applied',
         summary,
-        ref: { scope: toScope, id: copy.id },
+        id: copy.id,
         operationId: record(
           type,
           title,
@@ -625,30 +505,26 @@ export function createLayoutLibrary(options: {
       }
     },
 
-    remove: (ref, source = 'manual') => {
+    remove: (id, source = 'manual') => {
       const type = 'layouts.delete'
       const title = 'Delete layout'
-      const input = { scope: ref.scope, layoutId: ref.id }
-      const blocker = changeBlocker(ref)
+      const input = { layoutId: id }
+      const blocker = changeBlocker(id)
       if (blocker) return rejectWith(type, title, input, source, blocker)
-      const saved = find(ref)!
+      const saved = find(id)!
       const { applied, defaultId } = store.getState()
-      const wasDefault = ref.scope === 'project' && defaultId === ref.id
-      const failure = commit(
-        ref.scope,
+      const wasDefault = defaultId === id
+      commit(
         (list) => ({
           ...list,
-          layouts: list.layouts.filter((each) => each.id !== ref.id),
+          layouts: list.layouts.filter((each) => each.id !== id),
         }),
         {
           ...(wasDefault ? { defaultId: null } : {}),
-          ...(applied?.ref.scope === ref.scope && applied.ref.id === ref.id
-            ? { applied: null }
-            : {}),
+          ...(applied?.id === id ? { applied: null } : {}),
         },
       )
-      if (failure) return rejectWith(type, title, input, source, failure)
-      const summary = `Deleted the ${SCOPE_LABELS[ref.scope].toLowerCase()} layout "${saved.name}".${wasDefault ? ' The project no longer opens with a default layout.' : ''}`
+      const summary = `Deleted the layout "${saved.name}".${wasDefault ? ' The project no longer opens with a default layout.' : ''}`
       return {
         status: 'applied',
         summary,
@@ -660,9 +536,7 @@ export function createLayoutLibrary(options: {
       const type = 'layouts.setDefault'
       const title = 'Set default layout'
       const input = { layoutId: id }
-      if (!projectWritable) {
-        return rejectWith(type, title, input, source, PROJECT_READ_ONLY)
-      }
+      if (!writable) return rejectWith(type, title, input, source, READ_ONLY)
       if (id === null) {
         if (
           store.getState().defaultId === null &&
@@ -685,16 +559,9 @@ export function createLayoutLibrary(options: {
           operationId: record(type, title, input, source, { summary }),
         }
       }
-      const saved = find({ scope: 'project', id })
+      const saved = find(id)
       if (!saved) {
-        return rejectWith(
-          type,
-          title,
-          input,
-          source,
-          `There is no project layout "${id}". Only project layouts can open with the project.`,
-          'layoutId',
-        )
+        return rejectWith(type, title, input, source, missing(id), 'layoutId')
       }
       if (store.getState().defaultId === id) {
         return rejectWith(
@@ -711,7 +578,7 @@ export function createLayoutLibrary(options: {
       return {
         status: 'applied',
         summary,
-        ref: { scope: 'project', id },
+        id,
         operationId: record(type, title, input, source, { summary }),
       }
     },
@@ -728,57 +595,12 @@ export function createLayoutLibrary(options: {
           blocker ?? 'No saved layout has been applied.',
         )
       }
-      return applyLayout(applied.ref, source, 'layouts.reset')
-    },
-
-    removeUnreadablePersonal: (source = 'manual') => {
-      const type = 'layouts.removeUnreadable'
-      const title = 'Remove unreadable personal layouts'
-      const status = store.getState().personalStatus
-      const unreadable = store.getState().personal.unreadable.length
-      if (status.kind === 'unavailable') {
-        return rejectWith(type, title, {}, source, status.message)
-      }
-      if (status.kind === 'ready' && unreadable === 0) {
-        return rejectWith(
-          type,
-          title,
-          {},
-          source,
-          'Every personal layout stored here can be read.',
-        )
-      }
-      const result =
-        status.kind === 'unreadable'
-          ? removePersonalLayouts(storage, personalKey)
-          : writePersonalLayouts(
-              storage,
-              { ...store.getState().personal, unreadable: [] },
-              personalKey,
-            )
-      if (!result.ok) return rejectWith(type, title, {}, source, result.message)
-      store.setState({
-        personal: {
-          layouts:
-            status.kind === 'unreadable'
-              ? []
-              : store.getState().personal.layouts,
-          unreadable: [],
-        },
-        personalStatus: { kind: 'ready' },
-      })
-      const summary =
-        'Removed the personal layouts that could not be read. New personal layouts can be kept again.'
-      return {
-        status: 'applied',
-        summary,
-        operationId: record(type, title, {}, source, { summary }),
-      }
+      return applyLayout(applied.id, source, 'layouts.reset')
     },
 
     resetForProject: (saved, key) => {
       sessionView = saved
-      const project = parseLayoutList(saved?.layouts, 'project')
+      const project = parseLayoutList(saved?.layouts)
       const defaultId = defaultFrom(saved, project)
       store.setState({
         project,
@@ -788,11 +610,7 @@ export function createLayoutLibrary(options: {
         openedView: null,
       })
       if (!defaultId) return
-      const outcome = applyLayout(
-        { scope: 'project', id: defaultId },
-        'system',
-        'layouts.apply',
-      )
+      const outcome = applyLayout(defaultId, 'system', 'layouts.apply')
       if (outcome.status === 'applied') {
         const current = view.getState()
         store.setState({
@@ -812,7 +630,7 @@ export function createLayoutLibrary(options: {
     }),
 
     projectDiffers: (saved) => {
-      const stored = parseLayoutList(saved?.layouts, 'project')
+      const stored = parseLayoutList(saved?.layouts)
       const { project, defaultId, keptDefaultId } = store.getState()
       return (
         layoutListsDiffer(project, stored) ||
@@ -834,13 +652,13 @@ export function createLayoutLibrary(options: {
 
 function resetBlockerOf(
   snapshot: LayoutLibrarySnapshot,
-  find: (ref: LayoutRef) => SavedLayout | null,
+  find: (id: string) => SavedLayout | null,
 ): string | null {
   const { applied } = snapshot
   if (!applied) {
-    return 'No saved layout has been applied in this project yet. Apply one from View > Layouts first, or use Reset layout for the default arrangement.'
+    return 'No saved layout has been applied in this project yet. Apply one from the Layouts panel first, or use Reset layout for the default arrangement.'
   }
-  if (!find(applied.ref)) {
+  if (!find(applied.id)) {
     return `The layout "${applied.name}" was deleted, so there is nothing to reset to.`
   }
   return null

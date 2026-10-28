@@ -109,7 +109,7 @@ function measureColumns<
 }
 
 /**
- * Measures and scenarios (decision 0028; scenario rules from decision 0032,
+ * Scenarios (decision 0028; scenario rules from decision 0032,
  * stage 3): the scenarios, the chosen scenario's ordered rules and what they
  * would do, the project's measures, the synthetic measure library, and the
  * modeled comparison. Choosing a row shows it in Properties, where it is
@@ -411,7 +411,7 @@ export function MeasuresPage() {
       aria-labelledby={headingId}
     >
       <PanelHeader
-        title="Measures and scenarios"
+        title="Scenarios"
         headingId={headingId}
         meta={<CapabilityBadge id="creator.measure" />}
         actions={
@@ -422,8 +422,8 @@ export function MeasuresPage() {
         description="A scenario's rules choose buildings and give each at most one measure per category, tried top first. Scenario modeling gives each affected building an alternative version; adoption samples those buildings with a fixed seed when results are aggregated, so changing it needs no new run. Choose a row to edit it in Properties."
       />
 
-      <section className={styles.section} aria-label="Scenarios">
-        <h3 className={styles.sectionTitle}>Scenarios</h3>
+      <section className={styles.section} aria-label="Scenario list">
+        <h3 className={styles.sectionTitle}>Scenario list</h3>
         <WorkbenchTable
           id="creator.scenarios"
           aria-label="Scenarios"

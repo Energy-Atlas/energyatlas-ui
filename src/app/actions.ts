@@ -55,8 +55,7 @@ import {
 } from './pages/jobs/jobView.ts'
 import { DEFAULT_PAGES, PAGES, type PageId } from './layout/layoutController.ts'
 import { inScope } from './messages/messageCenter.ts'
-import { openLayoutsDialog } from './layouts/layoutsDialogStore.ts'
-import { SCOPE_LABELS } from './layouts/savedLayout.ts'
+import { openSaveLayoutPrompt } from './layouts/layoutsPanelStore.ts'
 
 // One registry of app actions drives the ribbon menus, quick buttons, command
 // palette, and keyboard shortcuts, so they cannot drift apart. A disabled or
@@ -400,29 +399,23 @@ export function useAppActions(dialogs: ShellDialogs): AppAction[] {
       },
       {
         id: 'view.layouts',
-        label: 'Layouts…',
+        label: 'Layouts panel',
         group: 'View',
         menuPath: ['Layouts'],
         icon: LayoutTemplate,
         shortcut: 'Ctrl+Alt+L',
+        pressed: layout.isPanelOpen('layouts'),
         disabledReason: null,
-        perform: () => openLayoutsDialog(),
+        perform: () => layout.togglePanel('layouts'),
       },
       {
         id: 'view.saveLayout',
-        label: 'Save current layout…',
+        label: 'Save layout…',
         group: 'View',
         menuPath: ['Layouts'],
         icon: BookmarkPlus,
-        disabledReason: (() => {
-          const project = layouts.saveBlocker('project')
-          const personal = layouts.saveBlocker('personal')
-          // Unavailable only when neither scope can take a layout.
-          return project && personal
-            ? `Project layouts: ${project} Personal layouts: ${personal}`
-            : null
-        })(),
-        perform: () => openLayoutsDialog({ saving: true }),
+        disabledReason: layouts.saveBlocker(),
+        perform: () => openSaveLayoutPrompt(),
       },
       {
         id: 'view.resetToLayout',
@@ -437,23 +430,17 @@ export function useAppActions(dialogs: ShellDialogs): AppAction[] {
           layouts.resetToApplied()
         },
       },
-      ...(['project', 'personal'] as const).flatMap((scope) =>
-        (scope === 'project' ? library.project : library.personal).layouts.map(
-          (saved): AppAction => ({
-            id: `view.layout.${scope}.${saved.id}`,
-            label: `Apply ${SCOPE_LABELS[scope].toLowerCase()} layout "${saved.name}"`,
-            group: 'View',
-            menuPath: ['Layouts'],
-            pressed:
-              library.applied?.ref.scope === scope &&
-              library.applied.ref.id === saved.id,
-            disabledReason: null,
-            perform: () => {
-              layouts.apply({ scope, id: saved.id })
-            },
-          }),
-        ),
-      ),
+      ...library.project.layouts.map((saved): AppAction => ({
+        id: `view.layout.${saved.id}`,
+        label: `Apply layout "${saved.name}"`,
+        group: 'View',
+        menuPath: ['Layouts'],
+        pressed: library.applied?.id === saved.id,
+        disabledReason: null,
+        perform: () => {
+          layouts.apply(saved.id)
+        },
+      })),
       {
         id: 'view.placeMapBesideTable',
         label: 'Place Map beside Table',
@@ -760,7 +747,6 @@ const VIEWER_ACTION_IDS = new Set([
   'view.toggleMaximize',
   'view.resetLayout',
   'view.layouts',
-  'view.saveLayout',
   'view.resetToLayout',
   'view.placeMapBesideTable',
   'view.splitActiveTab',

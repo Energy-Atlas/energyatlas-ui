@@ -9,7 +9,7 @@ export { KIND_LABELS } from './rules.ts'
 
 // The modeled comparison (jobs rollout plan, slice 6; decision 0032, stage
 // 3): the baseline and every published scenario, each aggregated at its
-// adoption. Pure; the Measures and scenarios page and the agent share it.
+// adoption. Pure; the Scenarios page and the agent share it.
 
 export type ComparisonRow = {
   id: string

@@ -2,6 +2,7 @@ import { Layout, type ITabRenderValues, type TabNode } from 'flexlayout-react'
 import 'flexlayout-react/style/light.css'
 import {
   Bell,
+  LayoutTemplate,
   FileSpreadsheet,
   FolderTree,
   LayoutDashboard,
@@ -29,7 +30,7 @@ import {
 import { InlineAlert } from '../app/components/InlineAlert.tsx'
 import '../app/global.css'
 import '../app/layout/flexlayout-theme.css'
-import { LayoutsDialog } from '../app/layouts/LayoutsDialog.tsx'
+import { LayoutsPanel } from '../app/layouts/LayoutsPanel.tsx'
 import { DashboardPage } from '../app/pages/DashboardPage.tsx'
 import { MapPage } from '../app/pages/MapPage.tsx'
 import { TablePage } from '../app/pages/TablePage.tsx'
@@ -60,6 +61,7 @@ const TAB_ICONS: Record<string, LucideIcon> = {
   'panel.reasoning': MessageSquare,
   'panel.inspection': SlidersHorizontal,
   'panel.messages': Bell,
+  'panel.layouts': LayoutTemplate,
   'page.map': MapIcon,
   'page.table': Table2,
   'page.dashboard': LayoutDashboard,
@@ -106,6 +108,8 @@ function createTabContent(node: TabNode): ReactNode {
       return <PropertiesPanel />
     case 'panel.messages':
       return <MessagesPanel />
+    case 'panel.layouts':
+      return <LayoutsPanel />
     default:
       return (
         <p className={componentStyles.page}>
@@ -227,7 +231,6 @@ export function ViewerShell() {
           if (!layout.isPanelOpen('messages')) layout.togglePanel('messages')
         }}
       />
-      <LayoutsDialog />
       <AboutHandoverDialog />
       <ShellDialogHost
         open={open}

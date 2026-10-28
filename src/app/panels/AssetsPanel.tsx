@@ -33,7 +33,7 @@ import { CapabilityBadge, StatusTag } from '../components/CapabilityBadge.tsx'
 import { PanelHeader } from '../components/PanelHeader.tsx'
 import { cx } from '../cx.ts'
 import { useStore } from 'zustand'
-import { openLayoutsDialog } from '../layouts/layoutsDialogStore.ts'
+import { focusLayout } from '../layouts/layoutsPanelStore.ts'
 import {
   buildAssetTree,
   LAYOUT_ASSET_PREFIX,
@@ -92,12 +92,11 @@ export function AssetsPanel() {
     [assets, rootIds, projectLayouts, defaultLayoutId],
   )
   const isLayoutKey = (key: string) => key.startsWith(LAYOUT_ASSET_PREFIX)
-  /** Enter or a double-click on a project layout opens the Layouts dialog on it. */
+  /** Enter or a double-click on a layout shows it in the Layouts panel. */
   const openLayout = (key: string): boolean => {
     if (!isLayoutKey(key)) return false
-    openLayoutsDialog({
-      focus: { scope: 'project', id: key.slice(LAYOUT_ASSET_PREFIX.length) },
-    })
+    focusLayout(key.slice(LAYOUT_ASSET_PREFIX.length))
+    if (!layout.isPanelOpen('layouts')) layout.togglePanel('layouts')
     return true
   }
   // Groups start expanded so outputs appear where stages put them.

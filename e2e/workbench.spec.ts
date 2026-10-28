@@ -38,7 +38,7 @@ test.describe('workbench shell', () => {
       'Table',
       'Dashboard',
       'Roadmap',
-      'Measures and scenarios',
+      'Scenarios',
       'Settings',
       'Assets',
       'Workflow',

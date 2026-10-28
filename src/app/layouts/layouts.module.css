@@ -1,33 +1,46 @@
-/* The Layouts dialog (decision 0032). Spacing and colour come from tokens. */
-.content {
-  display: grid;
+/* The Layouts panel and save prompt (decisions 0032 and 0033). Spacing and
+   colour come from tokens. */
+.panel {
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
   gap: var(--space-2);
+  height: 100%;
+  min-width: 0;
+  padding: var(--space-2) var(--space-3);
+  overflow: auto;
 }
 
-.content p {
+.panel p {
   margin: 0;
 }
 
-.scope,
-.detail {
+.saveForm {
   display: grid;
+  grid-template-columns: minmax(0, 1fr);
   gap: var(--space-2);
 }
 
-.scope h3,
-.detail h3 {
-  margin-bottom: 0;
-}
-
-.saveForm,
-.inlineForm {
-  display: grid;
-  gap: var(--space-2);
-}
-
-.saveForm > div:last-child,
-.inlineForm > div:last-child {
+.saveForm > div:last-child {
   margin-top: 0;
+}
+
+/* In the panel the name and Save share a row; alerts take a row of their own. */
+.saveRow {
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: end;
+}
+
+.saveRow > :not(:first-child):not(:last-child) {
+  grid-column: 1 / -1;
+  grid-row: 2;
+}
+
+.saveAction {
+  display: flex;
+  align-items: flex-end;
+  grid-row: 1;
+  grid-column: 2;
 }
 
 .applied {
@@ -45,11 +58,11 @@
   color: var(--tone-warning-text);
 }
 
-/* Grid children may not widen the dialog past its body. */
-.content,
-.scope,
-.detail,
-.saveForm,
-.inlineForm {
-  grid-template-columns: minmax(0, 1fr);
+.table {
+  min-height: 0;
+}
+
+.rowActions {
+  display: inline-flex;
+  gap: var(--space-1);
 }

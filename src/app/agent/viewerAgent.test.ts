@@ -12,7 +12,6 @@ import {
   createDefaultLayout,
 } from '../layout/layoutController.ts'
 import { createLayoutLibrary } from '../layouts/layoutLibrary.ts'
-import { viewerLayoutsKey } from '../layouts/personalLayouts.ts'
 import { createViewStore } from '../view/viewStore.ts'
 import { createHandoverService } from '../handover/handoverService.ts'
 import { readHandoverCatalog } from '../../server/handoverCatalog.ts'
@@ -33,7 +32,7 @@ import {
 } from './tools.ts'
 
 // The viewer page (decision 0032, stage 5): its agent's tools, its sessions,
-// its layout controller, and its personal layouts.
+// its layout controller, and its read-only handed-over layouts.
 
 function viewerSetup(fixture: 'new' | 'partway' = 'partway') {
   const project = createTestProject({ fixture })
@@ -63,6 +62,12 @@ describe("the viewer's agent tools", () => {
       'project.save',
       'project.open',
       'project.handover',
+      // Handed-over layouts are read-only (decision 0033).
+      'layouts.save',
+      'layouts.update',
+      'layouts.rename',
+      'layouts.duplicate',
+      'layouts.delete',
       'layouts.setDefault',
       'intake.chooseDataset',
       'jobs.select',
@@ -75,7 +80,9 @@ describe("the viewer's agent tools", () => {
       'table.setQuickFilter',
       'results.showBuilding',
       'layout.openPage',
-      'layouts.save',
+      'layouts.list',
+      'layouts.apply',
+      'layouts.reset',
       'layouts.resetToHandover',
     ])
       expect(names.has(name)).toBe(true)
@@ -282,37 +289,45 @@ describe("the viewer's layout", () => {
     ).toMatchObject({ ok: true, dropped: ['"Future"'] })
   })
 
-  it('keeps personal layouts per package and resets to the handed-over views', () => {
-    const storage = memoryStorage()
+  it('keeps handed-over layouts read-only, applies them, and resets to the handed-over views', () => {
     const workbench = createWorkbench()
     const layout = createLayoutController(workbench, null, {
       shape: VIEWER_LAYOUT,
     })
     const view = createViewStore(workbench)
+    // The modeller saves a layout with the project before handing it over.
+    const modeller = createLayoutLibrary({ workbench, layout, view })
+    view.execute({ type: 'table.setQuickFilter', input: { text: 'office' } })
+    const handed = modeller.save({ name: 'Handed over' })
+    if (handed.status !== 'applied' || !handed.id) throw new Error('not saved')
+    const packageView = { tables: {}, layouts: modeller.forSave().layouts }
+    view.execute({ type: 'table.setQuickFilter', input: { text: '' } })
+
     const library = createLayoutLibrary({
       workbench,
       layout,
       view,
-      storage,
-      projectWritable: false,
-      personalKey: viewerLayoutsKey('handover:a'),
+      writable: false,
     })
-    library.resetForProject({ tables: {} }, 'a')
-    expect(library.save({ name: 'Mine', scope: 'project' }).status).toBe(
-      'rejected',
-    )
-    expect(library.save({ name: 'Mine', scope: 'personal' }).status).toBe(
-      'applied',
-    )
-    expect(storage.getItem(viewerLayoutsKey('handover:a'))).toContain('Mine')
-    expect(storage.getItem('eaui.layouts.v1')).toBeNull()
-
-    library.setPersonalKey(viewerLayoutsKey('handover:b'))
-    expect(library.store.getState().personal.layouts).toEqual([])
-    library.setPersonalKey(viewerLayoutsKey('handover:a'))
+    library.resetForProject(packageView, 'a')
+    expect(library.save({ name: 'Mine' })).toMatchObject({
+      status: 'rejected',
+      issues: [
+        {
+          message:
+            'Handed-over layouts are read-only here; apply one to use it.',
+        },
+      ],
+    })
     expect(
-      library.store.getState().personal.layouts.map((each) => each.name),
-    ).toEqual(['Mine'])
+      library.store.getState().project.layouts.map((each) => each.name),
+    ).toEqual(['Handed over'])
+
+    expect(library.apply(handed.id)).toMatchObject({
+      status: 'applied',
+      summary: 'Applied the layout "Handed over".',
+    })
+    expect(view.getState().table.quickFilter).toBe('office')
 
     view.execute({ type: 'table.setQuickFilter', input: { text: 'b-1' } })
     layout.openPage('results')
@@ -320,7 +335,8 @@ describe("the viewer's layout", () => {
     expect(reset.status).toBe('applied')
     expect(view.getState().table.quickFilter).toBe('')
     expect(layout.isPageOpen('results')).toBe(false)
-    // Personal layouts are untouched by the reset.
-    expect(library.store.getState().personal.layouts).toHaveLength(1)
+    expect(library.store.getState().applied).toBeNull()
+    // The reset leaves the handed-over layouts as they were.
+    expect(library.store.getState().project.layouts).toHaveLength(1)
   })
 })

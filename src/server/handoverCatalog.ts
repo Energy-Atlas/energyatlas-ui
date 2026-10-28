@@ -4,13 +4,9 @@ import {
   type HandoverPackage,
   type PackageSummary,
 } from './handover.ts'
-import {
-  HANDOVER_CATALOG_KEY,
-  isQuotaError,
-  viewerLayoutsKey,
-} from './storageQuota.ts'
+import { HANDOVER_CATALOG_KEY, isQuotaError } from './storageQuota.ts'
 
-export { HANDOVER_CATALOG_KEY, viewerLayoutsKey }
+export { HANDOVER_CATALOG_KEY }
 
 // The browser catalog of handover packages (decision 0032, stage 5): "Hand
 // over" in the modeller adds a package, and the viewer page lists and opens

@@ -104,13 +104,11 @@ export function properties(page: Page): Locator {
   return page.getByRole('region', { name: 'Properties', exact: true })
 }
 
-/** Opens the Measures and scenarios page (formerly Creator). */
+/** Opens the Scenarios page (formerly Creator, then Measures and scenarios). */
 export async function openMeasures(page: Page): Promise<Locator> {
-  await page
-    .getByRole('tab', { name: 'Measures and scenarios', exact: true })
-    .click()
+  await page.getByRole('tab', { name: 'Scenarios', exact: true }).click()
   const measures = page.getByRole('region', {
-    name: 'Measures and scenarios',
+    name: 'Scenarios',
     exact: true,
   })
   await expect(measures).toBeVisible()

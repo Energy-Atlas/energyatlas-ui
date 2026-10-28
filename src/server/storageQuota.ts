@@ -1,13 +1,8 @@
-// Browser storage is shared by saved projects, handover packages, and
-// layouts (decision 0032, stage 5). When it fills up, a refusal names what
+// Browser storage is shared by saved projects and handover packages
+// (decision 0032, stage 5). When it fills up, a refusal names what
 // takes the space so people know what to remove.
 
 export const HANDOVER_CATALOG_KEY = 'eaui.handovers.v1'
-
-/** A viewer's personal layouts for one handover package. */
-export function viewerLayoutsKey(packageId: string): string {
-  return `eaui.viewer.layouts.v1:${packageId}`
-}
 
 export function isQuotaError(error: unknown): boolean {
   return (

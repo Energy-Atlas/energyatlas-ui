@@ -280,7 +280,7 @@ function itemInputBlocker(
   if (stageId === STAGE_IDS.scenarioModeling) {
     return Object.values(state.scenarios).some((scenario) => scenario.included)
       ? null
-      : 'Include at least one scenario in the comparison set. Open Measures and scenarios to include one.'
+      : 'Include at least one scenario in the comparison set. Open Scenarios to include one.'
   }
   if (stageId !== STAGE_IDS.preprocessing) return null
   const missing = state.buildingIds.filter(

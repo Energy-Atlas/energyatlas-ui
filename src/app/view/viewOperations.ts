@@ -128,7 +128,7 @@ export type ViewState = {
    */
   archetypes: { previewPart: PartKind | 'all' }
   /**
-   * Which scenario's rules and preview the Measures and scenarios page shows
+   * Which scenario's rules and preview the Scenarios page shows
    * (decision 0032, stage 3); null shows the first scenario.
    */
   scenarios: { previewScenarioId: string | null }
@@ -712,7 +712,7 @@ export const viewOperationDefinitions = {
   'scenarios.setPreviewScenario': defineViewOperation({
     title: 'Preview a scenario',
     description:
-      'Choose which scenario the rule list and preview on the Measures and scenarios page show, by scenario id. The summary reports, before Scenario modeling runs, how many buildings each rule matches and takes measures for, how many buildings take a measure, how many of those adopt at the scenario adoption and seed, and the estimate against the baseline when it exists.',
+      'Choose which scenario the rule list and preview on the Scenarios page show, by scenario id. The summary reports, before Scenario modeling runs, how many buildings each rule matches and takes measures for, how many buildings take a measure, how many of those adopt at the scenario adoption and seed, and the estimate against the baseline when it exists.',
     input: z.object({ scenarioId: z.string().min(1, 'Choose a scenario.') }),
     run(view, { scenarioId }, project) {
       const scenario = project.scenarios[scenarioId]

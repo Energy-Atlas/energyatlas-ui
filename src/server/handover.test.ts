@@ -16,11 +16,7 @@ import {
   readHandoverText,
   type HandoverPackage,
 } from './handover.ts'
-import {
-  HANDOVER_CATALOG_KEY,
-  readHandoverCatalog,
-  viewerLayoutsKey,
-} from './handoverCatalog.ts'
+import { HANDOVER_CATALOG_KEY, readHandoverCatalog } from './handoverCatalog.ts'
 import { CATALOG_KEY } from './projectCatalog.ts'
 import { createMockServer, SERVER_COMMANDS } from './server.ts'
 
@@ -358,8 +354,7 @@ describe('handover through the mock server', () => {
     })
     await modeller.manual.settle()
     expect((await open).outcome.status).toBe('rejected')
-    // It lists and removes them to free storage, with the viewer's layouts.
-    storage.setItem(viewerLayoutsKey(handed.package?.id ?? ''), '{}')
+    // It lists and removes them to free storage.
     const listed = modeller.client.listPackages()
     await modeller.manual.settle()
     expect((await listed).outcome.status).toBe('applied')
@@ -370,9 +365,6 @@ describe('handover through the mock server', () => {
     await modeller.manual.settle()
     expect((await removed).outcome.status).toBe('applied')
     expect(modeller.client.store.getState().meta.packages).toEqual([])
-    expect(storage.getItem(viewerLayoutsKey(handed.package?.id ?? ''))).toBe(
-      null,
-    )
   })
 
   test('a full storage names handover packages when a save fails', async () => {

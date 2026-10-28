@@ -2,6 +2,7 @@ import { Layout, type ITabRenderValues, type TabNode } from 'flexlayout-react'
 import 'flexlayout-react/style/light.css'
 import {
   Bell,
+  LayoutTemplate,
   ArrowLeftRight,
   DatabaseZap,
   FileSpreadsheet,
@@ -51,7 +52,8 @@ import { useShortcuts } from '../useShortcuts.ts'
 import { openDemoPanel } from './demoSwitchStore.ts'
 import { Ribbon } from './Ribbon.tsx'
 import { ShellDialogHost } from './ShellDialogHost.tsx'
-import { LayoutsDialog } from '../layouts/LayoutsDialog.tsx'
+import { LayoutsPanel } from '../layouts/LayoutsPanel.tsx'
+import { SaveLayoutPrompt } from '../layouts/SaveLayoutPrompt.tsx'
 import { HandoverDialog } from '../handover/HandoverDialog.tsx'
 import { StatusBar } from './StatusBar.tsx'
 import { ToastHost } from './ToastHost.tsx'
@@ -64,6 +66,7 @@ const TAB_ICONS: Record<string, LucideIcon> = {
   'panel.reasoning': MessageSquare,
   'panel.inspection': SlidersHorizontal,
   'panel.messages': Bell,
+  'panel.layouts': LayoutTemplate,
   'page.map': MapIcon,
   'page.table': Table2,
   'page.dashboard': LayoutDashboard,
@@ -139,6 +142,8 @@ function createTabContent(node: TabNode): ReactNode {
       return <PropertiesPanel />
     case 'panel.messages':
       return <MessagesPanel />
+    case 'panel.layouts':
+      return <LayoutsPanel />
     case 'page.map':
       return <MapPage />
     case 'page.table':
@@ -196,7 +201,7 @@ export function WorkbenchShell() {
           if (!layout.isPanelOpen('messages')) layout.togglePanel('messages')
         }}
       />
-      <LayoutsDialog />
+      <SaveLayoutPrompt />
       <HandoverDialog />
       <ShellDialogHost
         open={open}
