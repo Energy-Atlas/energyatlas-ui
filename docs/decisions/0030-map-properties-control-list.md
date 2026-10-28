@@ -29,7 +29,8 @@ disclosure.
 ## Decision
 
 - **No selection bar on the Map.** The footer keeps only the basemap and terrain status, their Retry buttons, and the
-  note that the canvas is not available to screen readers.
+  note that the canvas is not available to screen readers. On 2026-10-27 the owner asked to remove that note; it is
+  now visually hidden and read only by screen readers, and the footer closes while it has no status to show.
 - **Clicking the map shows Properties.** Clicking a building or grid element selects it and opens Properties.
   Clicking an empty spot clears the selection and opens Properties, which then shows the map's own properties.
 - **Map properties, in order:**

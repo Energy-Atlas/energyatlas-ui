@@ -227,7 +227,10 @@ test('map switches buildings between 2D and 3D and explains missing heights', as
   await expect(page.getByTestId('map-3d-note')).toHaveCount(0)
   const legend = page.getByRole('group', { name: 'Map legend' })
   await expect(legend).toContainText('Height: floors × 3.2 m (synthetic)')
-  await expect(page.getByText('Shift+arrow keys rotate and tilt')).toBeVisible()
+  // The canvas note is for screen readers only.
+  const note = page.getByText('Shift+arrow keys rotate and tilt')
+  await expect(note).toHaveCount(1)
+  await expect(note).toHaveClass(/visually-hidden/)
 
   // Selecting a building in 3D paints its silhouette outline on the overlay.
   const silhouette = page.getByTestId('selection-silhouette')

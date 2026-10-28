@@ -698,14 +698,16 @@ export function MapPage() {
             Retry terrain
           </ActionButton>
         ) : null}
-        <span className={styles.a11yNote}>
-          The map canvas is not available to screen readers; the Table page
-          lists the same buildings and shares the selection.
-          {view3d
-            ? ' With the map focused, Shift+arrow keys rotate and tilt it.'
-            : ''}
-        </span>
       </footer>
+      {/* Not shown, at the owner's request; kept for screen readers, which
+          cannot read the canvas. */}
+      <p className="visually-hidden">
+        The map canvas is not available to screen readers; the Table page lists
+        the same buildings and shares the selection.
+        {view3d
+          ? ' With the map focused, Shift+arrow keys rotate and tilt it.'
+          : ''}
+      </p>
     </section>
   )
 }
