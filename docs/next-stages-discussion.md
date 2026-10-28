@@ -1,7 +1,7 @@
 # Next stages: discussion
 
-Date: 2026-10-28. Status: open. The owner proposed four features for the next stages; nothing is built until the
-owner answers the questions below or delegates them.
+Date: 2026-10-28. Status: decided the same day ([decision 0032](decisions/0032-next-stages-directions.md)); see
+[the owner's answers](#the-owners-answers). Nothing is built yet.
 
 The owner's proposal:
 
@@ -253,3 +253,18 @@ Suggested order:
    disabled with "View only"?
 6. **Saved layouts**: project and personal layouts (C)? Does a layout include view settings, or docking only?
 7. **Order**: the suggested order, or another? Where does the scale benchmark go?
+
+## The owner's answers
+
+Recorded 2026-10-28 in [decision 0032](decisions/0032-next-stages-directions.md):
+
+1. Floors and zones in the map and Properties; zones display only for now; demo-grade geometry is acceptable.
+2. Archetype rules assign RC's four parts.
+3. A scenario is, in RC, a query and aggregation: each building is simulated with an alternative version, and
+   buildings are sampled deterministically at random during aggregation. Not too important for the UI demo.
+4. Result versions are discussed later.
+5. A separate viewer page opening a handover package; the viewer has the agent for questions, interpretations, and
+   view changes; features it cannot use are left out. (The answer to "absent, or present and disabled" was "yes",
+   read as the proposed direction B, which leaves them out.)
+6. Both project and personal layouts; a layout includes view settings and the panel arrangement.
+7. No 10,000-building test now.

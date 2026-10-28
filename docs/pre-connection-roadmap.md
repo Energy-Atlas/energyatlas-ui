@@ -91,5 +91,6 @@ through Results (steps 3–8), with local merges after review and checks pass an
 [autonomous handoff](20261026_autonomous-roadmap-handoff.md).
 
 On 2026-10-28 the owner proposed four further features (floors and zones, rule and version interfaces, a viewer
-page for handover, and saved layouts); directions and open questions are in the
-[next stages discussion](next-stages-discussion.md).
+page for handover, and saved layouts); directions are in the
+[next stages discussion](next-stages-discussion.md), and the owner's choices and order in
+[decision 0032](decisions/0032-next-stages-directions.md).
