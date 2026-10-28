@@ -14,6 +14,17 @@ import type {
   WorkbenchState,
 } from '../types.ts'
 import { STAGE_IDS, stageRunBlocker } from '../workflow.ts'
+import {
+  checkTarget,
+  profileSource,
+  suggestMatches,
+  type SourceAttribute,
+  type Suggestions,
+  type TargetCheck,
+  type TargetMapping,
+  type TargetSpec,
+} from '../mapping/mapping.ts'
+import { USE_ALIASES, USE_VALUES } from '../schema/registry.ts'
 import type { Dataset, DatasetRecord, DatasetValue } from './datasets.ts'
 
 // Schema mapping, validation, and stable-ID fusion (jobs rollout plan, D9).
@@ -60,21 +71,168 @@ const SYNONYMS: Record<TargetField, string[]> = {
   footprint: ['geometry', 'footprint'],
 }
 
-/** A first mapping from field names; people review and change it before applying. */
+/**
+ * The intake targets in RC's tiers for the shared mapping review (decision
+ * 0032, stage 4): Source ID is compulsory, because records match buildings by
+ * it; the attributes and the footprint are optional.
+ */
+export const INTAKE_TARGETS: readonly TargetSpec[] = [
+  {
+    id: 'sourceId',
+    label: TARGET_FIELDS.sourceId.label,
+    tier: 'compulsory',
+    type: 'identifier',
+    required: true,
+    fallback: 'Without it no record can be matched, so nothing is applied.',
+    description: TARGET_FIELDS.sourceId.description,
+    synonyms: SYNONYMS.sourceId,
+  },
+  {
+    id: 'name',
+    label: TARGET_FIELDS.name.label,
+    tier: 'optional',
+    group: 'Attributes',
+    type: 'text',
+    required: false,
+    maxLength: 80,
+    fallback: 'Matched buildings keep their names.',
+    description: TARGET_FIELDS.name.description,
+    synonyms: SYNONYMS.name,
+  },
+  {
+    id: 'use',
+    label: TARGET_FIELDS.use.label,
+    tier: 'optional',
+    group: 'Attributes',
+    type: 'enum',
+    required: false,
+    allowed: USE_VALUES,
+    aliases: USE_ALIASES,
+    fallback:
+      'Records with values that are not recognised are rejected; matched buildings keep their use.',
+    description: TARGET_FIELDS.use.description,
+    synonyms: SYNONYMS.use,
+  },
+  {
+    id: 'yearBuilt',
+    label: TARGET_FIELDS.yearBuilt.label,
+    tier: 'optional',
+    group: 'Attributes',
+    type: 'year',
+    required: false,
+    range: { min: 1600, max: 2030 },
+    fallback: 'Records with values that are not valid are rejected.',
+    description: TARGET_FIELDS.yearBuilt.description,
+    synonyms: SYNONYMS.yearBuilt,
+  },
+  {
+    id: 'floors',
+    label: TARGET_FIELDS.floors.label,
+    tier: 'optional',
+    group: 'Attributes',
+    type: 'integer',
+    required: false,
+    range: { min: 1, max: 60 },
+    fallback: 'Records with values that are not valid are rejected.',
+    description: TARGET_FIELDS.floors.description,
+    synonyms: SYNONYMS.floors,
+  },
+  {
+    id: 'footprint',
+    label: TARGET_FIELDS.footprint.label,
+    tier: 'optional',
+    group: 'Geometry',
+    type: 'geometry',
+    required: false,
+    fallback: 'Records that match no building are rejected without one.',
+    description: TARGET_FIELDS.footprint.description,
+    synonyms: SYNONYMS.footprint,
+  },
+]
+
+export function isTargetField(value: string): value is TargetField {
+  return value in TARGET_FIELDS
+}
+
+/** Suggested matches for a dataset's fields, waiting for review (the shared suggester). */
+export function suggestIntakeMatches(dataset: Dataset): Suggestions {
+  return suggestMatches(INTAKE_TARGETS, dataset.fields, {})
+}
+
+/** The dataset mapping with every suggestion accepted. */
 export function suggestMapping(dataset: Dataset): FieldMapping {
-  const mapping: FieldMapping = {}
-  const taken = new Set<TargetField>()
-  for (const field of dataset.fields) {
-    const target =
-      TARGET_FIELD_IDS.find(
-        (candidate) =>
-          !taken.has(candidate) &&
-          SYNONYMS[candidate].includes(field.trim().toLowerCase()),
-      ) ?? null
-    if (target) taken.add(target)
-    mapping[field] = target
+  const mapping: FieldMapping = Object.fromEntries(
+    dataset.fields.map((field) => [field, null]),
+  )
+  for (const [target, suggestion] of Object.entries(
+    suggestIntakeMatches(dataset),
+  )) {
+    if (isTargetField(target)) mapping[suggestion.source] = target
   }
   return mapping
+}
+
+/** The same mapping keyed by target, as the mapping review shows it. */
+export function targetMapping(mapping: FieldMapping): TargetMapping {
+  const targets: TargetMapping = {}
+  for (const [field, target] of Object.entries(mapping)) {
+    if (target && !targets[target]) targets[target] = field
+  }
+  return targets
+}
+
+/**
+ * Maps `target` from `field`, or unmaps it: the target takes one field, and
+ * a field feeds one target, so a field mapped elsewhere moves here.
+ */
+export function withTarget(
+  mapping: FieldMapping,
+  target: TargetField,
+  field: string | null,
+): FieldMapping {
+  const next: FieldMapping = { ...mapping }
+  for (const [name, current] of Object.entries(next)) {
+    if (current === target) next[name] = null
+  }
+  if (field !== null) next[field] = target
+  return next
+}
+
+/** The mapping review's view of a dataset: profiled fields and what each mapped target reads. */
+export function reviewDataset(
+  dataset: Dataset,
+  mapping: FieldMapping,
+): {
+  sources: SourceAttribute[]
+  checks: Record<string, TargetCheck>
+  issues: ValidationIssue[]
+} {
+  const sources = dataset.fields.map((field) =>
+    profileSource(
+      field,
+      dataset.records.map((record) => record[field] ?? null),
+    ),
+  )
+  const targets = targetMapping(mapping)
+  const checks: Record<string, TargetCheck> = {}
+  for (const target of INTAKE_TARGETS) {
+    const field = targets[target.id]
+    if (!field || !dataset.fields.includes(field)) continue
+    checks[target.id] = checkTarget(
+      target,
+      field,
+      dataset.records.map((record) => record[field] ?? null),
+    )
+  }
+  // A field's issue moves to the target the field is mapped to.
+  const issues = mappingIssues(dataset, mapping).map((issue) => {
+    const field = issue.path.startsWith('mapping.')
+      ? issue.path.slice('mapping.'.length)
+      : null
+    const target = field ? mapping[field] : null
+    return target ? { ...issue, path: `targets.${target}` } : issue
+  })
+  return { sources, checks, issues }
 }
 
 /** Mapping problems that block the whole dataset, on the field they concern. */

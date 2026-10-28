@@ -103,6 +103,20 @@ function SingleView({
       <Section title="Attributes">
         <Facts facts={inspection.properties} />
       </Section>
+      {inspection.attributeSources ? (
+        <Section title="Attribute sources">
+          <Facts facts={inspection.attributeSources} />
+        </Section>
+      ) : null}
+      {inspection.sourceAttributes && inspection.sourceAttributes.length > 0 ? (
+        <Section title="Source attributes">
+          <p className={styles.muted}>
+            Captured with the footprint; Schema matching copies values from them
+            and keeps them unchanged.
+          </p>
+          <Facts facts={inspection.sourceAttributes} />
+        </Section>
+      ) : null}
       <Section title="Results">
         {inspection.results.length > 0 ? (
           <Facts facts={inspection.results} />

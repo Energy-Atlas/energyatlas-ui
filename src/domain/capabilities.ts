@@ -34,6 +34,12 @@ export const capabilities = {
     explanation:
       'Mapping, validation, stable-ID matching, and fusion jobs are real state transitions over synthetic datasets; files are not uploaded or parsed.',
   },
+  'schema.mapping': {
+    label: 'Schema matching',
+    status: 'simulated',
+    explanation:
+      'Suggestions, review, validation, value maps, rule sets, and applying the mapping as a job are real state transitions over synthetic OpenStreetMap-like footprint tags; units are not converted and transforms are not supported, as in RC.',
+  },
   'intake.upload': {
     label: 'File upload',
     status: 'planned',

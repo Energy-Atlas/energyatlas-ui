@@ -110,6 +110,7 @@ describe('scripted agent', () => {
     expect(matchSession('Give older homes heat pumps')?.id).toBe(
       'scenarioRules',
     )
+    expect(matchSession('Review the schema mapping')?.id).toBe('schemaMatching')
     expect(matchSession('Pick a preset')).toBeNull()
   })
 
@@ -221,6 +222,42 @@ describe('scripted agent', () => {
     expect(JSON.stringify(transcript())).toMatch(
       / [1-9]\d* buildings now use the heat pump/,
     )
+  })
+
+  it('reviews the schema mapping after approval and applies it as a run', async () => {
+    const { workbench, manual, agent, lastApproval, agentEntries, transcript } =
+      setup()
+    agent.startPreset('schemaMatching')
+    await manual.settle(50)
+    expect(lastApproval().title).toMatch(/^Run \d+ missing stages$/)
+    agent.approve(lastApproval().id)
+    await manual.settle(20000)
+    expect(lastApproval().title).toBe('Update the attribute mapping')
+    agent.approve(lastApproval().id)
+    await manual.settle(500)
+    const matching = workbench.getState().schemaMatching
+    expect(matching.suggestions).toEqual({})
+    expect(matching.mapping.name).toBe('name')
+    expect(matching.valueMaps.use?.yes).toBe('mixed')
+    // Applying the mapping is a second approved run.
+    expect(lastApproval().title).toMatch(/^Run \d+/)
+    agent.approve(lastApproval().id)
+    await manual.settle(20000)
+    expect(agent.store.getState().status).toBe('idle')
+    expect(workbench.getState().schemaMatching.published?.mapping.name).toBe(
+      'name',
+    )
+    expect(
+      agentEntries()
+        .map((entry) => entry.type)
+        .filter((type) => type !== 'workflow.runStage'),
+    ).toEqual([
+      'layout.openPage',
+      'schema.inspectSource',
+      'schema.reviewSuggestions',
+      'schema.mapValue',
+    ])
+    expect(JSON.stringify(transcript())).toContain('applied the mapping')
   })
 
   it('adds a scenario rule after approval, previews it, and models the scenario', async () => {

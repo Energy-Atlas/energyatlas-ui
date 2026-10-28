@@ -55,6 +55,7 @@ import '../global.css'
 import { getBrowserStorage } from '../storage.ts'
 import { applyAppearance, readAppearancePreference } from '../theme.ts'
 import styles from './gallery.module.css'
+import { MappingSpecimen } from './MappingSpecimen.tsx'
 
 const STATES: StageState[] = [
   'future',
@@ -742,6 +743,14 @@ export default function ComponentGallery() {
             empty={
               <p>No rules yet. Generate the default rules or write one.</p>
             }
+          />
+        </section>
+
+        <section className={cx(styles.cell, styles.wide)}>
+          <h2>Mapping review</h2>
+          <MappingSpecimen
+            onNote={note}
+            onBlocked={(label, reason) => blocked({ label }, reason)}
           />
         </section>
 

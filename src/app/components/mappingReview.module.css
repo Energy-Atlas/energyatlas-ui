@@ -1,0 +1,209 @@
+/* The mapping review of decision 0032, stage 4: source attributes and their
+   values beside the target fields in RC's tiers. Two columns on wide panes,
+   one on narrow ones. */
+.review {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  gap: var(--space-4);
+  min-width: 0;
+}
+
+.sources {
+  display: flex;
+  flex: 1 1 16rem;
+  flex-direction: column;
+  gap: var(--space-2);
+  min-width: 0;
+  max-width: 26rem;
+}
+
+.sources > :first-of-type + * {
+  max-height: 20rem;
+}
+
+.targets {
+  display: flex;
+  flex: 3 1 32rem;
+  flex-direction: column;
+  gap: var(--space-2);
+  min-width: 0;
+}
+
+.heading {
+  margin: 0;
+  color: var(--color-text-muted);
+  font-family: var(--label-font);
+  font-size: var(--label-size);
+  font-weight: var(--label-weight);
+  letter-spacing: var(--label-tracking);
+  text-transform: var(--label-case);
+}
+
+.type {
+  margin-right: var(--space-1);
+  padding: 0 var(--space-1);
+  border: 1px solid var(--color-border-subtle);
+  border-radius: var(--radius-sm);
+  font-family: var(--font-mono);
+  font-size: var(--font-size-small);
+}
+
+.distribution {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+}
+
+.bars td,
+.bars th[scope='row'] {
+  vertical-align: middle;
+}
+
+.bars th[scope='row'] {
+  color: var(--color-text);
+  font-family: inherit;
+  font-size: var(--font-size-base);
+  letter-spacing: normal;
+  text-transform: none;
+  overflow-wrap: anywhere;
+}
+
+.number {
+  text-align: right;
+}
+
+.share {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+  min-width: 7rem;
+}
+
+.bar {
+  display: inline-block;
+  max-inline-size: 5rem;
+  block-size: 0.625rem;
+  border-radius: var(--radius-sm);
+  background: var(--color-accent);
+}
+
+.shareText {
+  color: var(--color-text-muted);
+  font-size: var(--font-size-small);
+}
+
+.form th[scope='row'] {
+  min-width: 9rem;
+  color: var(--color-text);
+  font-family: inherit;
+  font-size: var(--font-size-base);
+  font-weight: 600;
+  letter-spacing: normal;
+  text-transform: none;
+  vertical-align: top;
+}
+
+.form td {
+  vertical-align: top;
+}
+
+.form td:nth-child(2) {
+  min-width: 10rem;
+}
+
+/* A target's values read under its row, across the table. */
+.mainRow > * {
+  border-bottom: none;
+}
+
+.detailRow td {
+  padding-top: 0;
+  padding-left: var(--space-4);
+}
+
+.detailRow td + td,
+.form .detailRow td {
+  border-left: none;
+}
+
+.tierRow th,
+.groupRow th {
+  padding-top: var(--space-2);
+  background: var(--color-surface-raised);
+}
+
+.groupRow th {
+  padding-left: var(--space-3);
+  font-style: italic;
+}
+
+.targetType {
+  display: block;
+  color: var(--color-text-muted);
+  font-size: var(--font-size-small);
+  font-weight: normal;
+}
+
+/* Rows that need attention are fills, never edge bars (decision 0028). */
+.invalid {
+  background: var(--tone-danger-bg);
+}
+
+.suggested {
+  background: var(--tone-info-bg);
+}
+
+.issue {
+  display: block;
+  margin-top: var(--space-1);
+  color: var(--tone-danger-text);
+  font-size: var(--font-size-small);
+}
+
+.suggestion {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+}
+
+.buttons {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-1);
+}
+
+.values {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+}
+
+.enumTable {
+  width: auto;
+  min-width: 18rem;
+  font-size: var(--font-size-small);
+}
+
+.caption {
+  font-weight: normal;
+  color: var(--color-text-muted);
+}
+
+.unread {
+  background: var(--tone-warning-bg);
+}
+
+.addRow input {
+  margin-top: var(--space-1);
+}
+
+.list {
+  margin: 0;
+  padding-left: var(--space-4);
+}
+
+.enumTable td,
+.enumTable th[scope='row'] {
+  vertical-align: middle;
+}

@@ -540,6 +540,80 @@ export type SourceRecord = {
   source: CommandSource
 }
 
+/** A source attribute suggested for a target, waiting for review. */
+export type MappingSuggestion = {
+  source: string
+  score: number
+  reason: string
+}
+
+/** One entry of a rule set in RC's shape (`{target, source, tier, transform}`). */
+export type RuleSetMapping = {
+  target: string
+  source: string
+  tier: 'compulsory' | 'computed' | 'optional' | 'custom'
+  /** Always null: transforms are not supported, as in RC. */
+  transform: string | null
+}
+
+/** A named mapping saved with the project (decision 0032, stage 4). */
+export type SchemaRuleSet = {
+  id: string
+  name: string
+  version: 1
+  mappings: RuleSetMapping[]
+  /** Unrecognised enumerated values mapped to allowed ones, by target. */
+  valueMaps: Record<string, Record<string, string>>
+  savedAt: string
+  operationId: string
+}
+
+/** What a coded warning of a Schema matching run reports, as RC reports them. */
+export type MappingWarning = {
+  code:
+    | 'enum_values_unrecognised'
+    | 'values_invalid'
+    | 'values_missing'
+    | 'unit_not_converted'
+  target: string
+  count: number
+  examples: string[]
+  message: string
+}
+
+/** The mapping the last successful Schema matching run applied. */
+export type PublishedMapping = {
+  runId: string
+  operationId: string
+  mapping: Record<string, string>
+  valueMaps: Record<string, Record<string, string>>
+  customTargets: string[]
+  /** Values copied per target. */
+  applied: Record<string, number>
+  warnings: MappingWarning[]
+}
+
+/**
+ * Schema matching (decision 0032, stage 4): which source attribute of the
+ * captured footprints each target field takes, suggestions waiting for
+ * review, value maps for enumerated targets, named rule sets, and what the
+ * last run applied. Mapped values are read from the source attributes when
+ * needed, so the original attributes are kept unchanged.
+ */
+export type SchemaMatchingState = {
+  /** Target id to source attribute name; unmapped targets are absent. */
+  mapping: Record<string, string>
+  suggestions: Record<string, MappingSuggestion>
+  /** Custom target names, in order; their ids are `custom:<name>`. */
+  customTargets: string[]
+  valueMaps: Record<string, Record<string, string>>
+  ruleSets: Record<string, SchemaRuleSet>
+  ruleSetIds: string[]
+  /** The rule set the mapping was last loaded from, until it is edited. */
+  loadedFrom: string | null
+  published: PublishedMapping | null
+}
+
 /** A dataset whose fusion was published into the project. */
 export type AppliedDataset = {
   datasetId: string
@@ -728,6 +802,8 @@ export type WorkbenchState = {
   sourceRecordIds: string[]
   /** Datasets fused into the project, by dataset ID. */
   datasets: Record<string, AppliedDataset>
+  /** The Schema matching mapping and what its last run applied (decision 0032, stage 4). */
+  schemaMatching: SchemaMatchingState
   calibration: CalibrationState
   issues: Issue[]
   selection: Selection

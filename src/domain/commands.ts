@@ -35,6 +35,28 @@ import {
   modeledSource,
 } from './calibration/calibration.ts'
 import { findDataset } from './intake/datasets.ts'
+import { recognise, suggestMatches } from './mapping/mapping.ts'
+import {
+  computedOverrides,
+  schemaRunBlocker,
+  sourceCollection,
+} from './schema/matching.ts'
+import {
+  BUILT_IN_RULE_SET,
+  CUSTOM_NAME,
+  SCHEMA_TARGETS,
+  copyValueMaps,
+  createSchemaMatching,
+  customTargetId,
+  findSchemaTarget,
+  schemaTargets,
+} from './schema/registry.ts'
+import {
+  currentMappings,
+  checkRuleSet,
+  ruleSetFileSchema,
+  type RuleSetFile,
+} from './schema/ruleSets.ts'
 import { MEASURE_LIBRARY } from './scenarios/library.ts'
 import {
   publishScenarioResults,
@@ -244,6 +266,7 @@ function itemInputBlocker(
   stageId: string,
 ): string | null {
   if (stageId === STAGE_IDS.archetypes) return definitionsBlocker(state)
+  if (stageId === STAGE_IDS.schema) return schemaRunBlocker(state)
   if (stageId === STAGE_IDS.scenarioModeling) {
     return Object.values(state.scenarios).some((scenario) => scenario.included)
       ? null
@@ -364,7 +387,10 @@ function stageItem(
       missing: null,
     }
   }
-  const output = preprocessBuilding(building)
+  const output = preprocessBuilding(
+    building,
+    computedOverrides(state, building),
+  )
   return { output, missing: output ? null : 'The floor count is missing.' }
 }
 
@@ -382,6 +408,20 @@ function editedSource(
   return libraryId
     ? { kind: 'project', operationId, libraryId }
     : { kind: 'project', operationId }
+}
+
+/** Why source-attribute commands cannot run before footprints are captured. */
+const NO_SOURCES =
+  'There are no source attributes yet. Run "Location setup / footprint capturing" first.'
+
+/** The id that loads the built-in rule set again. */
+export const BUILT_IN_RULE_SET_ID = 'ruleSet:builtin'
+
+/** Bumps Schema matching's inputs: its mapping is outdated, and so is everything after it. */
+function touchSchemaInputs(state: WorkbenchState) {
+  const stage = state.workflow.stages[STAGE_IDS.schema]
+  if (stage) stage.editRevision = nextRevision(state)
+  state.schemaMatching.loadedFrom = null
 }
 
 /** Bumps the inputs Archetype modeling owns, so assignments become outdated. */
@@ -1229,6 +1269,376 @@ export const commandDefinitions = {
       return applied(
         `Queued a data fusion of "${dataset.label}" for ${prepared.plans.length} valid records; ${prepared.counts.rejected} rejected records are not applied.`,
       )
+    },
+  }),
+
+  'schema.mapTarget': defineCommand({
+    title: 'Map target field',
+    description:
+      'Schema matching: map one target field (use, yearBuilt, floors, heightM, floorAreaM2, name, or custom:<name>) to a source attribute of the captured footprints, or to null to unmap it. Each target takes one source; a pending suggestion for the target is dropped. Applying needs a Schema matching run.',
+    input: z.object({
+      target: z.string().min(1, 'Choose a target field.'),
+      source: z.string().min(1).nullable(),
+    }),
+    undoable: true,
+    run(state, { target, source }) {
+      const matching = state.schemaMatching
+      const spec = findSchemaTarget(matching, target)
+      if (!spec) return rejected(`Unknown target field "${target}".`, 'target')
+      const sources = sourceCollection(state).names
+      if (source !== null && sources.length === 0) {
+        return rejected(NO_SOURCES, 'source')
+      }
+      if (source !== null && !sources.includes(source)) {
+        return rejected(
+          `"${source}" is not an attribute of the captured footprints. Choose one of ${sources.join(', ')}.`,
+          'source',
+        )
+      }
+      if (spec.tier === 'custom' && source === null) {
+        return rejected(
+          `${spec.label} is a custom target; remove it instead of unmapping it.`,
+          'source',
+        )
+      }
+      const previous = matching.mapping[target] ?? null
+      delete matching.suggestions[target]
+      if (previous === source) {
+        return applied(
+          source
+            ? `${spec.label} already takes "${source}".`
+            : `${spec.label} is already unmapped.`,
+        )
+      }
+      if (source === null) delete matching.mapping[target]
+      else matching.mapping[target] = source
+      touchSchemaInputs(state)
+      return applied(
+        source
+          ? `${spec.label} now takes "${source}"${previous ? ` instead of "${previous}"` : ''}. Run Schema matching to apply it.`
+          : `${spec.label} is unmapped${spec.required ? '; it is compulsory, so Schema matching cannot run until it is mapped again' : ''}.`,
+      )
+    },
+  }),
+
+  'schema.reviewSuggestions': defineCommand({
+    title: 'Review suggestions',
+    description:
+      'Schema matching: accept or reject suggested matches. Name the target fields, or give an empty list for every pending suggestion. Accepting maps the target to the suggested source attribute; rejecting drops the suggestion.',
+    input: z.object({
+      targets: z.array(z.string().min(1)).default([]),
+      decision: z.enum(['accept', 'reject']),
+    }),
+    undoable: true,
+    run(state, { targets, decision }) {
+      const matching = state.schemaMatching
+      const pending = Object.keys(matching.suggestions)
+      if (pending.length === 0) {
+        return rejected('There are no suggestions to review.', 'targets')
+      }
+      const chosen = targets.length > 0 ? targets : pending
+      const unknown = chosen.find((target) => !matching.suggestions[target])
+      if (unknown) {
+        return rejected(
+          `${findSchemaTarget(matching, unknown)?.label ?? `"${unknown}"`} has no suggestion to review.`,
+          'targets',
+        )
+      }
+      const sources = sourceCollection(state).names
+      const labels: string[] = []
+      for (const target of chosen) {
+        const suggestion = matching.suggestions[target]
+        delete matching.suggestions[target]
+        if (!suggestion || decision === 'reject') {
+          labels.push(findSchemaTarget(matching, target)?.label ?? target)
+          continue
+        }
+        if (!sources.includes(suggestion.source)) continue
+        matching.mapping[target] = suggestion.source
+        labels.push(
+          `${findSchemaTarget(matching, target)?.label ?? target} from "${suggestion.source}"`,
+        )
+      }
+      if (decision === 'accept' && labels.length > 0) touchSchemaInputs(state)
+      return applied(
+        decision === 'accept'
+          ? `Accepted ${labels.length} suggestion${labels.length === 1 ? '' : 's'}: ${labels.join(', ')}. Run Schema matching to apply them.`
+          : `Rejected ${labels.length} suggestion${labels.length === 1 ? '' : 's'}: ${labels.join(', ')}.`,
+      )
+    },
+  }),
+
+  'schema.suggest': defineCommand({
+    title: 'Suggest matches',
+    description:
+      'Schema matching: suggest a source attribute for every unmapped target field from attribute names (RC\'s "Fuzzy Match All"). Suggestions replace pending ones and wait for review; nothing is mapped until they are accepted.',
+    input: z.object({}),
+    undoable: true,
+    run(state) {
+      const matching = state.schemaMatching
+      const names = sourceCollection(state).names
+      if (names.length === 0) return rejected(NO_SOURCES)
+      matching.suggestions = suggestMatches(
+        schemaTargets(matching),
+        names,
+        matching.mapping,
+      )
+      const count = Object.keys(matching.suggestions).length
+      return applied(
+        count > 0
+          ? `Suggested ${count} match${count === 1 ? '' : 'es'} to review.`
+          : 'No unmapped target field has a likely attribute.',
+      )
+    },
+  }),
+
+  'schema.mapValue': defineCommand({
+    title: 'Map unrecognised value',
+    description:
+      'Schema matching: read an unrecognised value of an enumerated target (such as the building tag "yes" for use) as one of its allowed values, or give null to stop reading it. Buildings with unread values keep their enriched values.',
+    input: z.object({
+      target: z.string().min(1, 'Choose a target field.'),
+      value: z.string().trim().min(1, 'Name the value to map.'),
+      to: z.string().min(1).nullable(),
+    }),
+    undoable: true,
+    run(state, { target, value, to }) {
+      const matching = state.schemaMatching
+      const spec = findSchemaTarget(matching, target)
+      if (!spec || spec.type !== 'enum') {
+        return rejected(
+          `"${target}" is not an enumerated target field.`,
+          'target',
+        )
+      }
+      if (to !== null && !(spec.allowed ?? []).includes(to)) {
+        return rejected(
+          `"${to}" is not allowed for ${spec.label}. Choose one of ${(spec.allowed ?? []).join(', ')}.`,
+          'to',
+        )
+      }
+      if (recognise(spec, value)) {
+        return rejected(
+          `"${value}" is already recognised as ${recognise(spec, value)}.`,
+          'value',
+        )
+      }
+      const map = (matching.valueMaps[target] ??= {})
+      if ((map[value] ?? null) === to) {
+        return applied(
+          to
+            ? `"${value}" is already read as ${to}.`
+            : `"${value}" is already unmapped.`,
+        )
+      }
+      if (to === null) delete map[value]
+      else map[value] = to
+      if (Object.keys(map).length === 0) delete matching.valueMaps[target]
+      touchSchemaInputs(state)
+      return applied(
+        to
+          ? `${spec.label}: "${value}" is now read as ${to}. Run Schema matching to apply it.`
+          : `${spec.label}: "${value}" is no longer read; those buildings keep their enriched values.`,
+      )
+    },
+  }),
+
+  'schema.addCustomTarget': defineCommand({
+    title: 'Add custom target',
+    description:
+      "Schema matching: add a custom target field that copies a source attribute as text and keeps it with each building (RC's Custom tab). No model calculation reads it.",
+    input: z.object({
+      name: z
+        .string()
+        .trim()
+        .regex(
+          CUSTOM_NAME,
+          'Start with a letter; use letters, digits, and _ : . - up to 40 characters.',
+        ),
+      source: z.string().min(1, 'Choose a source attribute.'),
+    }),
+    undoable: true,
+    run(state, { name, source }) {
+      const matching = state.schemaMatching
+      const sources = sourceCollection(state).names
+      if (sources.length === 0) return rejected(NO_SOURCES, 'source')
+      if (!sources.includes(source)) {
+        return rejected(
+          `"${source}" is not an attribute of the captured footprints.`,
+          'source',
+        )
+      }
+      const lower = name.toLowerCase()
+      if (
+        matching.customTargets.some((item) => item.toLowerCase() === lower) ||
+        SCHEMA_TARGETS.some(
+          (target) =>
+            target.id.toLowerCase() === lower ||
+            target.label.toLowerCase() === lower,
+        )
+      ) {
+        return rejected(
+          `A target field named "${name}" already exists.`,
+          'name',
+        )
+      }
+      matching.customTargets.push(name)
+      matching.mapping[customTargetId(name)] = source
+      touchSchemaInputs(state)
+      return applied(
+        `Added the custom target "${name}" from "${source}". Run Schema matching to copy it.`,
+      )
+    },
+  }),
+
+  'schema.removeCustomTarget': defineCommand({
+    title: 'Remove custom target',
+    description:
+      'Schema matching: remove a custom target field and its mapping. Values copied by an earlier run stay until Schema matching runs again.',
+    input: z.object({ name: z.string().min(1, 'Choose a custom target.') }),
+    undoable: true,
+    run(state, { name }) {
+      const matching = state.schemaMatching
+      if (!matching.customTargets.includes(name)) {
+        return rejected(`There is no custom target "${name}".`, 'name')
+      }
+      matching.customTargets = matching.customTargets.filter(
+        (item) => item !== name,
+      )
+      delete matching.mapping[customTargetId(name)]
+      delete matching.suggestions[customTargetId(name)]
+      touchSchemaInputs(state)
+      return applied(`Removed the custom target "${name}".`)
+    },
+  }),
+
+  'schema.saveRuleSet': defineCommand({
+    title: 'Save rule set',
+    description:
+      'Schema matching: save the accepted mapping and value maps as a named rule set kept with the project. A rule set of the same name is replaced. Pending suggestions are not saved.',
+    input: z.object({
+      name: z
+        .string()
+        .trim()
+        .min(1, 'Name the rule set.')
+        .max(80, 'Use at most 80 characters.'),
+    }),
+    undoable: true,
+    run(state, { name }, context) {
+      const matching = state.schemaMatching
+      const mappings = currentMappings(matching)
+      if (mappings.length === 0) {
+        return rejected(
+          'Map at least one target field before saving a rule set.',
+          'name',
+        )
+      }
+      if (name.toLowerCase() === BUILT_IN_RULE_SET.toLowerCase()) {
+        return rejected('The built-in rule set cannot be replaced.', 'name')
+      }
+      const existing = Object.values(matching.ruleSets).find(
+        (ruleSet) => ruleSet.name.toLowerCase() === name.toLowerCase(),
+      )
+      const id = existing?.id ?? allocateId(state, 'ruleSet')
+      matching.ruleSets[id] = {
+        id,
+        name,
+        version: 1,
+        mappings,
+        valueMaps: copyValueMaps(matching.valueMaps),
+        savedAt: context.now,
+        operationId: context.operationId,
+      }
+      if (!existing) matching.ruleSetIds.push(id)
+      matching.loadedFrom = name
+      return applied(
+        `${existing ? 'Replaced' : 'Saved'} the rule set "${name}" with ${mappings.length} mapping${mappings.length === 1 ? '' : 's'}.`,
+      )
+    },
+  }),
+
+  'schema.loadRuleSet': defineCommand({
+    title: 'Load rule set',
+    description:
+      'Schema matching: replace the mapping with a rule set, named by ruleSetId (a saved one, or "ruleSet:builtin" for the built-in OpenStreetMap tags) or given as a file in RC\'s shape {version: 1, mappings: [{target, source, tier, transform}], valueMaps}. Entries naming targets or sources that do not exist, or a transform, are skipped and reported. Pending suggestions are dropped.',
+    input: z
+      .object({
+        ruleSetId: z.string().min(1).optional(),
+        file: ruleSetFileSchema.optional(),
+      })
+      .refine(
+        (input) =>
+          (input.ruleSetId === undefined) !== (input.file === undefined),
+        { message: 'Choose a saved rule set or a file, not both.' },
+      ),
+    undoable: true,
+    run(state, { ruleSetId, file }) {
+      const matching = state.schemaMatching
+      if (sourceCollection(state).names.length === 0) {
+        return rejected(NO_SOURCES, 'ruleSetId')
+      }
+      let name: string
+      let content: Pick<RuleSetFile, 'mappings' | 'valueMaps'>
+      if (ruleSetId === BUILT_IN_RULE_SET_ID) {
+        const builtIn = createSchemaMatching()
+        name = BUILT_IN_RULE_SET
+        content = {
+          mappings: currentMappings(builtIn),
+          valueMaps: builtIn.valueMaps,
+        }
+      } else if (ruleSetId !== undefined) {
+        const saved = matching.ruleSets[ruleSetId]
+        if (!saved) {
+          return rejected(`Unknown rule set "${ruleSetId}".`, 'ruleSetId')
+        }
+        name = saved.name
+        content = saved
+      } else if (file) {
+        name = file.name ?? 'Rule set file'
+        content = file
+      } else {
+        return rejected('Choose a saved rule set or a file.', 'ruleSetId')
+      }
+      const check = checkRuleSet(state, content)
+      if (check.applicable.length === 0) {
+        return rejected(
+          `Nothing in "${name}" can be loaded: ${check.skipped.join(' ') || 'it has no mappings.'}`,
+          file ? 'file' : 'ruleSetId',
+        )
+      }
+      matching.mapping = Object.fromEntries(
+        check.applicable.map((entry) => [entry.target, entry.source]),
+      )
+      matching.customTargets = check.customTargets
+      matching.valueMaps = check.valueMaps
+      matching.suggestions = {}
+      touchSchemaInputs(state)
+      matching.loadedFrom = name
+      const loaded = `Loaded "${name}": ${check.applicable.length} mapping${check.applicable.length === 1 ? '' : 's'}`
+      return applied(
+        check.skipped.length > 0
+          ? `${loaded}; skipped ${check.skipped.length}: ${check.skipped.join(' ')}`
+          : `${loaded}. Run Schema matching to apply it.`,
+      )
+    },
+  }),
+
+  'schema.deleteRuleSet': defineCommand({
+    title: 'Delete rule set',
+    description:
+      'Schema matching: delete a saved rule set. The current mapping does not change.',
+    input: z.object({ ruleSetId: z.string().min(1, 'Choose a rule set.') }),
+    undoable: true,
+    run(state, { ruleSetId }) {
+      const matching = state.schemaMatching
+      const ruleSet = matching.ruleSets[ruleSetId]
+      if (!ruleSet) {
+        return rejected(`Unknown rule set "${ruleSetId}".`, 'ruleSetId')
+      }
+      delete matching.ruleSets[ruleSetId]
+      matching.ruleSetIds = matching.ruleSetIds.filter((id) => id !== ruleSetId)
+      if (matching.loadedFrom === ruleSet.name) matching.loadedFrom = null
+      return applied(`Deleted the rule set "${ruleSet.name}".`)
     },
   }),
 

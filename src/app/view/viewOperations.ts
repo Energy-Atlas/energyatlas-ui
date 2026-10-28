@@ -1,7 +1,14 @@
 import { z } from 'zod'
 import type { ValidationIssue } from '../../domain/commands.ts'
 import { findDataset } from '../../domain/intake/datasets.ts'
-import { TARGET_FIELDS, suggestMapping } from '../../domain/intake/fusion.ts'
+import {
+  TARGET_FIELDS,
+  isTargetField,
+  suggestIntakeMatches,
+  withTarget,
+} from '../../domain/intake/fusion.ts'
+import type { Suggestions } from '../../domain/mapping/mapping.ts'
+import { sourceCollection } from '../../domain/schema/matching.ts'
 import { previewAssignment } from '../../domain/archetypes/assignment.ts'
 import {
   previewScenarioRules,
@@ -108,8 +115,18 @@ export type ViewState = {
    * (decision 0032, stage 3); null shows the first scenario.
    */
   scenarios: { previewScenarioId: string | null }
-  /** The data intake draft: a dataset and its mapping, not sent until applied. */
-  intake: { datasetId: string | null; mapping: FieldMapping }
+  /**
+   * The data intake draft: a dataset, its mapping, suggestions waiting for
+   * review, and the field whose values are shown; not sent until applied.
+   */
+  intake: {
+    datasetId: string | null
+    mapping: FieldMapping
+    suggestions: Suggestions
+    field: string | null
+  }
+  /** The source attribute whose values the Schema matching page shows (decision 0032, stage 4). */
+  schema: { source: string | null }
   /** The Results page's chosen result, drilled-down building, and resolution. */
   results: {
     resultId: string
@@ -142,7 +159,8 @@ export function createInitialViewState(
     jobs: { selectedTaskId: null, filter: 'all' },
     archetypes: { previewPart: 'all' },
     scenarios: { previewScenarioId: null },
-    intake: { datasetId: null, mapping: {} },
+    intake: { datasetId: null, mapping: {}, suggestions: {}, field: null },
+    schema: { source: null },
     results: { resultId: 'baseline', buildingId: null, resolution: 'monthly' },
     nextChartNumber: 1,
     tables,
@@ -720,31 +738,118 @@ export const viewOperationDefinitions = {
   'intake.chooseDataset': defineViewOperation({
     title: 'Choose dataset',
     description:
-      'Choose a synthetic dataset for data intake. Its fields get a suggested mapping to the model schema to review before applying.',
+      'Choose a synthetic dataset for data intake. Its fields get suggested matches to model fields, which wait for review (intake.reviewSuggestions) before the mapping uses them.',
     input: z.object({ datasetId: z.string().min(1, 'Choose a dataset.') }),
     run(view, { datasetId }) {
       const dataset = findDataset(datasetId)
       if (!dataset) {
         return rejected(`Unknown dataset "${datasetId}".`, 'datasetId')
       }
-      view.intake = { datasetId, mapping: suggestMapping(dataset) }
+      const suggestions = suggestIntakeMatches(dataset)
+      view.intake = {
+        datasetId,
+        mapping: Object.fromEntries(
+          dataset.fields.map((field) => [field, null]),
+        ),
+        suggestions,
+        field: dataset.fields[0] ?? null,
+      }
+      const count = Object.keys(suggestions).length
       return applied(
-        `Chose "${dataset.label}" and suggested a mapping for its ${dataset.fields.length} fields; review it before applying.`,
+        `Chose "${dataset.label}" with ${dataset.fields.length} fields; ${count} suggested match${count === 1 ? '' : 'es'} ${count === 1 ? 'waits' : 'wait'} for review.`,
       )
     },
   }),
 
-  'intake.mapField': defineViewOperation({
-    title: 'Map dataset field',
+  'intake.mapTarget': defineViewOperation({
+    title: 'Map model field',
     description:
-      'Map one field of the chosen dataset to a model field (sourceId, name, use, yearBuilt, floors, footprint), or to null to ignore it.',
+      'Map one model field of data intake (sourceId, name, use, yearBuilt, floors, footprint) from a field of the chosen dataset, or from null to unmap it. Each model field takes one dataset field, and a dataset field feeds one model field.',
     input: z.object({
-      field: z.string().min(1, 'Choose a field.'),
-      target: z
-        .enum(['sourceId', 'name', 'use', 'yearBuilt', 'floors', 'footprint'])
-        .nullable(),
+      target: z.enum([
+        'sourceId',
+        'name',
+        'use',
+        'yearBuilt',
+        'floors',
+        'footprint',
+      ]),
+      field: z.string().min(1).nullable(),
     }),
-    run(view, { field, target }) {
+    run(view, { target, field }) {
+      const dataset = view.intake.datasetId
+        ? findDataset(view.intake.datasetId)
+        : null
+      if (!dataset) return rejected('Choose a dataset first.', 'target')
+      if (field !== null && !dataset.fields.includes(field)) {
+        return rejected(`"${field}" is not a field of this dataset.`, 'field')
+      }
+      view.intake.mapping = withTarget(view.intake.mapping, target, field)
+      delete view.intake.suggestions[target]
+      return applied(
+        field
+          ? `${TARGET_FIELDS[target].label} now takes "${field}".`
+          : `${TARGET_FIELDS[target].label} is not mapped.`,
+      )
+    },
+  }),
+
+  'intake.reviewSuggestions': defineViewOperation({
+    title: 'Review intake suggestions',
+    description:
+      'Accept or reject suggested matches of data intake. Name the model fields, or give an empty list for every pending suggestion.',
+    input: z.object({
+      targets: z
+        .array(
+          z.enum([
+            'sourceId',
+            'name',
+            'use',
+            'yearBuilt',
+            'floors',
+            'footprint',
+          ]),
+        )
+        .default([]),
+      decision: z.enum(['accept', 'reject']),
+    }),
+    run(view, { targets, decision }) {
+      const pending = Object.keys(view.intake.suggestions).filter(isTargetField)
+      if (pending.length === 0) {
+        return rejected('There are no suggestions to review.', 'targets')
+      }
+      const chosen = targets.length > 0 ? targets : pending
+      const missing = chosen.find((target) => !view.intake.suggestions[target])
+      if (missing) {
+        return rejected(
+          `${TARGET_FIELDS[missing].label} has no suggestion to review.`,
+          'targets',
+        )
+      }
+      for (const target of chosen) {
+        const suggestion = view.intake.suggestions[target]
+        delete view.intake.suggestions[target]
+        if (decision === 'accept' && suggestion) {
+          view.intake.mapping = withTarget(
+            view.intake.mapping,
+            target,
+            suggestion.source,
+          )
+        }
+      }
+      const labels = chosen.map((target) => TARGET_FIELDS[target].label)
+      return applied(
+        `${decision === 'accept' ? 'Accepted' : 'Rejected'} ${chosen.length} suggestion${chosen.length === 1 ? '' : 's'}: ${labels.join(', ')}.`,
+      )
+    },
+  }),
+
+  'intake.inspectField': defineViewOperation({
+    title: 'Show dataset field values',
+    description:
+      'Show the value distribution of one field of the chosen intake dataset.',
+    input: z.object({ field: z.string().min(1, 'Choose a field.') }),
+    run(view, { field }) {
       const dataset = view.intake.datasetId
         ? findDataset(view.intake.datasetId)
         : null
@@ -752,12 +857,32 @@ export const viewOperationDefinitions = {
       if (!dataset.fields.includes(field)) {
         return rejected(`"${field}" is not a field of this dataset.`, 'field')
       }
-      view.intake.mapping[field] = target
-      return applied(
-        target
-          ? `Mapped "${field}" to ${TARGET_FIELDS[target].label}.`
-          : `"${field}" is ignored.`,
-      )
+      view.intake.field = field
+      return applied(`Showing the values of "${field}".`)
+    },
+  }),
+
+  'schema.inspectSource': defineViewOperation({
+    title: 'Show source attribute values',
+    description:
+      'Schema matching: show the value distribution of one source attribute of the captured footprints (osm_id, building, building:levels, start_date, height, name, roof:shape).',
+    input: z.object({ source: z.string().min(1, 'Choose an attribute.') }),
+    run(view, { source }, project) {
+      const names = sourceCollection(project).names
+      if (names.length === 0) {
+        return rejected(
+          'There are no source attributes yet. Run "Location setup / footprint capturing" first.',
+          'source',
+        )
+      }
+      if (!names.includes(source)) {
+        return rejected(
+          `"${source}" is not an attribute of the captured footprints. Choose one of ${names.join(', ')}.`,
+          'source',
+        )
+      }
+      view.schema.source = source
+      return applied(`Showing the values of "${source}".`)
     },
   }),
 

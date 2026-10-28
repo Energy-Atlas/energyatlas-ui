@@ -2,13 +2,17 @@ import { useId, useMemo, useState } from 'react'
 import { Label, Radio, RadioGroup } from 'react-aria-components'
 import { DATASETS, findDataset } from '../../../domain/intake/datasets.ts'
 import {
+  INTAKE_TARGETS,
   TARGET_FIELDS,
-  TARGET_FIELD_IDS,
   fusionSubmitBlocker,
+  isTargetField,
   prepareDataset,
+  reviewDataset,
+  targetMapping,
   type PreparedDataset,
   type PreparedRow,
 } from '../../../domain/intake/fusion.ts'
+import { distribution as valueDistribution } from '../../../domain/mapping/mapping.ts'
 import { discardNote, heldCount } from '../../../domain/jobs/runGroups.ts'
 import { STAGE_IDS } from '../../../domain/workflow.ts'
 import type {
@@ -23,7 +27,11 @@ import {
   useViewState,
   useWorkbenchSnapshot,
 } from '../../WorkbenchContext.tsx'
-import { ActionButton } from '../../components/ActionButton.tsx'
+import {
+  ActionButton,
+  useRecordBlocked,
+} from '../../components/ActionButton.tsx'
+import { MappingReview } from '../../components/MappingReview.tsx'
 import { CapabilityBadge } from '../../components/CapabilityBadge.tsx'
 import componentStyles from '../../components/components.module.css'
 import formStyles from '../../components/forms.module.css'
@@ -37,16 +45,6 @@ import type { DataColumn } from '../../tables/tableModel.ts'
 import styles from './intake.module.css'
 
 const PAGE_SIZE = 20
-
-function sample(values: unknown[]): string {
-  const shown = values
-    .filter((value) => value !== null && value !== '')
-    .slice(0, 2)
-    .map((value) =>
-      Array.isArray(value) ? `ring of ${value.length} points` : String(value),
-    )
-  return shown.length > 0 ? shown.join(', ') : 'empty'
-}
 
 function describeFields(fields: ImportedFields): string {
   const parts = Object.entries(fields).map(
@@ -241,10 +239,20 @@ export function IntakePage() {
     [state, dataset, draft.mapping],
   )
   const [queued, setQueued] = useState<string | null>(null)
-  const fieldIssue = (field: string) =>
-    prepared?.schemaIssues.find((issue) => issue.path === `mapping.${field}`)
-  const schemaWide =
-    prepared?.schemaIssues.filter((issue) => issue.path === 'mapping') ?? []
+  const review = useMemo(
+    () => (dataset ? reviewDataset(dataset, draft.mapping) : null),
+    [dataset, draft.mapping],
+  )
+  const distribution = useMemo(() => {
+    const attribute = review?.sources.find((item) => item.name === draft.field)
+    return dataset && attribute && draft.field
+      ? valueDistribution(
+          attribute,
+          dataset.records.map((record) => record[draft.field ?? ''] ?? null),
+        )
+      : null
+  }, [dataset, review, draft.field])
+  const recordBlocked = useRecordBlocked()
   const applyBlocker =
     waitingReason(
       pending,
@@ -318,76 +326,42 @@ export function IntakePage() {
         <>
           <section aria-label="Field mapping" className={styles.section}>
             <h3>Field mapping</h3>
-            {schemaWide.map((issue) => (
-              <p key={issue.message} className={styles.blocking} role="alert">
-                {issue.message}
-              </p>
-            ))}
-            <table
-              className={cx(componentStyles.table, styles.mapping)}
-              aria-label="Field mapping"
-            >
-              <thead>
-                <tr>
-                  <th scope="col">Dataset field</th>
-                  <th scope="col">Sample values</th>
-                  <th scope="col">Model field</th>
-                </tr>
-              </thead>
-              <tbody>
-                {dataset.fields.map((field) => {
-                  const issue = fieldIssue(field)
-                  const selectId = `intake-map-${field}`
-                  return (
-                    <tr key={field}>
-                      <th scope="row">
-                        <label htmlFor={selectId}>{field}</label>
-                      </th>
-                      <td>
-                        {sample(dataset.records.map((record) => record[field]))}
-                      </td>
-                      <td>
-                        <select
-                          id={selectId}
-                          className={formStyles.input}
-                          value={draft.mapping[field] ?? ''}
-                          aria-invalid={issue ? true : undefined}
-                          aria-describedby={
-                            issue ? `${selectId}-error` : undefined
-                          }
-                          onChange={(event) =>
-                            view.execute({
-                              type: 'intake.mapField',
-                              input: {
-                                field,
-                                target:
-                                  (event.target.value as TargetField | '') ||
-                                  null,
-                              },
-                            })
-                          }
-                        >
-                          <option value="">Ignore</option>
-                          {TARGET_FIELD_IDS.map((target) => (
-                            <option key={target} value={target}>
-                              {TARGET_FIELDS[target].label}
-                            </option>
-                          ))}
-                        </select>
-                        {issue ? (
-                          <span
-                            id={`${selectId}-error`}
-                            className={styles.issue}
-                          >
-                            {issue.message}
-                          </span>
-                        ) : null}
-                      </td>
-                    </tr>
-                  )
-                })}
-              </tbody>
-            </table>
+            {review ? (
+              <MappingReview
+                idPrefix="intake"
+                aria-label="Dataset field mapping"
+                targets={[...INTAKE_TARGETS]}
+                sources={review.sources}
+                records={dataset.records.length}
+                recordNoun="records"
+                mapping={targetMapping(draft.mapping)}
+                suggestions={draft.suggestions}
+                issues={review.issues}
+                checks={review.checks}
+                chosenSource={draft.field}
+                distribution={distribution}
+                onChooseSource={(field) =>
+                  view.execute({
+                    type: 'intake.inspectField',
+                    input: { field },
+                  })
+                }
+                onMap={(target, field) => {
+                  if (!isTargetField(target)) return
+                  view.execute({
+                    type: 'intake.mapTarget',
+                    input: { target, field },
+                  })
+                }}
+                onReview={(targets, decision) =>
+                  view.execute({
+                    type: 'intake.reviewSuggestions',
+                    input: { targets: targets.filter(isTargetField), decision },
+                  })
+                }
+                onBlocked={recordBlocked}
+              />
+            ) : null}
           </section>
           {prepared.schemaIssues.length === 0 ? (
             <Preview prepared={prepared} />

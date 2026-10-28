@@ -1,4 +1,5 @@
 import { createAssetSkeleton } from './assets.ts'
+import { createSchemaMatching } from './schema/registry.ts'
 import type { WorkbenchState } from './types.ts'
 import { createDefaultWorkflow } from './workflow.ts'
 
@@ -35,6 +36,7 @@ export function createInitialState(): WorkbenchState {
     sourceRecords: {},
     sourceRecordIds: [],
     datasets: {},
+    schemaMatching: createSchemaMatching(),
     calibration: {
       variants: {},
       variantIds: [],

@@ -32,6 +32,7 @@ export const PAGES = {
   issues: { name: 'Issues', component: 'page.issues' },
   // Tasks became Jobs (decision 0023); the component id stays page.tasks.
   tasks: { name: 'Jobs', component: 'page.tasks' },
+  schema: { name: 'Schema matching', component: 'page.schema' },
   intake: { name: 'Data intake', component: 'page.intake' },
   archetypes: { name: 'Archetypes', component: 'page.archetypes' },
   calibration: { name: 'Calibration', component: 'page.calibration' },

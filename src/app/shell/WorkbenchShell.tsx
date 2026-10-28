@@ -2,6 +2,7 @@ import { Layout, type ITabRenderValues, type TabNode } from 'flexlayout-react'
 import 'flexlayout-react/style/light.css'
 import {
   Bell,
+  ArrowLeftRight,
   DatabaseZap,
   FileSpreadsheet,
   Gauge,
@@ -37,6 +38,7 @@ import { SettingsPage } from '../pages/SettingsPage.tsx'
 import { TablePage } from '../pages/TablePage.tsx'
 import { TasksPage } from '../pages/TasksPage.tsx'
 import { IntakePage } from '../pages/intake/IntakePage.tsx'
+import { SchemaMatchingPage } from '../pages/schema/SchemaMatchingPage.tsx'
 import { ArchetypesPage } from '../pages/archetypes/ArchetypesPage.tsx'
 import { CalibrationPage } from '../pages/calibration/CalibrationPage.tsx'
 import { ResultsPage } from '../pages/results/ResultsPage.tsx'
@@ -69,6 +71,7 @@ const TAB_ICONS: Record<string, LucideIcon> = {
   'page.settings': Settings,
   'page.issues': TriangleAlert,
   'page.tasks': ListChecks,
+  'page.schema': ArrowLeftRight,
   'page.intake': DatabaseZap,
   'page.archetypes': Shapes,
   'page.calibration': Gauge,
@@ -111,6 +114,8 @@ function createTabContent(node: TabNode): ReactNode {
       return <WorkflowPanel />
     case 'page.tasks':
       return <TasksPage />
+    case 'page.schema':
+      return <SchemaMatchingPage />
     case 'page.intake':
       return <IntakePage />
     case 'page.archetypes':

@@ -4,6 +4,7 @@ import {
   previewScenarioRules,
   scenarioRules,
 } from '../../domain/scenarios/rules.ts'
+import { reviewSchema } from '../../domain/schema/matching.ts'
 import type { Requirement } from '../../domain/stagePlan.ts'
 import type { StageState, WorkbenchState } from '../../domain/types.ts'
 import { STAGE_IDS } from '../../domain/workflow.ts'
@@ -764,6 +765,85 @@ const rulesSession: ScriptedSession = {
   ],
 }
 
+const schemaSession: ScriptedSession = {
+  id: 'schemaMatching',
+  label: 'Review the schema mapping',
+  prompt: 'Review the schema matching suggestions and apply the mapping.',
+  description:
+    'Opens Schema matching, shows a source attribute, proposes accepting the pending suggestions and reading the building value "yes" as mixed use (it waits for approval), and applies the mapping.',
+  keywords: [/\bschema\b/, /\bmapping\b/, /\bunrecogni[sz]ed\b/],
+  steps: [
+    reason(
+      'Schema matching maps the captured footprint attributes to the model fields. Suggestions are only used once accepted, and the mapping reaches the buildings when the stage runs.',
+    ),
+    ensure([STAGE_IDS.enrichment], 'Capturing and enriching footprints'),
+    tool(
+      'Open Schema matching',
+      layoutCall({ type: 'layout.openPage', input: { page: 'schema' } }),
+    ),
+    tool(
+      'Show the values of "building"',
+      viewCall({ type: 'schema.inspectSource', input: { source: 'building' } }),
+    ),
+    (context) => {
+      const state = context.state()
+      const review = reviewSchema(state)
+      const pending = Object.entries(state.schemaMatching.suggestions)
+      const yes = review.checks.use?.unrecognised.find(
+        (entry) => entry.value === 'yes',
+      )
+      const calls: TitledCall[] = []
+      if (pending.length > 0) {
+        calls.push({
+          title: `Accept ${pending.length} suggestion${pending.length === 1 ? '' : 's'}`,
+          call: command({
+            type: 'schema.reviewSuggestions',
+            input: { targets: [], decision: 'accept' },
+          }),
+        })
+      }
+      if (yes) {
+        calls.push({
+          title: 'Read the building value "yes" as mixed use',
+          call: command({
+            type: 'schema.mapValue',
+            input: { target: 'use', value: 'yes', to: 'mixed' },
+          }),
+        })
+      }
+      if (calls.length === 0) {
+        return say(
+          'There are no suggestions to review and every use value is recognised, so the mapping needs no change.',
+        )
+      }
+      return [
+        reason(
+          `${pending.map(([target, suggestion]) => `${target} from "${suggestion.source}"`).join(', ') || 'No suggestions'} ${pending.length === 1 ? 'is' : 'are'} pending.${yes ? ` ${yes.count} buildings carry the generic building value "yes", which is not a recognised use, so they keep their enriched use.` : ''}`,
+        ),
+        propose(
+          'Update the attribute mapping',
+          `${calls.map((call) => call.title).join(', then ')}. Schema matching and every later stage become outdated until Schema matching runs again.`,
+          calls,
+        ),
+      ]
+    },
+    ensure([STAGE_IDS.schema], 'Applying the mapping', 'current'),
+    (context) => {
+      const published = context.state().schemaMatching.published
+      if (!published) return say('The mapping has not been applied.')
+      return [
+        say(
+          `Schema matching applied the mapping (run ${published.runId}) with ${published.warnings.length} warnings; each building's Properties show where its values come from, and the original attributes are kept.`,
+        ),
+        reference('Show the mapping on the Schema matching page', {
+          type: 'page',
+          page: 'schema',
+        }),
+      ]
+    },
+  ],
+}
+
 const restoreSession: ScriptedSession = {
   id: 'restore',
   label: 'Restore the default layout',
@@ -867,6 +947,7 @@ export const SESSIONS: ScriptedSession[] = [
   calibrationSession,
   rulesSession,
   scenarioRulesSession,
+  schemaSession,
   restoreSession,
 ]
 
@@ -878,6 +959,7 @@ const MATCH_ORDER = [
   representationSession,
   scenarioRulesSession,
   rulesSession,
+  schemaSession,
   modelChangeSession,
 ]
 

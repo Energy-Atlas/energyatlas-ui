@@ -5,7 +5,8 @@ import {
   buildingIntensity,
   emptyParts,
 } from './archetypes/parts.ts'
-import { addedBuildings, applySourceRecords } from './intake/fusion.ts'
+import { addedBuildings } from './intake/fusion.ts'
+import { applyAttributeLayers, runSchemaMatching } from './schema/matching.ts'
 import backBayBuildings from './fixtures/back-bay-buildings.geo.json'
 import type {
   Building,
@@ -153,6 +154,37 @@ export function fromStage(
   }
 }
 
+const SYNTHETIC_USES: BuildingUse[] = [
+  'residential',
+  'residential',
+  'residential',
+  'office',
+  'retail',
+  'school',
+]
+
+/** The synthetic use, year, and floors Geospatial data enriching gives the building at this position. */
+export function syntheticAttributes(index: number): {
+  use: BuildingUse
+  yearBuilt: number
+  floors: number
+} {
+  const use: BuildingUse =
+    unitRandom(index, 3) < 0.05
+      ? 'mixed'
+      : (SYNTHETIC_USES[
+          Math.floor(unitRandom(index, 4) * SYNTHETIC_USES.length)
+        ] ?? 'residential')
+  return {
+    use,
+    yearBuilt: 1920 + Math.floor(unitRandom(index, 5) * 100),
+    floors:
+      use === 'residential'
+        ? 1 + Math.floor(unitRandom(index, 6) * 5)
+        : 2 + Math.floor(unitRandom(index, 6) * 10),
+  }
+}
+
 function forEachBuilding(
   state: WorkbenchState,
   visit: (building: Building, index: number) => void,
@@ -174,7 +206,7 @@ function quadrantOf(building: Building): number {
  * are not written into buildings; they win when parts are read
  * (`effectiveParts`).
  */
-function applyFloorOverrides(state: WorkbenchState): number {
+export function applyFloorOverrides(state: WorkbenchState): number {
   let applied = 0
   for (const override of Object.values(state.overrides)) {
     if (override.field !== 'floors') continue
@@ -286,30 +318,9 @@ function enrichFootprints(
         'No footprints to enrich. Run "Location setup / footprint capturing" first.',
     }
   }
-  const uses: BuildingUse[] = [
-    'residential',
-    'residential',
-    'residential',
-    'office',
-    'retail',
-    'school',
-  ]
-  forEachBuilding(state, (building, index) => {
-    const use: BuildingUse =
-      unitRandom(index, 3) < 0.05
-        ? 'mixed'
-        : (uses[Math.floor(unitRandom(index, 4) * uses.length)] ??
-          'residential')
-    building.use = use
-    building.yearBuilt = 1920 + Math.floor(unitRandom(index, 5) * 100)
-    building.floors =
-      use === 'residential'
-        ? 1 + Math.floor(unitRandom(index, 6) * 5)
-        : 2 + Math.floor(unitRandom(index, 6) * 10)
-  })
-  // Precedence: synthetic values, then fused source records, then manual overrides.
-  const imported = applySourceRecords(state)
-  const kept = applyFloorOverrides(state)
+  // Precedence: synthetic values, then the published Schema matching
+  // mapping, then fused source records, then manual overrides.
+  const { mapped, imported, kept } = applyAttributeLayers(state)
 
   upsertAsset(state, {
     id: 'asset:enriched-footprints',
@@ -324,6 +335,11 @@ function enrichFootprints(
     ok: true,
     summary: `Enriched ${state.buildingIds.length} buildings with use, construction year, and floors.`,
     warnings: [
+      ...(mapped > 0
+        ? [
+            `${mapped} buildings kept values mapped by the last Schema matching run.`,
+          ]
+        : []),
       ...(imported > 0
         ? [`${imported} buildings kept attributes from fused datasets.`]
         : []),
@@ -332,43 +348,19 @@ function enrichFootprints(
   }
 }
 
-function matchSchema(
-  state: WorkbenchState,
-  context: StageRunContext,
-): StageRunResult {
-  if (state.buildingIds.some((id) => state.buildings[id]?.use === null)) {
-    return {
-      ok: false,
-      message: 'Footprints are not enriched. Run "Geospatial data enriching".',
-    }
-  }
-  upsertAsset(state, {
-    id: 'asset:schema-rules',
-    kind: 'schemaRules',
-    name: 'Attribute mapping rules',
-    parentId: GROUP.schemaRules,
-    provenance: fromStage(STAGE_IDS.schema, context),
-    capability: 'workflow.stageRuns',
-    summary: '6 attribute mappings; 1 default applied',
-  })
-  return {
-    ok: true,
-    summary: 'Matched 6 attributes to the model schema.',
-    warnings: [
-      'Attribute "roof_type" has no schema match; flat roofs were assumed for all buildings.',
-    ],
-  }
-}
-
 /** One building's geospatial preprocessing, as a held item output; null when it lacks floors. */
 export function preprocessBuilding(
   building: Building,
+  mapped: { heightM?: number; floorAreaM2?: number } = {},
 ): HeldPreprocessingOutput | null {
   if (building.floors === null) return null
   const floors = building.floors
-  const floorAreaM2 = round(building.footprintAreaM2 * floors)
+  // Mapped heights and floor areas (Schema matching's computed tier) win.
+  const floorAreaM2 = round(
+    mapped.floorAreaM2 ?? building.footprintAreaM2 * floors,
+  )
   return {
-    heightM: round(floors * 3.2, 1),
+    heightM: round(mapped.heightM ?? floors * 3.2, 1),
     floorAreaM2,
     zoneCount: Math.max(1, Math.round(floorAreaM2 / 450)),
   }
@@ -929,7 +921,7 @@ const STAGE_RUNNERS: Record<
 > = {
   [STAGE_IDS.location]: captureFootprints,
   [STAGE_IDS.enrichment]: enrichFootprints,
-  [STAGE_IDS.schema]: matchSchema,
+  [STAGE_IDS.schema]: runSchemaMatching,
   [STAGE_IDS.shading]: estimateShadingAndPv,
   [STAGE_IDS.baseline]: setUpBaseline,
   [STAGE_IDS.scenarioDefinitions]: confirmScenarioDefinitions,

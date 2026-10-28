@@ -142,13 +142,22 @@ export function WorkflowPanel() {
                   </ActionButton>
                 ) : null}
                 {stageId === STAGE_IDS.schema ? (
-                  <ActionButton
-                    label="Open Data intake to map and fuse a dataset"
-                    disabledReason={null}
-                    onPress={() => layout.openPage('intake')}
-                  >
-                    Data intake
-                  </ActionButton>
+                  <>
+                    <ActionButton
+                      label="Open Schema matching to review the attribute mapping"
+                      disabledReason={null}
+                      onPress={() => layout.openPage('schema')}
+                    >
+                      Mapping
+                    </ActionButton>
+                    <ActionButton
+                      label="Open Data intake to map and fuse a dataset"
+                      disabledReason={null}
+                      onPress={() => layout.openPage('intake')}
+                    >
+                      Data intake
+                    </ActionButton>
+                  </>
                 ) : null}
                 {stage.skippable ? (
                   <ActionButton

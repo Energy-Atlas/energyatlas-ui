@@ -4,6 +4,12 @@ import {
   effectiveParts,
 } from '../../domain/archetypes/parts.ts'
 import { isAdopted } from '../../domain/scenarios/rules.ts'
+import {
+  FOOTPRINT_TAGS,
+  footprintTags,
+} from '../../domain/schema/footprintTags.ts'
+import { mappedValuesFor } from '../../domain/schema/matching.ts'
+import { customTargetId } from '../../domain/schema/registry.ts'
 import { MEASURE_KINDS, PART_KINDS } from '../../domain/types.ts'
 import type {
   Building,
@@ -42,6 +48,10 @@ export type SingleInspection = {
   linked: LinkedEntity[]
   linkedMore: number
   provenance: string[]
+  /** Where each building attribute's value comes from (decision 0032, stage 4). */
+  attributeSources?: Fact[]
+  /** The captured source attributes, kept unchanged by Schema matching. */
+  sourceAttributes?: Fact[]
 }
 
 export type MultipleInspection = {
@@ -168,6 +178,102 @@ function buildingResultsHint(
     : 'The baseline model has no demand result for this building.'
 }
 
+const SOURCED_FIELDS: {
+  id: 'name' | 'use' | 'yearBuilt' | 'floors' | 'heightM' | 'floorAreaM2'
+  label: string
+}[] = [
+  { id: 'name', label: 'Name' },
+  { id: 'use', label: 'Use' },
+  { id: 'yearBuilt', label: 'Year built' },
+  { id: 'floors', label: 'Floors' },
+  { id: 'heightM', label: 'Height' },
+  { id: 'floorAreaM2', label: 'Floor area' },
+]
+
+/**
+ * Which layer each attribute's value comes from, in the precedence order of
+ * decision 0032, stage 4: a manual edit, a fused dataset, the published
+ * Schema matching mapping, then synthetic enrichment or a computed value.
+ */
+export function attributeSources(
+  state: WorkbenchState,
+  building: Building,
+): Fact[] {
+  const published = state.schemaMatching.published
+  const mapped = mappedValuesFor(building, published)
+  const tags = footprintTags(building)
+  const fused = Object.values(state.sourceRecords).find(
+    (record) => record.buildingId === building.id,
+  )
+  const facts: Fact[] = SOURCED_FIELDS.map(({ id, label }) => {
+    const override = state.overrides[`${building.id}:${id}`]
+    if (id === 'floors' && override) {
+      return {
+        label,
+        value: `Manual edit by ${override.source} (operation ${override.operationId})`,
+      }
+    }
+    if (
+      id !== 'heightM' &&
+      id !== 'floorAreaM2' &&
+      fused?.fields[id] !== undefined
+    ) {
+      return {
+        label,
+        value: `Dataset "${state.datasets[fused.datasetId]?.label ?? fused.datasetId}" by source ID ${fused.sourceKey}`,
+      }
+    }
+    const source = mapped.sources[id]
+    if (source && published) {
+      const raw = tags?.[source] ?? ''
+      const value = mapped[id]
+      const applied =
+        id === 'heightM' || id === 'floorAreaM2'
+          ? building[id] !== null &&
+            typeof value === 'number' &&
+            Math.abs((building[id] ?? 0) - value) < 0.5
+          : true
+      return {
+        label,
+        value: applied
+          ? `Schema matching from "${source}" = "${raw}" (run ${published.runId})`
+          : `Computed; Schema matching maps "${source}" = "${raw}", used when Geospatial preprocessing runs again`,
+      }
+    }
+    if (id === 'name') return { label, value: 'Captured footprint' }
+    if (id === 'heightM' || id === 'floorAreaM2') {
+      return {
+        label,
+        value:
+          building[id] === null
+            ? NO_DATA
+            : 'Computed by Geospatial preprocessing',
+      }
+    }
+    return {
+      label,
+      value: building[id] === null ? NO_DATA : 'Synthetic enrichment',
+    }
+  })
+  for (const [name, value] of Object.entries(mapped.custom)) {
+    facts.push({
+      label: name,
+      value: `${value} (custom, from "${mapped.sources[customTargetId(name)] ?? name}")`,
+    })
+  }
+  return facts
+}
+
+/** The captured tags of a footprint, as they were captured. */
+export function sourceAttributeFacts(building: Building): Fact[] {
+  const tags = footprintTags(building)
+  if (!tags) return []
+  return FOOTPRINT_TAGS.map((name) => ({
+    label: name,
+    value: tags[name] ?? 'missing',
+  }))
+}
+
 function inspectBuilding(
   state: WorkbenchState,
   building: Building,
@@ -284,7 +390,7 @@ function inspectBuilding(
     provenance.push(
       imported
         ? `Footprint geometry from ${building.sourceRef} (© OpenStreetMap contributors, ODbL). Values the dataset supplied replace synthetic ones; other attributes and all results are synthetic.`
-        : `Footprint geometry from ${building.sourceRef} (© OpenStreetMap contributors, ODbL). Use, year, floors, and results are synthetic.`,
+        : `Footprint geometry from ${building.sourceRef} (© OpenStreetMap contributors, ODbL). Its source attributes are synthetic OpenStreetMap-like tags; use, year, floors, and results are synthetic.`,
     )
   }
   provenance.push(STAGE_PROVENANCE)
@@ -343,6 +449,8 @@ function inspectBuilding(
     linked: entities,
     linkedMore: more,
     provenance,
+    attributeSources: attributeSources(state, building),
+    sourceAttributes: sourceAttributeFacts(building),
   }
 }
 

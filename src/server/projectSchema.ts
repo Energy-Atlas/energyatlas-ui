@@ -16,6 +16,7 @@ import {
 } from '../domain/types.ts'
 import { migrateArchetypeParts } from './migrateArchetypes.ts'
 import { migrateScenarioRules } from './migrateScenarios.ts'
+import { migrateSchemaMatching } from './migrateSchemaMatching.ts'
 
 const id = z.string().min(1)
 const text = z.string()
@@ -150,6 +151,59 @@ const definitionSource = z.discriminatedUnion('kind', [
     libraryId: id.optional(),
   }),
 ])
+// Saves from before the Schema matching mapping are migrated first
+// (migrateSchemaMatching.ts).
+const tier = z.enum(['compulsory', 'computed', 'optional', 'custom'])
+const valueMaps = z.record(text, z.record(text, text))
+const suggestion = z.object({ source: text, score: number, reason: text })
+const ruleSet = z.object({
+  id,
+  name: text,
+  version: z.literal(1),
+  mappings: z.array(
+    z.object({
+      target: id,
+      source: id,
+      tier,
+      transform: text.nullable(),
+    }),
+  ),
+  valueMaps,
+  savedAt: text,
+  operationId: id,
+})
+const mappingWarning = z.object({
+  code: z.enum([
+    'enum_values_unrecognised',
+    'values_invalid',
+    'values_missing',
+    'unit_not_converted',
+  ]),
+  target: id,
+  count: number,
+  examples: z.array(text),
+  message: text,
+})
+const schemaMatching = z.object({
+  mapping: z.record(id, id),
+  suggestions: z.record(id, suggestion),
+  customTargets: z.array(id),
+  valueMaps,
+  ruleSets: record(ruleSet),
+  ruleSetIds: ids,
+  loadedFrom: text.nullable(),
+  published: z
+    .object({
+      runId: id,
+      operationId: id,
+      mapping: z.record(id, id),
+      valueMaps,
+      customTargets: z.array(id),
+      applied: z.record(id, number),
+      warnings: z.array(mappingWarning),
+    })
+    .nullable(),
+})
 // Saves from before archetype parts are migrated first (migrateArchetypes.ts).
 const archetype = z.object({
   id,
@@ -521,6 +575,7 @@ const savedState = z
         operationId: id,
       }),
     ).default({}),
+    schemaMatching,
     issues: z.array(
       z.object({
         id,
@@ -605,6 +660,14 @@ const savedState = z
       if ((group.kind === 'calibration') !== (group.calibration !== null))
         fail('A calibration fit is missing its meter series.')
     }
+    const matching = state.schemaMatching
+    references(matching.ruleSetIds, matching.ruleSets)
+    if (matching.ruleSetIds.length !== Object.keys(matching.ruleSets).length)
+      fail('A schema rule set is missing from the saved order.')
+    for (const [key, value] of Object.entries(matching.ruleSets))
+      if (key !== value.id) fail('A saved rule set has the wrong identity.')
+    if (new Set(matching.customTargets).size !== matching.customTargets.length)
+      fail('A custom target is saved twice.')
     references(state.calibration.variantIds, state.calibration.variants)
     const adopted = state.calibration.adoptedVariantId
     if (
@@ -733,12 +796,14 @@ const savedState = z
   })
 
 /**
- * Saves from before archetype parts (stage 2) and before scenario rules
- * (stage 3) are migrated before they are checked.
+ * Saves from before archetype parts (stage 2), scenario rules (stage 3),
+ * and the Schema matching mapping (stage 4) are migrated before they are
+ * checked.
  */
 export const projectStateSchema: z.ZodType<WorkbenchState, unknown> =
   z.preprocess(
-    (value) => migrateScenarioRules(migrateArchetypeParts(value)),
+    (value) =>
+      migrateSchemaMatching(migrateScenarioRules(migrateArchetypeParts(value))),
     savedState,
   )
 
