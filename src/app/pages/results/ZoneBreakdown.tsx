@@ -1,10 +1,10 @@
 import { useMemo } from 'react'
 import type { ResultSet } from '../../../domain/types.ts'
 import {
-  ZONE_KIND_LABELS,
   buildingZoning,
   demandShares,
-  describeZoning,
+  describeAppliedZoning,
+  zoneTypeLabel,
 } from '../../../domain/zoning/zoning.ts'
 import { useServices, useWorkbenchSnapshot } from '../../WorkbenchContext.tsx'
 import { CapabilityBadge } from '../../components/CapabilityBadge.tsx'
@@ -80,7 +80,7 @@ export function ZoneBreakdown({
     return zoning.zones.map((zone) => ({
       id: zone.id,
       name: zone.name,
-      kind: ZONE_KIND_LABELS[zone.kind],
+      kind: zoneTypeLabel(zone),
       floor: zone.floor,
       areaM2: zone.areaM2,
       sharePercent: kwh > 0 ? ((shares.zones[zone.id] ?? 0) / kwh) * 100 : 0,
@@ -104,12 +104,9 @@ export function ZoneBreakdown({
         <>
           <p className={componentStyles.muted}>
             {label} for {name} split over its {zoning.zones.length} zones (
-            {describeZoning({
-              mode: zoning.appliedMode,
-              perimeterDepthM: zoning.setting.perimeterDepthM,
-            }).toLowerCase()}
-            ) by floor-area share: the rows add up to the building&rsquo;s
-            published total in whole kWh, and no zone is simulated on its own.{' '}
+            {describeAppliedZoning(zoning).toLowerCase()}) by floor-area share:
+            the rows add up to the building&rsquo;s published total in whole
+            kWh, and no zone is simulated on its own.{' '}
             <CapabilityBadge id="results.zoneBreakdown" />
           </p>
           <WorkbenchTable

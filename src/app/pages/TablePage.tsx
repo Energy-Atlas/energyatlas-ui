@@ -34,6 +34,11 @@ import { usePendingReason } from '../service/usePendingReason.ts'
 import { TABLE_VIEWS } from '../view/tableViews.ts'
 import { FloorsTable, ZonesTable } from './FloorZoneTables.tsx'
 import {
+  ZONING_SOURCE_LABELS,
+  describeBuildingZoning,
+  resolveBuildingZoning,
+} from '../../domain/zoning/zoning.ts'
+import {
   ROW_SELECTION,
   useSelectionHandler,
   useSelectionSync,
@@ -47,6 +52,9 @@ type BuildingRow = Building & {
   partIds: Record<PartKind, string | null>
   archetype: string | null
   assignedBy: string | null
+  /** The building's zoning setting now, and whether it is its own (decision 0034). */
+  zoning: string
+  zoningSource: string
 }
 
 /** Column id of a part column. */
@@ -153,6 +161,7 @@ function BuildingsTable() {
   )
   const parts = useWorkbenchSnapshot((snapshot) => snapshot.state.parts)
   const overrides = useWorkbenchSnapshot((snapshot) => snapshot.state.overrides)
+  const zoning = useWorkbenchSnapshot((snapshot) => snapshot.state.zoning)
   const pendingEdits = useWorkbenchSnapshot(
     (snapshot) => snapshot.state.pendingEdits,
   )
@@ -234,10 +243,21 @@ function BuildingsTable() {
             archetype: archetypeLabel({ overrides, archetypes }, building),
             assignedBy: assignedBy || null,
             baselineMwh: kwh === undefined ? null : Math.round(kwh / 100) / 10,
+            zoning: describeBuildingZoning(resolveBuildingZoning(zoning, id)),
+            zoningSource:
+              ZONING_SOURCE_LABELS[resolveBuildingZoning(zoning, id).source],
           },
         ]
       }),
-    [buildingIds, buildings, pendingEdits, baseline, overrides, archetypes],
+    [
+      buildingIds,
+      buildings,
+      pendingEdits,
+      baseline,
+      overrides,
+      archetypes,
+      zoning,
+    ],
   )
 
   const partIdsByKind = useMemo(() => {
@@ -306,6 +326,20 @@ function BuildingsTable() {
         value: (row) => row.zoneCount,
         type: 'number',
         width: 100,
+      },
+      {
+        id: 'zoning',
+        header: 'Zoning',
+        value: (row) => row.zoning,
+        type: 'enum',
+        width: 200,
+      },
+      {
+        id: 'zoningSource',
+        header: 'Zoning from',
+        value: (row) => row.zoningSource,
+        type: 'enum',
+        width: 170,
       },
       {
         id: 'archetype',

@@ -21,6 +21,30 @@ function slabGap(floorHeightM: number): number {
   return Math.min(0.35, floorHeightM * 0.1)
 }
 
+/**
+ * How far exploded floors open (decision 0034): each storey is lifted by this
+ * share of its floor height for every storey below it, so a gap of the given
+ * share opens between neighbouring storeys.
+ */
+export const EXPLODE_GAP_SHARE = 0.8
+
+/**
+ * Where a zoned storey is drawn: its base and top less the slab gap, lifted
+ * when floors are exploded.
+ */
+export function storeySpan(
+  floor: { number: number; bottomM: number; topM: number },
+  explode: boolean,
+): { base: number; top: number } {
+  const height = floor.topM - floor.bottomM
+  const lift = explode ? (floor.number - 1) * height * EXPLODE_GAP_SHARE : 0
+  const round = (value: number) => Math.round(value * 100) / 100
+  return {
+    base: round(floor.bottomM + lift),
+    top: round(Math.max(floor.bottomM, floor.topM - slabGap(height)) + lift),
+  }
+}
+
 type Polygon = { type: 'Polygon'; coordinates: LngLat[][] }
 
 export type SlabFeature = {
@@ -117,6 +141,10 @@ export type ZoneOverlay = {
   legend: { kind: ZoneKind; slots: number[] }[]
   /** Selected buildings with no zones yet. */
   withoutZones: number
+  /** Whether storeys are drawn apart (decision 0034). */
+  exploded: boolean
+  /** The top of each zoned building as drawn: after the cut, and lifted when exploded. */
+  topsM: Record<string, number>
 }
 
 /**
@@ -126,7 +154,10 @@ export type ZoneOverlay = {
  */
 export function zoneOverlay(
   state: Pick<WorkbenchState, 'selection' | 'buildings' | 'zoning'>,
+  options: { explode?: boolean } = {},
 ): ZoneOverlay {
+  const explode = options.explode ?? false
+  const topsM: Record<string, number> = {}
   const selection = state.selection
   const all = selectedBuildingIds(selection)
   const shown = all.slice(0, MAX_ZONED_BUILDINGS)
@@ -173,7 +204,8 @@ export function zoneOverlay(
         ) {
           continue
         }
-        const gap = slabGap(floor.topM - floor.bottomM)
+        const span = storeySpan(floor, explode)
+        topsM[buildingId] = Math.max(topsM[buildingId] ?? 0, span.top)
         const slots = legend.get(zone.kind) ?? new Set<number>()
         slots.add(zone.colorSlot ?? -1)
         legend.set(zone.kind, slots)
@@ -189,8 +221,8 @@ export function zoneOverlay(
             colorSlot: zone.colorSlot ?? -1,
             selected:
               selectedZones.has(zone.id) || selectedFloors.has(floor.id),
-            base: floor.bottomM,
-            top: Math.max(floor.bottomM, floor.topM - gap),
+            base: span.base,
+            top: span.top,
           },
           geometry: { type: 'Polygon', coordinates: [zone.plan] },
         })
@@ -207,10 +239,12 @@ export function zoneOverlay(
       cutAbove !== null && cutBuilding
         ? {
             buildingId: cutBuilding,
-            topM:
+            topM: cutTop(
               buildingFloors(state, cutBuilding).find(
                 (floor) => floor.number === cutAbove,
-              )?.topM ?? 0,
+              ),
+              explode,
+            ),
           }
         : null,
     kinds: [...kinds],
@@ -219,5 +253,67 @@ export function zoneOverlay(
       slots: [...slots].sort((a, b) => a - b),
     })),
     withoutZones,
+    exploded: explode,
+    topsM,
   }
+}
+
+/** The top of the cut storey as drawn (its slab top when exploded). */
+function cutTop(
+  floor: { number: number; bottomM: number; topM: number } | undefined,
+  explode: boolean,
+): number {
+  if (!floor) return 0
+  return explode ? storeySpan(floor, true).top : floor.topM
+}
+
+/**
+ * The edges of zone cells in 3D (decision 0034), as segments of
+ * [longitude, latitude, metres] pairs flattened six numbers a segment: every
+ * cell's outline at its base and top, and one upright per corner. Selected
+ * cells' edges are kept apart so they take the selection colour.
+ */
+export type ZoneEdges = {
+  buildingId: string
+  /** The building's footprint centroid, where terrain lifts it. */
+  anchor: LngLat
+  edges: number[]
+  selected: number[]
+}
+
+export function zoneEdges(cells: ZoneCell[]): ZoneEdges[] {
+  const byBuilding = new Map<string, ZoneEdges>()
+  for (const cell of cells) {
+    const ring = cell.geometry.coordinates[0] ?? []
+    const first = ring[0]
+    const last = ring.at(-1)
+    const open =
+      first && last && first[0] === last[0] && first[1] === last[1]
+        ? ring.slice(0, -1)
+        : ring
+    if (open.length < 3) continue
+    let entry = byBuilding.get(cell.properties.buildingId)
+    if (!entry) {
+      const count = open.length
+      entry = {
+        buildingId: cell.properties.buildingId,
+        anchor: [
+          open.reduce((sum, point) => sum + point[0], 0) / count,
+          open.reduce((sum, point) => sum + point[1], 0) / count,
+        ],
+        edges: [],
+        selected: [],
+      }
+      byBuilding.set(cell.properties.buildingId, entry)
+    }
+    const target = cell.properties.selected ? entry.selected : entry.edges
+    const { base, top } = cell.properties
+    open.forEach((point, index) => {
+      const next = open[(index + 1) % open.length] ?? point
+      target.push(point[0], point[1], base, next[0], next[1], base)
+      target.push(point[0], point[1], top, next[0], next[1], top)
+      target.push(point[0], point[1], base, point[0], point[1], top)
+    })
+  }
+  return [...byBuilding.values()]
 }

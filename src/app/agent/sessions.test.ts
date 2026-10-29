@@ -5,6 +5,7 @@ import { buildFixture } from '../../server/fixtures.ts'
 import { projectStateSchema } from '../../server/projectSchema.ts'
 import { legacyScenarioSave } from '../../testing/legacyScenarioSave.ts'
 import { SESSIONS, type ScriptContext, type Step } from './sessions.ts'
+import { createInitialViewState } from '../view/viewOperations.ts'
 
 // The scenario change session's adoption branch, step by step, against a
 // project whose scenario results were saved before scenario rules.
@@ -12,6 +13,7 @@ import { SESSIONS, type ScriptContext, type Step } from './sessions.ts'
 function contextOf(workbench: Workbench): ScriptContext {
   return {
     state: () => workbench.getState(),
+    view: () => createInitialViewState(),
     stageStates: () => {
       const state = workbench.getState()
       return deriveStageStates(state.workflow, state.tasks)

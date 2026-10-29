@@ -14,7 +14,9 @@ import {
   SELECTABLE_ENTITIES,
   type WorkbenchState,
 } from '../domain/types.ts'
+import { DRAWN_ZONE_USES } from '../domain/zoning/drawn.ts'
 import {
+  BUILDING_ZONING_MODES,
   MAX_PERIMETER_DEPTH_M,
   MIN_PERIMETER_DEPTH_M,
   ZONING_MODES,
@@ -218,13 +220,41 @@ const zoningSetting = {
   mode: z.enum(ZONING_MODES),
   perimeterDepthM: number.min(MIN_PERIMETER_DEPTH_M).max(MAX_PERIMETER_DEPTH_M),
 }
+// Per-building overrides and drawn zones (decision 0034). Saves and packages
+// from before them have none; a published zoning without overrides applied
+// none. Drawn outlines are checked against footprints when buildings are
+// zoned, not here, so a save with a bad outline still opens and explains it.
+const buildingZoningMode = z.enum(BUILDING_ZONING_MODES)
+const drawnZoning = z.object({
+  source: text,
+  plans: z.array(
+    z
+      .object({
+        fromFloor: number.int().positive(),
+        toFloor: number.int().positive(),
+        zones: z.array(
+          z.object({
+            name: text.min(1),
+            use: z.enum(DRAWN_ZONE_USES),
+            outline: z.array(point),
+          }),
+        ),
+      })
+      .refine((plan) => plan.toFloor >= plan.fromFloor, {
+        message: 'A drawn plan ends below the floor it starts on.',
+      }),
+  ),
+})
 const zoning = z.object({
   ...zoningSetting,
+  overrides: z.record(id, buildingZoningMode).default({}),
+  drawn: z.record(id, drawnZoning).default({}),
   published: z
     .object({
       ...zoningSetting,
       runId: id,
       storeys: z.record(id, number.positive()).default({}),
+      overrides: z.record(id, buildingZoningMode).default({}),
     })
     .nullable(),
 })

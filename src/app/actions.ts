@@ -4,11 +4,13 @@ import {
   Bell,
   BellDot,
   BookmarkPlus,
+  Box,
   Columns2,
   Command,
   FilePlus,
   FolderTree,
   FlaskConical,
+  Layers3,
   Info,
   LayoutTemplate,
   ListChecks,
@@ -48,6 +50,14 @@ import {
   useWorkbenchSnapshot,
 } from './WorkbenchContext.tsx'
 import { freshRunAndSelect, retryAndSelect } from './pages/jobs/jobActions.ts'
+import { selectedBuildingIds } from '../domain/zoning/zoning.ts'
+import { zonesLayer } from './pages/mapLayers.ts'
+import {
+  explodeBlocker,
+  setExplodeFloors,
+  showZonesIn3d,
+  zones3dBlocker,
+} from './pages/showZones3d.ts'
 import {
   cancelBlocker,
   freshRunBlocker,
@@ -135,6 +145,7 @@ export function useAppActions(dialogs: ShellDialogs): AppAction[] {
   const layoutVersion = useLayoutVersion()
   const view = useServices().view
   const jobsView = useViewState((current) => current.jobs)
+  const mapLayers = useViewState((current) => current.map.layers)
   const library = useStore(layouts.store)
   const toastsShown = useStore(messages.store, (current) => {
     const projectId = snapshot.state.project.id
@@ -378,6 +389,35 @@ export function useAppActions(dialogs: ShellDialogs): AppAction[] {
             ? null
             : 'Nothing is selected. Select buildings or grid elements on the Map or Table page, or a definition in a table, first.',
         perform: () => showInspection(),
+      },
+      {
+        id: 'view.showZones3d',
+        label: 'Show zones in 3D',
+        group: 'View',
+        icon: Box,
+        disabledReason: zones3dBlocker(
+          state,
+          mapLayers,
+          selectedBuildingIds(state.selection),
+        ),
+        perform: () =>
+          showZonesIn3d(
+            { workbench, view, layout },
+            selectedBuildingIds(state.selection),
+          ),
+      },
+      {
+        id: 'view.explodeZonedFloors',
+        label: 'Explode zoned floors in 3D',
+        group: 'View',
+        icon: Layers3,
+        pressed: zonesLayer(mapLayers)?.explodeFloors ?? false,
+        disabledReason: explodeBlocker(mapLayers),
+        perform: () =>
+          setExplodeFloors(
+            view,
+            !(zonesLayer(mapLayers)?.explodeFloors ?? false),
+          ),
       },
       {
         id: 'view.toggleMaximize',
@@ -703,6 +743,7 @@ export function useAppActions(dialogs: ShellDialogs): AppAction[] {
     transitioning,
     view,
     jobsView,
+    mapLayers,
     toastsShown,
     layouts,
     library,
@@ -744,6 +785,8 @@ const VIEWER_ACTION_IDS = new Set([
   'view.toggleLeftSide',
   'view.toggleRightSide',
   'view.inspectSelection',
+  'view.showZones3d',
+  'view.explodeZonedFloors',
   'view.toggleMaximize',
   'view.resetLayout',
   'view.layouts',

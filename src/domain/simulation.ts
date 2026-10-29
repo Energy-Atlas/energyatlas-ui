@@ -21,12 +21,16 @@ import type {
 } from './types.ts'
 import { PART_KINDS } from './types.ts'
 import { STAGE_IDS } from './workflow.ts'
+import type { DrawnZoning } from './zoning/drawn.ts'
 import {
   describeZoning,
   fallbackWarnings,
   initialZoning,
+  resolveBuildingZoning,
   zoneCountFor,
   zoningFallbacks,
+  type BuildingZoningMode,
+  type BuildingZoningSetting,
   type ZoningSetting,
 } from './zoning/zoning.ts'
 
@@ -99,6 +103,13 @@ const DISTRICT_FOOTPRINTS: DistrictFootprint[] = backBayBuildings.features.map(
     }
   },
 )
+
+/** The bundled footprint a building id is captured from (B0001 first), or null. */
+export function districtFootprint(buildingId: string): LngLat[] | null {
+  const match = /^B(\d{4})$/.exec(buildingId)
+  const index = match ? Number(match[1]) - 1 : -1
+  return DISTRICT_FOOTPRINTS[index]?.ring ?? null
+}
 
 /** Source references of the bundled footprints, in building order (B0001 first). */
 export const DISTRICT_SOURCE_REFS: readonly string[] = DISTRICT_FOOTPRINTS.map(
@@ -358,12 +369,14 @@ function enrichFootprints(
 
 /**
  * One building's geospatial preprocessing, as a held item output; null when
- * it lacks floors. Its zones follow the zoning setting (decision 0032, stage 6).
+ * it lacks floors. Its zones follow its zoning (decision 0032, stage 6): the
+ * project's setting or its own override, with its drawn zones (decision 0034).
  */
 export function preprocessBuilding(
   building: Building,
   mapped: { heightM?: number; floorAreaM2?: number } = {},
-  zoning: ZoningSetting = initialZoning(),
+  zoning: BuildingZoningSetting = initialZoning(),
+  drawn: DrawnZoning | null = null,
 ): HeldPreprocessingOutput | null {
   if (building.floors === null) return null
   const floors = building.floors
@@ -375,7 +388,7 @@ export function preprocessBuilding(
   return {
     heightM,
     floorAreaM2,
-    zoneCount: zoneCountFor({ ...building, heightM }, zoning) ?? 1,
+    zoneCount: zoneCountFor({ ...building, heightM }, zoning, drawn) ?? 1,
   }
 }
 
@@ -422,10 +435,16 @@ export function publishPreprocessing(
     zones += output.zoneCount
   }
   // The run's input signature includes the stage's edit revision, which the
-  // zoning setting bumps, so the setting now is the one the items used.
+  // zoning setting and building overrides bump, so the setting now is the
+  // one the items used.
   const zoning: ZoningSetting = {
     mode: state.zoning.mode,
     perimeterDepthM: state.zoning.perimeterDepthM,
+  }
+  const overrides: Record<string, BuildingZoningMode> = {}
+  for (const id of membership) {
+    const override = state.zoning.overrides[id]
+    if (override !== undefined) overrides[id] = override
   }
   // Floors are sliced from the storeys this run used until it runs again.
   const storeys: Record<string, number> = {}
@@ -433,16 +452,26 @@ export function publishPreprocessing(
     const floors = state.buildings[id]?.floors
     if (typeof floors === 'number') storeys[id] = floors
   }
-  state.zoning.published = { ...zoning, runId: context.runId, storeys }
+  state.zoning.published = {
+    ...zoning,
+    runId: context.runId,
+    storeys,
+    overrides,
+  }
   const fallbacks = fallbackWarnings(
     zoningFallbacks(
       membership.flatMap((id) => {
         const building = state.buildings[id]
         return building ? [building] : []
       }),
-      zoning,
+      (building) => ({
+        setting: resolveBuildingZoning({ ...zoning, overrides }, building.id),
+        drawn: state.zoning.drawn[building.id] ?? null,
+      }),
     ),
   )
+  const own = Object.keys(overrides).length
+  const described = `${describeZoning(zoning).toLowerCase()}${own > 0 ? `; ${own} building${own === 1 ? '' : 's'} zoned ${own === 1 ? 'its' : 'their'} own way` : ''}`
   const provenance = fromStage(STAGE_IDS.preprocessing, context)
   upsertAsset(state, {
     id: 'asset:buildings',
@@ -460,11 +489,11 @@ export function publishPreprocessing(
     parentId: 'asset:buildings',
     provenance,
     capability: 'workflow.stageRuns',
-    summary: `${zones} zones, ${describeZoning(zoning).toLowerCase()}`,
+    summary: `${zones} zones, ${described}`,
   })
   return {
     ok: true,
-    summary: `Derived heights, floor areas, and ${zones} thermal zones (${describeZoning(zoning).toLowerCase()}) for ${membership.length} buildings.`,
+    summary: `Derived heights, floor areas, and ${zones} thermal zones (${described}) for ${membership.length} buildings.`,
     warnings: fallbacks.map((warning) => warning.message),
   }
 }

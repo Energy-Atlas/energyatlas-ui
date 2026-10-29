@@ -105,6 +105,7 @@ export function createScriptedAgent(
   function createContext(): ScriptContext {
     return {
       state: () => workbench.getState(),
+      view: () => deps.view.getState(),
       stageStates: () => {
         const state = workbench.getState()
         return deriveStageStates(state.workflow, state.tasks)

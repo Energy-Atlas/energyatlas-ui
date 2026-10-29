@@ -10,7 +10,10 @@ import {
   type WorkbenchState,
 } from '../../domain/types.ts'
 import { STAGE_IDS } from '../../domain/workflow.ts'
-import { describeZoning } from '../../domain/zoning/zoning.ts'
+import {
+  BUILDING_ZONING_LABELS,
+  describeZoning,
+} from '../../domain/zoning/zoning.ts'
 import { useStageStates, useWorkbenchSnapshot } from '../WorkbenchContext.tsx'
 import { PropertyList, type Property } from '../components/PropertyList.tsx'
 import { StateBadge } from '../components/StateBadge.tsx'
@@ -223,6 +226,21 @@ export function ReadOnlyDefinition({
                     ? describeZoning(state.zoning.published)
                     : 'Not zoned by a setting yet',
                 },
+                // Buildings zoned their own way (decision 0034).
+                ...(state.zoning.published &&
+                Object.keys(state.zoning.published.overrides).length > 0
+                  ? [
+                      {
+                        label: 'Building overrides',
+                        value: Object.entries(state.zoning.published.overrides)
+                          .map(
+                            ([buildingId, mode]) =>
+                              `${buildingId}: ${BUILDING_ZONING_LABELS[mode].toLowerCase()}`,
+                          )
+                          .join('; '),
+                      },
+                    ]
+                  : []),
               ]
             : []),
         ]}

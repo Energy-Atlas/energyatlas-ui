@@ -378,7 +378,7 @@ export const viewOperationDefinitions = {
 
   'map.setLayerStyle': defineViewOperation({
     title: 'Style a map layer',
-    description: `Rename a Map layer or set its opacity (0 to 100). Building layers also take colorBy (${BUILDING_COLORS.join(', ')}; a metric without data is rejected), extrude (shown at their heights in the 3D view), and floorSlabs (an extruded building drawn as a stack of floor slabs, one per storey).`,
+    description: `Rename a Map layer or set its opacity (0 to 100). Building layers also take colorBy (${BUILDING_COLORS.join(', ')}; a metric without data is rejected), extrude (shown at their heights in the 3D view), floorSlabs (an extruded building drawn as a stack of floor slabs, one per storey), and explodeFloors (in 3D, the storeys of the selected buildings drawn as zones open apart so each storey's zones and edges show; the topmost shown building layer that extrudes decides).`,
     input: z.object({
       layerId: z.string(),
       name: z.string().trim().min(1, 'Enter a name.').optional(),
@@ -391,6 +391,7 @@ export const viewOperationDefinitions = {
       colorBy: z.enum(BUILDING_COLORS).optional(),
       extrude: z.boolean().optional(),
       floorSlabs: z.boolean().optional(),
+      explodeFloors: z.boolean().optional(),
     }),
     run(view, input, project) {
       const layer = view.map.layers.find((each) => each.id === input.layerId)
@@ -398,7 +399,8 @@ export const viewOperationDefinitions = {
       const buildingOnly =
         input.colorBy !== undefined ||
         input.extrude !== undefined ||
-        input.floorSlabs !== undefined
+        input.floorSlabs !== undefined ||
+        input.explodeFloors !== undefined
       if (buildingOnly && layer.kind !== 'buildings') {
         return rejected(
           `"${layer.name}" shows ${LAYER_KINDS[layer.kind].label.toLowerCase()}; only building layers are colored by a metric or extruded.`,
@@ -406,7 +408,9 @@ export const viewOperationDefinitions = {
             ? 'colorBy'
             : input.extrude !== undefined
               ? 'extrude'
-              : 'floorSlabs',
+              : input.floorSlabs !== undefined
+                ? 'floorSlabs'
+                : 'explodeFloors',
         )
       }
       if (input.colorBy !== undefined && input.colorBy !== 'single') {
@@ -436,6 +440,14 @@ export const viewOperationDefinitions = {
           input.floorSlabs
             ? 'extruded buildings drawn floor by floor'
             : 'extruded buildings drawn whole',
+        )
+      }
+      if (input.explodeFloors !== undefined) {
+        layer.explodeFloors = input.explodeFloors
+        changes.push(
+          input.explodeFloors
+            ? 'floors of zoned buildings exploded in 3D'
+            : 'floors of zoned buildings closed up',
         )
       }
       if (changes.length === 0) return rejected('Nothing to change.')

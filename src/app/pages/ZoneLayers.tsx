@@ -17,9 +17,14 @@ export const ZONE_LAYER_IDS = {
 
 export type ZoneDrawing = 'none' | 'plan' | 'extruded'
 
+/** The custom layer drawing zone edges in 3D (ZoneEdgeLayer.tsx, decision 0034). */
+export const ZONE_EDGES_LAYER_ID = 'zones:edges'
+
 /** The MapLibre layers a drawing uses, bottom to top. */
 export function zoneLayerIds(drawing: ZoneDrawing): string[] {
-  if (drawing === 'extruded') return [ZONE_LAYER_IDS.extrusion]
+  if (drawing === 'extruded') {
+    return [ZONE_LAYER_IDS.extrusion, ZONE_EDGES_LAYER_ID]
+  }
   if (drawing === 'plan') {
     return [
       ZONE_LAYER_IDS.fill,
@@ -58,7 +63,10 @@ export function ZoneLayers({
   const color = zoneColor(palette)
   if (drawing === 'extruded') {
     return (
+      // Keyed: react-maplibre keeps the id and type a layer mounted with, so
+      // switching from the plan to the extrusion must mount a new layer.
       <Layer
+        key={ZONE_LAYER_IDS.extrusion}
         id={ZONE_LAYER_IDS.extrusion}
         type="fill-extrusion"
         source={ZONE_SOURCE}
@@ -81,6 +89,7 @@ export function ZoneLayers({
   return (
     <>
       <Layer
+        key={ZONE_LAYER_IDS.fill}
         id={ZONE_LAYER_IDS.fill}
         type="fill"
         source={ZONE_SOURCE}
@@ -88,6 +97,7 @@ export function ZoneLayers({
         paint={{ 'fill-color': color, 'fill-opacity': 0.9 }}
       />
       <Layer
+        key={ZONE_LAYER_IDS.outline}
         id={ZONE_LAYER_IDS.outline}
         type="line"
         source={ZONE_SOURCE}
@@ -96,6 +106,7 @@ export function ZoneLayers({
         paint={{ 'line-color': palette.ink.surface, 'line-width': 1.5 }}
       />
       <Layer
+        key={ZONE_LAYER_IDS.selected}
         id={ZONE_LAYER_IDS.selected}
         type="line"
         source={ZONE_SOURCE}

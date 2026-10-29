@@ -126,11 +126,17 @@ import {
 } from './types.ts'
 import { selectableExists } from './selection.ts'
 import {
+  BUILDING_ZONING_CHOICES,
+  BUILDING_ZONING_LABELS,
   MAX_PERIMETER_DEPTH_M,
   MIN_PERIMETER_DEPTH_M,
   ZONING_MODES,
   ZONING_MODE_LABELS,
+  describeBuildingZoning,
   describeZoning,
+  plannedZoning,
+  resolveBuildingZoning,
+  sameBuildingZoning,
   sameZoning,
 } from './zoning/zoning.ts'
 import {
@@ -400,7 +406,8 @@ function stageItem(
   const output = preprocessBuilding(
     building,
     computedOverrides(state, building),
-    state.zoning,
+    resolveBuildingZoning(state.zoning, building.id),
+    state.zoning.drawn[building.id] ?? null,
   )
   return { output, missing: output ? null : 'The floor count is missing.' }
 }
@@ -2269,8 +2276,84 @@ export const commandDefinitions = {
         )
       }
       stage.editRevision = nextRevision(state)
+      const own = Object.keys(state.zoning.overrides).filter(
+        (id) => state.buildings[id],
+      ).length
       return applied(
-        `Zoning set to ${describeZoning(next).toLowerCase()}. "${stage.name}" and the stages after it are outdated until it runs again.`,
+        `Zoning set to ${describeZoning(next).toLowerCase()}. "${stage.name}" and the stages after it are outdated until it runs again.${own > 0 ? ` ${own} building${own === 1 ? ' keeps its' : 's keep their'} own zoning.` : ''}`,
+      )
+    },
+  }),
+
+  'zoning.setBuilding': defineCommand({
+    title: 'Set a building’s zoning',
+    description: `Zone one building its own way instead of the project's zoning (decision 0034), or return it to the project default. mode is default (follow the project's zoning), single (${BUILDING_ZONING_LABELS.single.toLowerCase()}), floors (${BUILDING_ZONING_LABELS.floors.toLowerCase()}), perimeterCore (${BUILDING_ZONING_LABELS.perimeterCore.toLowerCase()}, at the project's perimeter depth), or drawn (the building's drawn zone outlines stored with the project, synthetic). A building set to perimeterCore or drawn whose footprint or drawn zones do not allow it falls back to one zone per floor with a coded reason. When the building's zones change, "Geospatial preprocessing" and every later stage become outdated until it runs again; zones are display only.`,
+    input: z.object({
+      buildingId: z.string().min(1, 'Choose a building.'),
+      mode: z.enum(BUILDING_ZONING_CHOICES, {
+        error:
+          'Choose default, single, floors, perimeterCore, or drawn for the building.',
+      }),
+    }),
+    undoable: true,
+    run(state, { buildingId, mode }) {
+      const stage = state.workflow.stages[STAGE_IDS.preprocessing]
+      if (!stage) {
+        return rejected('The workflow has no "Geospatial preprocessing" stage.')
+      }
+      const building = state.buildings[buildingId]
+      if (!building) {
+        return rejected(`Building ${buildingId} does not exist.`, 'buildingId')
+      }
+      if (hasActiveTask(state.tasks, stage.id)) {
+        return rejected(
+          `"${stage.name}" is running. Wait for it to finish before changing a building's zoning.`,
+          'mode',
+        )
+      }
+      const label = `${building.name} (${building.id})`
+      const current = state.zoning.overrides[buildingId] ?? 'default'
+      if (current === mode) {
+        return rejected(
+          mode === 'default'
+            ? `${label} already follows the project's zoning, ${describeZoning(state.zoning).toLowerCase()}.`
+            : `${label} is already zoned by ${BUILDING_ZONING_LABELS[mode].toLowerCase()}.`,
+          'mode',
+        )
+      }
+      const before = resolveBuildingZoning(state.zoning, buildingId)
+      if (mode === 'default') delete state.zoning.overrides[buildingId]
+      else state.zoning.overrides[buildingId] = mode
+      const after = resolveBuildingZoning(state.zoning, buildingId)
+      const what =
+        mode === 'default'
+          ? `${label} follows the project's zoning again, ${describeZoning(state.zoning).toLowerCase()}.`
+          : `${label} is zoned by ${describeBuildingZoning(after).toLowerCase()}, overriding the project's ${describeZoning(state.zoning).toLowerCase()}.`
+      // A planned fallback is said now rather than discovered after the run.
+      const planned = plannedZoning(state, buildingId)
+      const fallback =
+        planned?.fallback ??
+        (planned === null &&
+        after.mode === 'drawn' &&
+        !state.zoning.drawn[buildingId]
+          ? {
+              code: 'drawn_zones_missing',
+              message:
+                'Drawn zones fell back to one zone per floor: this building has no drawn zones.',
+            }
+          : null)
+      const fallbackNote =
+        fallback && (after.mode === 'drawn' || after.mode === 'perimeterCore')
+          ? ` ${fallback.message} (${fallback.code})`
+          : ''
+      if (sameBuildingZoning(before, after)) {
+        return applied(
+          `${what} Its zones are unchanged, so nothing is outdated.${fallbackNote}`,
+        )
+      }
+      stage.editRevision = nextRevision(state)
+      return applied(
+        `${what} "${stage.name}" and the stages after it are outdated until it runs again.${fallbackNote}`,
       )
     },
   }),

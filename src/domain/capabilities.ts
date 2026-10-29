@@ -74,7 +74,13 @@ export const capabilities = {
     label: 'Floors and zones',
     status: 'working',
     explanation:
-      "Floors are sliced uniformly from each building's height and storeys, and zones follow RC's three zoning modes with the demo's own perimeter inset, falling back to one zone per floor where the inset fails; zones are display only.",
+      "Floors are sliced uniformly from each building's height and storeys, and zones follow RC's three zoning modes with the demo's own perimeter inset, falling back to one zone per floor where the inset fails; a building can override the project's mode, including drawn zones; zones are display only.",
+  },
+  'zoning.drawnZones': {
+    label: 'Drawn zones',
+    status: 'simulated',
+    explanation:
+      'Zone outlines per floor stored with the project and checked against the footprint; the demo plan is synthetic and hand-authored, editing outlines is planned, and import from IDF, gbXML, or IFC is deferred.',
   },
   'results.zoneBreakdown': {
     label: 'Floor and zone results',

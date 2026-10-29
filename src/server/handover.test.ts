@@ -116,8 +116,39 @@ describe('handover package', () => {
       expect(read.package.model.zoning).toEqual({
         mode: 'single',
         perimeterDepthM: 4.5,
+        overrides: {},
+        drawn: {},
         published: null,
       })
+    }
+  })
+
+  test('carries per-building zoning and drawn zones, and opens packages made before them (decision 0034)', () => {
+    const pkg = packageOf()
+    const read = readHandoverText(JSON.stringify(pkg))
+    expect(read.ok).toBe(true)
+    if (!read.ok) return
+    const zoning = read.package.model.zoning
+    expect(zoning.overrides).toEqual({
+      B0439: 'drawn',
+      B0427: 'floors',
+      B0426: 'perimeterCore',
+    })
+    expect(zoning.published?.overrides).toEqual(zoning.overrides)
+    expect(zoning.drawn.B0439?.plans).toHaveLength(3)
+    const older = JSON.parse(JSON.stringify(pkg)) as {
+      model: {
+        zoning: Record<string, unknown> & { published: Record<string, unknown> }
+      }
+    }
+    delete older.model.zoning.overrides
+    delete older.model.zoning.drawn
+    delete older.model.zoning.published.overrides
+    const before = readHandoverText(JSON.stringify(older))
+    expect(before.ok).toBe(true)
+    if (before.ok) {
+      expect(before.package.model.zoning.overrides).toEqual({})
+      expect(before.package.model.zoning.published?.overrides).toEqual({})
     }
   })
 

@@ -2,21 +2,40 @@ import { useMemo } from 'react'
 import type { WorkbenchState } from '../../domain/types.ts'
 import { STAGE_IDS } from '../../domain/workflow.ts'
 import {
-  ZONE_KIND_LABELS,
+  ZONING_SOURCE_LABELS,
   buildingFloors,
   buildingZoning,
+  buildingZoningChanged,
   demandShares,
+  describeAppliedZoning,
+  describeBuildingZoning,
   describeZoning,
+  publishedZoningOf,
+  resolveBuildingZoning,
   sameZoning,
   selectedBuildingIds,
+  zoneTypeLabel,
   type Floor,
   type Zone,
 } from '../../domain/zoning/zoning.ts'
 import {
   useServices,
   useStageStates,
+  useViewOnly,
+  useViewState,
   useWorkbenchSnapshot,
 } from '../WorkbenchContext.tsx'
+import { PropertyList } from '../components/PropertyList.tsx'
+import { Checkbox } from 'react-aria-components'
+import {
+  explodeBlocker,
+  setExplodeFloors,
+  showZonesIn3d,
+  zones3dBlocker,
+} from '../pages/showZones3d.ts'
+import { zonesLayer } from '../pages/mapLayers.ts'
+import formStyles from '../components/forms.module.css'
+import { BuildingZoningForm, drawnSummary } from './BuildingZoningForm.tsx'
 import { ActionButton } from '../components/ActionButton.tsx'
 import { CapabilityBadge } from '../components/CapabilityBadge.tsx'
 import { InlineAlert } from '../components/InlineAlert.tsx'
@@ -51,9 +70,12 @@ export function zoningNotes(
   } else {
     const fallback = buildingZoning(state, buildingId)?.fallback
     if (fallback) notes.push(`${fallback.message} (${fallback.code})`)
-    if (!sameZoning(published, state.zoning)) {
+    const now = resolveBuildingZoning(state.zoning, buildingId)
+    if (buildingZoningChanged(state.zoning, buildingId)) {
       notes.push(
-        `The zoning setting is now ${describeZoning(state.zoning).toLowerCase()}; "Geospatial preprocessing" has not applied it yet.`,
+        now.source === 'default' && !sameZoning(published, state.zoning)
+          ? `The zoning setting is now ${describeZoning(state.zoning).toLowerCase()}; "Geospatial preprocessing" has not applied it yet.`
+          : `This building's zoning is now ${describeBuildingZoning(now).toLowerCase()} (${ZONING_SOURCE_LABELS[now.source].toLowerCase()}); "Geospatial preprocessing" has not applied it yet.`,
       )
     } else if (preprocessingState === 'stale') {
       notes.push(
@@ -66,6 +88,8 @@ export function zoningNotes(
 
 export function FloorsAndZones({ buildingId }: { buildingId: string }) {
   const { workbench, view, layout } = useServices()
+  const viewOnly = useViewOnly()
+  const layers = useViewState((current) => current.map.layers)
   const state = useWorkbenchSnapshot((snapshot) => snapshot.state)
   const stageStates = useStageStates()
   const building = state.buildings[buildingId]
@@ -162,7 +186,7 @@ export function FloorsAndZones({ buildingId }: { buildingId: string }) {
       {
         id: 'kind',
         header: 'Type',
-        value: (row) => ZONE_KIND_LABELS[row.kind],
+        value: (row) => zoneTypeLabel(row),
         type: 'enum',
       },
       {
@@ -237,6 +261,32 @@ export function FloorsAndZones({ buildingId }: { buildingId: string }) {
     layout.openPage('map')
     view.execute({ type: 'map.focusSelection', input: {} })
   }
+  const zones3dReason = zones3dBlocker(state, layers, [buildingId])
+  const explodeReason = explodeBlocker(layers)
+  const exploded = zonesLayer(layers)?.explodeFloors ?? false
+  const appliedSource = publishedZoningOf(state, buildingId)?.source ?? null
+  const drawn = state.zoning.drawn[buildingId]
+  const zoningControl = viewOnly ? (
+    <PropertyList
+      aria-label={`Zoning of ${building.name}`}
+      items={[
+        {
+          label: 'Zoning',
+          value: zoning
+            ? `${describeAppliedZoning(zoning)}, ${ZONING_SOURCE_LABELS[appliedSource ?? 'default'].toLowerCase()}`
+            : 'Not zoned yet',
+        },
+        drawn ? { label: 'Drawn zones', value: drawnSummary(drawn) } : null,
+      ]}
+    />
+  ) : (
+    // Keyed: a draft for one building never carries over to the next.
+    <BuildingZoningForm
+      key={buildingId}
+      buildingId={buildingId}
+      zoning={zoning}
+    />
+  )
   const notes = zoningNotes(
     state,
     buildingId,
@@ -249,11 +299,14 @@ export function FloorsAndZones({ buildingId }: { buildingId: string }) {
 
   if (floors.length === 0) {
     return (
-      <p className={componentStyles.muted}>
-        Floors and zones appear once &ldquo;Geospatial preprocessing&rdquo; has
-        computed this building&rsquo;s height
-        {building.floors === null ? ' from its floor count' : ''}.
-      </p>
+      <div className={styles.floorsZones} data-testid="floors-and-zones">
+        <p className={componentStyles.muted}>
+          Floors and zones appear once &ldquo;Geospatial preprocessing&rdquo;
+          has computed this building&rsquo;s height
+          {building.floors === null ? ' from its floor count' : ''}.
+        </p>
+        {zoningControl}
+      </div>
     )
   }
 
@@ -261,7 +314,7 @@ export function FloorsAndZones({ buildingId }: { buildingId: string }) {
     <div className={styles.floorsZones} data-testid="floors-and-zones">
       <p className={componentStyles.muted}>
         {zoning
-          ? `${floors.length} floor${floors.length === 1 ? '' : 's'} of ${zoning.floorHeightM.toLocaleString('en-US')} m (height over storeys); ${zoning.zones.length} zone${zoning.zones.length === 1 ? '' : 's'}, ${describeZoning({ mode: zoning.appliedMode, perimeterDepthM: zoning.setting.perimeterDepthM }).toLowerCase()}, as the last Geospatial preprocessing run zoned it. Zones are display only.`
+          ? `${floors.length} floor${floors.length === 1 ? '' : 's'} of ${zoning.floorHeightM.toLocaleString('en-US')} m (height over storeys); ${zoning.zones.length} zone${zoning.zones.length === 1 ? '' : 's'}, ${describeAppliedZoning(zoning).toLowerCase()} (${ZONING_SOURCE_LABELS[appliedSource ?? 'default'].toLowerCase()}), as the last Geospatial preprocessing run zoned it. Zones are display only.`
           : `${floors.length} floor${floors.length === 1 ? '' : 's'} (height over storeys).`}{' '}
         <CapabilityBadge id="zoning.floorsZones" />
       </p>
@@ -273,12 +326,38 @@ export function FloorsAndZones({ buildingId }: { buildingId: string }) {
         >
           Show on Map
         </ActionButton>
+        <ActionButton
+          label={`Show the zones of ${building.name} in 3D on the Map`}
+          disabledReason={zones3dReason}
+          onPress={() =>
+            showZonesIn3d({ workbench, view, layout }, [buildingId])
+          }
+        >
+          Show zones in 3D
+        </ActionButton>
       </div>
+      {zoning ? (
+        <div>
+          <Checkbox
+            className={formStyles.checkbox}
+            isSelected={exploded}
+            isDisabled={explodeReason !== null}
+            onChange={(enabled) => setExplodeFloors(view, enabled)}
+          >
+            Explode floors in 3D
+          </Checkbox>
+          <p className={formStyles.description}>
+            {explodeReason ??
+              `Opens a gap between the storeys of the zoned buildings in 3D; a setting of the "${zonesLayer(layers)?.name ?? 'Buildings'}" map layer, saved with the project.`}
+          </p>
+        </div>
+      ) : null}
       {notes.map((note) => (
         <InlineAlert key={note} tone="warning">
           {note}
         </InlineAlert>
       ))}
+      {zoningControl}
       <WorkbenchTable
         id="properties.floors"
         aria-label={`Floors of ${building.name}`}
@@ -324,7 +403,7 @@ export function FloorsAndZones({ buildingId }: { buildingId: string }) {
           }
           exportContext={[
             `building: ${building.id}`,
-            `zoning: ${describeZoning(zoning.setting)}`,
+            `zoning: ${describeAppliedZoning(zoning)}`,
           ]}
         />
       ) : null}

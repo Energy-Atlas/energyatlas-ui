@@ -6,10 +6,16 @@ import { buildFixture } from '../../server/fixtures.ts'
 import { createViewStore } from '../view/viewStore.ts'
 import { METRICS, computeMetric, type MetricId } from './mapMetrics.ts'
 import {
+  EXPLODE_GAP_SHARE,
   MAX_ZONED_BUILDINGS,
   slabFeatures,
+  storeySpan,
+  zoneEdges,
   zoneOverlay,
 } from './zoneFeatures.ts'
+import { edgeVertices, parseColor, translated } from './ZoneEdgeLayer.tsx'
+import { layerSummary, parseStoredLayers, zonesLayer } from './mapLayers.ts'
+import { showZonesIn3d, zones3dBlocker } from './showZones3d.ts'
 
 // Floors and zones on the map (decision 0032, stage 6).
 
@@ -178,5 +184,176 @@ describe('floors and zones view operations', () => {
     expect(
       view.execute({ type: 'map.focusSelection', input: {} }).outcome.status,
     ).toBe('rejected')
+  })
+})
+
+describe('3D zones of the three zoning cases (decision 0034)', () => {
+  const state = buildFixture('complete', NOW)
+  const cases = {
+    entityType: 'building' as const,
+    ids: ['B0439', 'B0427', 'B0426'],
+  }
+
+  it('lifts each storey by its share of a floor when exploded', () => {
+    const floor = { number: 3, bottomM: 6.4, topM: 9.6 }
+    expect(storeySpan(floor, false)).toEqual({ base: 6.4, top: 9.28 })
+    // Two storeys below, each opening a gap of 0.8 of the floor height.
+    expect(storeySpan(floor, true)).toEqual({
+      base: Math.round((6.4 + 2 * 3.2 * EXPLODE_GAP_SHARE) * 100) / 100,
+      top: Math.round((9.28 + 2 * 3.2 * EXPLODE_GAP_SHARE) * 100) / 100,
+    })
+    expect(storeySpan({ number: 1, bottomM: 0, topM: 3.2 }, true)).toEqual({
+      base: 0,
+      top: 2.88,
+    })
+  })
+
+  it('draws one cell per zone and storey, and their tops as drawn', () => {
+    const closed = zoneOverlay({ ...state, selection: cases })
+    const exploded = zoneOverlay(
+      { ...state, selection: cases },
+      { explode: true },
+    )
+    const count = (overlay: typeof closed, id: string) =>
+      overlay.cells.features.filter((cell) => cell.properties.buildingId === id)
+        .length
+    for (const overlay of [closed, exploded]) {
+      expect(count(overlay, 'B0439')).toBe(25)
+      expect(count(overlay, 'B0427')).toBe(9)
+      expect(count(overlay, 'B0426')).toBe(15)
+    }
+    expect(closed.exploded).toBe(false)
+    expect(exploded.exploded).toBe(true)
+    expect(closed.topsM.B0427).toBe(28.48)
+    expect(exploded.topsM.B0427).toBeCloseTo(
+      28.48 + 8 * 3.2 * EXPLODE_GAP_SHARE,
+      2,
+    )
+    expect(exploded.legend.map((row) => row.kind)).toEqual([
+      'drawn',
+      'floor',
+      'core',
+      'perimeter',
+    ])
+    // A cut storey's top is drawn exploded too.
+    const cut = zoneOverlay(
+      {
+        ...state,
+        selection: { entityType: 'floor', ids: ['B0427:F3'] },
+      },
+      { explode: true },
+    )
+    expect(cut.cut).toEqual({
+      buildingId: 'B0427',
+      topM: storeySpan({ number: 3, bottomM: 6.4, topM: 9.6 }, true).top,
+    })
+    expect(cut.topsM.B0427).toBe(cut.cut?.topM)
+  })
+
+  it('outlines every cell at its base and top with an upright per corner', () => {
+    const overlay = zoneOverlay(
+      { ...state, selection: { entityType: 'zone', ids: ['B0439:F2:Z2'] } },
+      { explode: true },
+    )
+    const edges = zoneEdges(overlay.cells.features)
+    expect(edges.map((group) => group.buildingId)).toEqual(['B0439'])
+    const corners = overlay.cells.features.reduce(
+      (sum, cell) => sum + (cell.geometry.coordinates[0]?.length ?? 1) - 1,
+      0,
+    )
+    const [group] = edges
+    // Three segments per corner, six numbers per segment.
+    expect(
+      ((group?.edges.length ?? 0) + (group?.selected.length ?? 0)) / 6,
+    ).toBe(corners * 3)
+    // The selected zone's edges are kept apart for the selection colour.
+    expect((group?.selected.length ?? 0) / 18).toBe(4)
+    // Six vertices of seven numbers per segment for the WebGL layer.
+    const origin = [0.3, 0.37, 0] as [number, number, number]
+    expect(edgeVertices(group?.selected ?? [], origin)).toHaveLength(
+      ((group?.selected.length ?? 0) / 6) * 6 * 7,
+    )
+  })
+
+  it('offsets the projection matrix to a building origin in double precision', () => {
+    const identity = [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1]
+    expect([...translated(identity, [2, 3, 4])]).toEqual([
+      1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 2, 3, 4, 1,
+    ])
+    expect(parseColor('#ff8000')).toEqual([1, 128 / 255, 0, 1])
+    expect(parseColor('rgb(0, 255, 0)')).toEqual([0, 1, 0, 1])
+  })
+
+  it('explodes floors as a building layer setting saved with the stack', () => {
+    const workbench = createWorkbench({ initialState: state, now: NOW })
+    const view = createViewStore(workbench)
+    expect(zonesLayer(view.getState().map.layers)?.explodeFloors).toBe(false)
+    expect(
+      view.execute({
+        type: 'map.setLayerStyle',
+        input: { layerId: 'buildings', explodeFloors: true },
+      }).outcome,
+    ).toEqual({
+      status: 'applied',
+      summary:
+        'Map layer "Buildings": floors of zoned buildings exploded in 3D.',
+    })
+    expect(
+      view.execute({
+        type: 'map.setLayerStyle',
+        input: { layerId: 'grid-points', explodeFloors: true },
+      }).outcome,
+    ).toMatchObject({ status: 'rejected', issues: [{ path: 'explodeFloors' }] })
+    // Stacks saved before the setting read as not exploded.
+    const stored = view.getState().map.layers.map((layer) => {
+      const { explodeFloors: _dropped, ...rest } = layer
+      void _dropped
+      return rest
+    })
+    expect(
+      parseStoredLayers(stored).every((layer) => !layer.explodeFloors),
+    ).toBe(true)
+    expect(
+      layerSummary(
+        view.getState().map.layers.find((layer) => layer.id === 'buildings')!,
+      ),
+    ).toContain('zoned floors exploded')
+  })
+
+  it('shows zones in 3D through the selection, the 3D view, and a zoom', () => {
+    const workbench = createWorkbench({ initialState: state, now: NOW })
+    const view = createViewStore(workbench)
+    const opened: string[] = []
+    const layout = { openPage: (page: string) => opened.push(page) }
+    const layers = view.getState().map.layers
+    expect(zones3dBlocker(state, layers, [])).toMatch(/^Select a building/)
+    expect(zones3dBlocker(buildFixture('new', NOW), layers, ['B0439'])).toMatch(
+      /has no zones yet/,
+    )
+    expect(
+      zones3dBlocker(
+        state,
+        layers.map((layer) => ({ ...layer, extrude: false })),
+        ['B0439'],
+      ),
+    ).toMatch(/^No shown building layer extrudes/)
+    expect(zones3dBlocker(state, layers, ['B0439'])).toBeNull()
+    showZonesIn3d(
+      {
+        workbench,
+        view,
+        layout: layout as unknown as Parameters<
+          typeof showZonesIn3d
+        >[0]['layout'],
+      },
+      ['B0439'],
+    )
+    expect(workbench.getState().selection).toEqual({
+      entityType: 'building',
+      ids: ['B0439'],
+    })
+    expect(view.getState().map.view3d).toBe(true)
+    expect(view.getState().map.focusRequest).toBe(1)
+    expect(opened).toEqual(['map'])
   })
 })

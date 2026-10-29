@@ -58,12 +58,19 @@ import {
 } from './terrain.ts'
 import { useBasemap } from './useBasemap.ts'
 import { useTerrain } from './useTerrain.ts'
+import { zonesLayer } from './mapLayers.ts'
 import {
   selectedBuildingIds,
   type ZoneKind,
 } from '../../domain/zoning/zoning.ts'
 import type { WorkbenchState } from '../../domain/types.ts'
-import { slabFeatures, zoneOverlay, type ZoneOverlay } from './zoneFeatures.ts'
+import {
+  slabFeatures,
+  zoneEdges,
+  zoneOverlay,
+  type ZoneOverlay,
+} from './zoneFeatures.ts'
+import { ZoneEdgeLayer } from './ZoneEdgeLayer.tsx'
 import {
   ZONE_LAYER_IDS,
   ZONE_SOURCE,
@@ -231,9 +238,12 @@ export function MapPage() {
     () => slabFeatures({ buildingIds, buildings, zoning }, metrics),
     [buildingIds, buildings, zoning, metrics],
   )
+  // Exploded floors follow the topmost shown building layer that extrudes
+  // (decision 0034); they open only in 3D.
+  const explode = (view3d && zonesLayer(mapView.layers)?.explodeFloors) ?? false
   const overlay = useMemo(
-    () => zoneOverlay({ selection, buildings, zoning }),
-    [selection, buildings, zoning],
+    () => zoneOverlay({ selection, buildings, zoning }, { explode }),
+    [selection, buildings, zoning, explode],
   )
   const zoneDrawing: ZoneDrawing =
     overlay.buildingIds.length === 0 || !buildingLayerShown
@@ -242,6 +252,11 @@ export function MapPage() {
         ? 'extruded'
         : 'plan'
   const zonedIds = zoneDrawing === 'extruded' ? overlay.buildingIds : []
+  // Zone edges in 3D, drawn by a custom WebGL layer (decision 0034).
+  const edges = useMemo(
+    () => (zoneDrawing === 'extruded' ? zoneEdges(overlay.cells.features) : []),
+    [zoneDrawing, overlay],
+  )
   const zonePickId =
     zoneDrawing === 'extruded'
       ? ZONE_LAYER_IDS.extrusion
@@ -377,9 +392,17 @@ export function MapPage() {
         handledFocusRequest.current = focusRequest
         if (!target) return
         map.resize()
+        // Tilted, buildings rise towards the top: leave them room there and
+        // stop a little further out, so a zoned building's storeys show.
+        const tilted = map.getPitch() > 0
         map.fitBounds(target, {
-          padding: { top: 48, bottom: 48, left: 64, right: 232 },
-          maxZoom: 18,
+          padding: {
+            top: tilted ? 120 : 48,
+            bottom: 48,
+            left: 64,
+            right: 232,
+          },
+          maxZoom: tilted ? 17.5 : 18,
           pitch: map.getPitch(),
           bearing: map.getBearing(),
           duration: 0,
@@ -395,20 +418,20 @@ export function MapPage() {
     () =>
       selectedBuildingIds(selection).flatMap((id) => {
         const building = state.buildings[id]
-        // A building cut away above a selected floor is outlined to its cut.
-        const cut = overlay.cut
-        const cutTop =
-          zoneDrawing === 'extruded' && cut?.buildingId === id ? cut.topM : null
+        // A zoned building is outlined to the top drawn: its cut above a
+        // selected floor, or its exploded storeys.
+        const drawnTop =
+          zoneDrawing === 'extruded' ? overlay.topsM[id] : undefined
         return building
           ? [
               {
                 footprint: building.footprint,
-                heightM: cutTop ?? building.heightM ?? 0,
+                heightM: drawnTop ?? building.heightM ?? 0,
               },
             ]
           : []
       }),
-    [selection, state.buildings, zoneDrawing, overlay.cut],
+    [selection, state.buildings, zoneDrawing, overlay.topsM],
   )
 
   // Mirror the shared selection into feature state.
@@ -686,6 +709,15 @@ export function MapPage() {
           />
         </MapView>
 
+        <ZoneEdgeLayer
+          mapRef={mapRef}
+          loaded={loaded}
+          enabled={zoneDrawing === 'extruded'}
+          edges={edges}
+          color={ink.primary}
+          selectedColor={palette.selection}
+        />
+
         <SelectionSilhouette
           mapRef={mapRef}
           loaded={loaded}
@@ -878,6 +910,7 @@ const ZONE_LEGEND_LABELS: Record<ZoneKind, string> = {
   floor: 'Whole floors',
   perimeter: 'Perimeter zones',
   core: 'Core',
+  drawn: 'Drawn zones (synthetic)',
 }
 
 /** The selected buildings' zones in the legend (decision 0032, stage 6). */
@@ -906,6 +939,13 @@ function ZoneLegend({
           {drawing === 'plan' ? `, floor ${overlay.planFloor}` : ''}
         </span>
       </p>
+      {drawing === 'extruded' ? (
+        <p className={styles.legendRow}>
+          {overlay.exploded
+            ? 'Floors exploded apart; lines mark zone edges.'
+            : 'Lines mark zone edges.'}
+        </p>
+      ) : null}
       {drawing === 'extruded' && overlay.cutAbove !== null ? (
         <p className={styles.legendRow}>
           Floors above floor {overlay.cutAbove} are cut away.

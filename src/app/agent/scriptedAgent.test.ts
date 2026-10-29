@@ -8,8 +8,8 @@ import { matchSession } from './sessions.ts'
 import { command, describeAgentTools, requiresApproval } from './tools.ts'
 import type { TranscriptItem } from './types.ts'
 
-function setup() {
-  const { workbench, client, manual } = createTestProject()
+function setup(options: Parameters<typeof createTestProject>[0] = {}) {
+  const { workbench, client, manual } = createTestProject(options)
   const layout = createLayoutController(workbench, null)
   const view = createViewStore(workbench)
   const agent = createScriptedAgent({
@@ -265,6 +265,82 @@ describe('scripted agent', () => {
     const text = JSON.stringify(transcript())
     expect(text).toContain('has 5 floors of 3.2 m')
     expect(text).toContain('perimeter_inset_failed')
+  })
+
+  it('zones a building by its drawn zones after approval and shows the three zoning cases exploded in 3D (decision 0034)', async () => {
+    const {
+      workbench,
+      client,
+      manual,
+      agent,
+      lastApproval,
+      agentEntries,
+      transcript,
+    } = setup({ fixture: 'partway' })
+    // Return the drawn building to the default, as a user would.
+    void client.execute({
+      type: 'zoning.setBuilding',
+      input: { buildingId: 'B0439', mode: 'default' },
+    })
+    await manual.settle(50)
+    expect(workbench.getState().zoning.overrides.B0439).toBeUndefined()
+    expect(matchSession('Show the drawn zones in 3D')?.id).toBe('zoningCases')
+    expect(matchSession('Explode the floors')?.id).toBe('zoningCases')
+    agent.startPreset('zoningCases')
+    await manual.settle(50)
+    expect(lastApproval().title).toBe('Zone B0439 by its drawn zones')
+    agent.approve(lastApproval().id)
+    await manual.settle(500)
+    expect(workbench.getState().zoning.overrides.B0439).toBe('drawn')
+    // Applying it is a second approved run.
+    expect(lastApproval().title).toMatch(/^Run \d+ outdated/)
+    agent.approve(lastApproval().id)
+    await manual.settle(20000)
+    expect(agent.store.getState().status).toBe('idle')
+    const state = workbench.getState()
+    expect(state.zoning.published?.overrides.B0439).toBe('drawn')
+    expect(state.selection).toEqual({
+      entityType: 'building',
+      ids: ['B0439', 'B0427', 'B0426'],
+    })
+    expect(
+      agentEntries()
+        .map((entry) => entry.type)
+        .filter((type) => type !== 'workflow.runStage'),
+    ).toEqual([
+      'zoning.setBuilding',
+      'selection.set',
+      'layout.openPage',
+      'map.set3d',
+      'map.setLayerStyle',
+      'map.focusSelection',
+    ])
+    const text = JSON.stringify(transcript())
+    expect(text).toContain('25 drawn zones')
+    expect(text).toContain('each floor a zone')
+    expect(text).toContain('drawn apart')
+  })
+
+  it('asks before changing the zoning of a building, and describes the tool', () => {
+    expect(
+      requiresApproval(
+        command({
+          type: 'zoning.setBuilding',
+          input: { buildingId: 'B0439', mode: 'drawn' },
+        }),
+      ),
+    ).toBe(true)
+    const tool = describeAgentTools().find(
+      (item) => item.name === 'zoning.setBuilding',
+    )
+    expect(tool).toMatchObject({ kind: 'command', requiresApproval: true })
+    expect(JSON.stringify(tool)).toContain('perimeterCore')
+    // The viewer's agent cannot even ask for it.
+    expect(
+      describeAgentTools({ viewOnly: true }).some(
+        (item) => item.name === 'zoning.setBuilding',
+      ),
+    ).toBe(false)
   })
 
   it('reviews the schema mapping after approval and applies it as a run', async () => {

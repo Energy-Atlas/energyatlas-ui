@@ -270,6 +270,19 @@ function LayerSettings({
               ? 'One slab per storey, each the building height over its floors. Selected buildings show their zones instead.'
               : 'Slabs need Extrude to height.'}
           </p>
+          <Checkbox
+            className={formStyles.checkbox}
+            isSelected={layer.explodeFloors}
+            isDisabled={!layer.extrude}
+            onChange={(explodeFloors) => style({ explodeFloors })}
+          >
+            Explode zoned floors
+          </Checkbox>
+          <p className={formStyles.description}>
+            {layer.extrude
+              ? 'In 3D, the storeys of selected buildings drawn as zones open apart, so each storey’s zones and edges show.'
+              : 'Exploded floors need Extrude to height.'}
+          </p>
         </>
       ) : null}
       <ViewSlider
@@ -295,4 +308,5 @@ type StyleInput = {
   colorBy?: MapLayer['colorBy']
   extrude?: boolean
   floorSlabs?: boolean
+  explodeFloors?: boolean
 }

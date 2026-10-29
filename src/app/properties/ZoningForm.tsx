@@ -96,6 +96,8 @@ export function ZoningForm() {
           ? 'Enter a perimeter depth first.'
           : null)
   const published = zoning.published
+  const ownIds = Object.keys(zoning.overrides).sort()
+  const own = ownIds.length
   const draft = {
     mode,
     perimeterDepthM:
@@ -133,6 +135,9 @@ export function ZoningForm() {
         {published
           ? `The last run zoned by: ${describeZoning(published).toLowerCase()}.`
           : 'No run has zoned buildings by this setting yet.'}
+        {own > 0
+          ? ` It is the project default: ${own} building${own === 1 ? ' is' : 's are'} zoned ${own === 1 ? 'its' : 'their'} own way in ${own === 1 ? 'its' : 'their'} Properties (${ownIds.slice(0, 5).join(', ')}${own > 5 ? ', …' : ''}).`
+          : ''}
       </p>
       <RadioGroup
         className={formStyles.field}

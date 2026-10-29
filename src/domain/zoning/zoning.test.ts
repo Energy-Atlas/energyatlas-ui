@@ -429,6 +429,8 @@ describe('saved projects and packages from before zoning', () => {
     expect(parsed.zoning).toEqual({
       mode: 'single',
       perimeterDepthM: 4.5,
+      overrides: {},
+      drawn: {},
       published: null,
     })
     // Floors still follow storeys and heights; zones wait for a rerun.

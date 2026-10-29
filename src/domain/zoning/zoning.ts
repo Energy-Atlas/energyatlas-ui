@@ -1,5 +1,14 @@
 import type { Building, LngLat, WorkbenchState } from '../types.ts'
 import {
+  DRAWN_ZONE_USE_LABELS,
+  drawnColorSlots,
+  drawnPlanProblem,
+  type DrawnFallbackCode,
+  type DrawnZoneUse,
+  type DrawnZoning,
+  type PlanePlan,
+} from './drawn.ts'
+import {
   area,
   cleanRing,
   facingOf,
@@ -47,6 +56,48 @@ export type ZoningSetting = {
 }
 
 /**
+ * How one building is zoned (decision 0034): the project's three modes, or
+ * the building's own drawn zones.
+ */
+export type BuildingZoningMode = ZoningMode | 'drawn'
+
+export const BUILDING_ZONING_MODES = [
+  'single',
+  'floors',
+  'perimeterCore',
+  'drawn',
+] as const satisfies readonly BuildingZoningMode[]
+
+/** A building's choice in Properties: the project default or its own mode. */
+export type BuildingZoningChoice = 'default' | BuildingZoningMode
+
+export const BUILDING_ZONING_CHOICES = [
+  'default',
+  ...BUILDING_ZONING_MODES,
+] as const satisfies readonly BuildingZoningChoice[]
+
+/** The labels a building's zoning control uses (decision 0034). */
+export const BUILDING_ZONING_LABELS: Record<BuildingZoningMode, string> = {
+  single: 'One zone',
+  floors: 'Each floor a zone',
+  perimeterCore: 'Perimeter and core per floor',
+  drawn: 'Drawn zones',
+}
+
+export type BuildingZoningSetting = {
+  mode: BuildingZoningMode
+  perimeterDepthM: number
+}
+
+/** Where a building's zoning comes from: the project's setting or its own override. */
+export type ZoningSource = 'default' | 'override'
+
+export const ZONING_SOURCE_LABELS: Record<ZoningSource, string> = {
+  default: 'Project default',
+  override: 'Building override',
+}
+
+/**
  * The zoning a Geospatial preprocessing run applied, with the storeys each
  * building had then: floors are sliced from those, not from a floor count
  * edited since, until the stage runs again.
@@ -54,9 +105,21 @@ export type ZoningSetting = {
 export type PublishedZoning = ZoningSetting & {
   runId: string
   storeys: Record<string, number>
+  /** The building overrides the run applied (decision 0034); none before them. */
+  overrides: Record<string, BuildingZoningMode>
 }
 
 export type ZoningState = ZoningSetting & {
+  /**
+   * Buildings zoned their own way instead of the project's mode, by building
+   * id (decision 0034).
+   */
+  overrides: Record<string, BuildingZoningMode>
+  /**
+   * Drawn zone outlines by building id (decision 0034): synthetic,
+   * hand-authored, stored with the project; nothing edits them yet.
+   */
+  drawn: Record<string, DrawnZoning>
   /**
    * What the last successful Geospatial preprocessing run zoned by; null
    * before one has run, and for projects saved before zoning settings.
@@ -79,6 +142,8 @@ export function initialZoning(): ZoningState {
   return {
     mode: DEFAULT_ZONING_MODE,
     perimeterDepthM: DEFAULT_PERIMETER_DEPTH_M,
+    overrides: {},
+    drawn: {},
     published: null,
   }
 }
@@ -87,6 +152,84 @@ export function describeZoning(setting: ZoningSetting): string {
   return setting.mode === 'perimeterCore'
     ? `${ZONING_MODE_LABELS.perimeterCore}, ${formatDepth(setting.perimeterDepthM)} deep`
     : ZONING_MODE_LABELS[setting.mode]
+}
+
+/** One building's zoning in words, with the label its control uses. */
+export function describeBuildingZoning(setting: BuildingZoningSetting): string {
+  return setting.mode === 'perimeterCore'
+    ? `${BUILDING_ZONING_LABELS.perimeterCore}, ${formatDepth(setting.perimeterDepthM)} deep`
+    : BUILDING_ZONING_LABELS[setting.mode]
+}
+
+/**
+ * How a building was zoned, in words: what it got and, when it fell back,
+ * what it asked for (decision 0034).
+ */
+export function describeAppliedZoning(
+  zoning: Pick<BuildingZoning, 'appliedMode' | 'setting' | 'fallback'>,
+): string {
+  const got = describeBuildingZoning({
+    mode: zoning.appliedMode,
+    perimeterDepthM: zoning.setting.perimeterDepthM,
+  })
+  return zoning.fallback
+    ? `${got}, falling back from ${describeBuildingZoning(zoning.setting).toLowerCase()}`
+    : got
+}
+
+/**
+ * How a building is zoned under a project setting with overrides: its own
+ * mode when it has one, else the project's, with the project's depth.
+ */
+export function resolveBuildingZoning(
+  zoning: ZoningSetting & { overrides?: Record<string, BuildingZoningMode> },
+  buildingId: string,
+): BuildingZoningSetting & { source: ZoningSource } {
+  const override = zoning.overrides?.[buildingId]
+  return {
+    mode: override ?? zoning.mode,
+    perimeterDepthM: zoning.perimeterDepthM,
+    source: override === undefined ? 'default' : 'override',
+  }
+}
+
+/** Whether two building settings give the same zones. */
+export function sameBuildingZoning(
+  a: BuildingZoningSetting,
+  b: BuildingZoningSetting,
+): boolean {
+  return (
+    a.mode === b.mode &&
+    (a.mode !== 'perimeterCore' || a.perimeterDepthM === b.perimeterDepthM)
+  )
+}
+
+/**
+ * Whether a building's zoning setting now differs from what the last
+ * Geospatial preprocessing run applied to it; null when no run has zoned it.
+ */
+export function buildingZoningChanged(
+  zoning: ZoningState,
+  buildingId: string,
+): boolean | null {
+  const published = zoning.published
+  if (!published) return null
+  return !sameBuildingZoning(
+    resolveBuildingZoning(zoning, buildingId),
+    resolveBuildingZoning(published, buildingId),
+  )
+}
+
+/** Whether any building's zones would differ from the last run's. */
+export function zoningChangedSincePublished(zoning: ZoningState): boolean {
+  const published = zoning.published
+  if (!published) return false
+  if (!sameZoning(published, zoning)) return true
+  const ids = new Set([
+    ...Object.keys(zoning.overrides),
+    ...Object.keys(published.overrides),
+  ])
+  return [...ids].some((id) => buildingZoningChanged(zoning, id))
 }
 
 function formatDepth(depth: number): string {
@@ -100,14 +243,22 @@ export function sameZoning(a: ZoningSetting, b: ZoningSetting): boolean {
   )
 }
 
-/** Whole building, whole floor, perimeter, or core. */
-export type ZoneKind = 'building' | 'floor' | 'perimeter' | 'core'
+/** Whole building, whole floor, perimeter, core, or drawn (decision 0034). */
+export type ZoneKind = 'building' | 'floor' | 'perimeter' | 'core' | 'drawn'
 
 export const ZONE_KIND_LABELS: Record<ZoneKind, string> = {
   building: 'Whole building',
   floor: 'Whole floor',
   perimeter: 'Perimeter',
   core: 'Core',
+  drawn: 'Drawn',
+}
+
+/** A zone's type in tables: its kind, and a drawn zone's use. */
+export function zoneTypeLabel(zone: Pick<Zone, 'kind' | 'use'>): string {
+  return zone.kind === 'drawn' && zone.use
+    ? `Drawn: ${DRAWN_ZONE_USE_LABELS[zone.use].toLowerCase()}`
+    : ZONE_KIND_LABELS[zone.kind]
 }
 
 export type Floor = {
@@ -136,6 +287,8 @@ export type Zone = {
   areaM2: number
   /** The outward direction a perimeter zone faces. */
   facing: Facing | null
+  /** What a drawn zone is used for; null for generated zones. */
+  use: DrawnZoneUse | null
   /** The zone's plan, a closed ring in longitude and latitude. */
   plan: LngLat[]
   /**
@@ -146,9 +299,12 @@ export type Zone = {
 }
 
 export type ZoningFallbackCode =
-  'footprint_not_simple' | 'perimeter_inset_failed' | 'core_too_small'
+  | 'footprint_not_simple'
+  | 'perimeter_inset_failed'
+  | 'core_too_small'
+  | DrawnFallbackCode
 
-/** Why perimeter-and-core zoning fell back to one zone per floor. */
+/** Why perimeter-and-core or drawn zoning fell back to one zone per floor. */
 export type ZoningFallback = {
   code: ZoningFallbackCode
   message: string
@@ -157,9 +313,9 @@ export type ZoningFallback = {
 export type BuildingZoning = {
   buildingId: string
   /** The setting asked for. */
-  setting: ZoningSetting
-  /** What the building got: perimeterCore can fall back to floors. */
-  appliedMode: ZoningMode
+  setting: BuildingZoningSetting
+  /** What the building got: perimeterCore and drawn can fall back to floors. */
+  appliedMode: BuildingZoningMode
   floorHeightM: number
   floors: Floor[]
   zones: Zone[]
@@ -300,16 +456,21 @@ function closed(ring: LngLat[]): LngLat[] {
   return first ? [...ring, first] : ring
 }
 
-const cache = new WeakMap<Building, Map<string, BuildingZoning | null>>()
+type CacheEntry = { drawn: DrawnZoning | null; zoning: BuildingZoning | null }
+
+const cache = new WeakMap<Building, Map<string, CacheEntry>>()
 
 /**
  * A building's floors and zones under a zoning setting, or null when it has
- * no height or floor count yet (before Geospatial preprocessing).
+ * no height or floor count yet (before Geospatial preprocessing). Drawn zones
+ * (decision 0034) take the building's drawn outlines; without valid ones the
+ * building falls back to one zone per floor, with the reason.
  */
 export function zoneBuilding(
   building: Building,
-  setting: ZoningSetting,
+  setting: BuildingZoningSetting,
   storeys: number | null = building.floors,
+  drawn: DrawnZoning | null = null,
 ): BuildingZoning | null {
   const key = `${setting.mode}:${setting.perimeterDepthM}:${storeys}`
   let byBuilding = cache.get(building)
@@ -317,16 +478,46 @@ export function zoneBuilding(
     byBuilding = new Map()
     cache.set(building, byBuilding)
   }
-  if (byBuilding.has(key)) return byBuilding.get(key) ?? null
-  const zoning = computeZoning(building, setting, storeys)
-  byBuilding.set(key, zoning)
+  const usesDrawn = setting.mode === 'drawn'
+  const hit = byBuilding.get(key)
+  if (hit && (!usesDrawn || hit.drawn === drawn)) return hit.zoning
+  const zoning = computeZoning(building, setting, storeys, drawn)
+  byBuilding.set(key, { drawn: usesDrawn ? drawn : null, zoning })
   return zoning
+}
+
+type FloorPlan = {
+  zones: {
+    kind: ZoneKind
+    use: DrawnZoneUse | null
+    name: string
+    ring: Point[]
+    facing: Facing | null
+    colorSlot: number | null
+  }[]
+}
+
+/** Drawn outlines on the building's plane, cleaned, or null for none. */
+function drawnOnPlane(
+  drawn: DrawnZoning | null,
+  plane: ReturnType<typeof planeOf>,
+): PlanePlan[] {
+  return (drawn?.plans ?? []).map((plan) => ({
+    fromFloor: plan.fromFloor,
+    toFloor: plan.toFloor,
+    zones: plan.zones.map((zone) => ({
+      name: zone.name,
+      use: zone.use,
+      ring: cleanRing(zone.outline.map(plane.toPlane), 0.01) ?? [],
+    })),
+  }))
 }
 
 function computeZoning(
   building: Building,
-  setting: ZoningSetting,
+  setting: BuildingZoningSetting,
   storeys: number | null,
+  drawn: DrawnZoning | null,
 ): BuildingZoning | null {
   const height = building.heightM
   if (storeys === null || height === null || storeys < 1 || !(height > 0)) {
@@ -355,11 +546,11 @@ function computeZoning(
   const zones: Zone[] = []
   let appliedMode = setting.mode
   let fallback: ZoningFallback | null = null
+  const plane = planeOf(building.footprint)
 
-  let plan: PlanZone[] | null = null
-  let plane: ReturnType<typeof planeOf> | null = null
+  // One plan per floor number; generated modes share one plan on every floor.
+  let plans: ((floor: number) => FloorPlan) | null = null
   if (setting.mode === 'perimeterCore') {
-    plane = planeOf(building.footprint)
     const result = perimeterCorePlan(
       building.footprint.map(plane.toPlane),
       setting.perimeterDepthM,
@@ -368,7 +559,51 @@ function computeZoning(
       fallback = result.fallback
       appliedMode = 'floors'
     } else {
-      plan = result.zones
+      const perimeterSlots = ringSlots(result.zones.length - 1)
+      const plan: FloorPlan = {
+        zones: result.zones.map((zone, index) => ({
+          kind: zone.kind,
+          use: null,
+          name: '',
+          ring: zone.ring,
+          facing: zone.facing,
+          colorSlot:
+            zone.kind === 'core' ? null : (perimeterSlots[index - 1] ?? 0),
+        })),
+      }
+      plans = () => plan
+    }
+  } else if (setting.mode === 'drawn') {
+    const planePlans = drawnOnPlane(drawn, plane)
+    const problem = drawnPlanProblem(
+      building.footprint.map(plane.toPlane),
+      planePlans,
+      count,
+    )
+    if (problem) {
+      fallback = problem
+      appliedMode = 'floors'
+    } else {
+      const byPlan = planePlans.map((plan) => {
+        const slots = drawnColorSlots(plan.zones)
+        return {
+          plan,
+          floorPlan: {
+            zones: plan.zones.map((zone, index) => ({
+              kind: 'drawn' as const,
+              use: zone.use,
+              name: zone.name,
+              ring: zone.ring,
+              facing: null,
+              colorSlot: slots[index] ?? null,
+            })),
+          },
+        }
+      })
+      plans = (floor) =>
+        byPlan.find(
+          ({ plan }) => plan.fromFloor <= floor && floor <= plan.toFloor,
+        )?.floorPlan ?? { zones: [] }
     }
   }
 
@@ -384,11 +619,12 @@ function computeZoning(
       topM: round(height),
       areaM2: round(floorArea * count),
       facing: null,
+      use: null,
       plan: outline,
       colorSlot: 0,
     })
     for (const floor of floors) floor.zoneIds.push(zoneId)
-  } else if (appliedMode === 'floors' || !plan || !plane) {
+  } else if (appliedMode === 'floors' || !plans) {
     const slots = Array.from({ length: count }, (_, index) => index % 3)
     for (const floor of floors) {
       const zoneId = `${floor.id}:Z1`
@@ -402,38 +638,44 @@ function computeZoning(
         topM: floor.topM,
         areaM2: floor.areaM2,
         facing: null,
+        use: null,
         plan: outline,
         colorSlot: slots[floor.number - 1] ?? 0,
       })
       floor.zoneIds.push(zoneId)
     }
   } else {
-    // Plan areas are scaled so a floor's zones add up to the footprint area
-    // exactly (the core and perimeter share the plane `ringAreaM2` uses).
-    const planArea = plan.reduce((sum, zone) => sum + area(zone.ring), 0)
-    const scale = planArea > 0 ? floorArea / planArea : 1
-    const perimeterSlots = ringSlots(plan.length - 1)
     const toLngLat = plane.toLngLat
     for (const floor of floors) {
-      plan.forEach((zone, index) => {
+      const plan = plans(floor.number)
+      // Plan areas are scaled so a floor's zones add up to the footprint area
+      // exactly (the zones share the plane `ringAreaM2` uses).
+      const planArea = plan.zones.reduce(
+        (sum, zone) => sum + area(zone.ring),
+        0,
+      )
+      const scale = planArea > 0 ? floorArea / planArea : 1
+      plan.zones.forEach((zone, index) => {
         const zoneId = `${floor.id}:Z${index + 1}`
         const facing = zone.facing
         zones.push({
           id: zoneId,
           buildingId: id,
           name:
-            zone.kind === 'core'
-              ? `Floor ${floor.number} core`
-              : `Floor ${floor.number} perimeter ${index}${facing ? ` (${facing})` : ''}`,
+            zone.kind === 'drawn'
+              ? `Floor ${floor.number} ${zone.name}`
+              : zone.kind === 'core'
+                ? `Floor ${floor.number} core`
+                : `Floor ${floor.number} perimeter ${index}${facing ? ` (${facing})` : ''}`,
           kind: zone.kind,
           floor: floor.number,
           bottomM: floor.bottomM,
           topM: floor.topM,
           areaM2: round(area(zone.ring) * scale),
           facing,
+          use: zone.use,
           plan: closed(zone.ring.map(toLngLat)),
-          colorSlot:
-            zone.kind === 'core' ? null : (perimeterSlots[index - 1] ?? 0),
+          colorSlot: zone.colorSlot,
         })
         floor.zoneIds.push(zoneId)
       })
@@ -457,7 +699,10 @@ export function publishedZoning(
   return state.zoning.published
 }
 
-/** A building's floors and zones as the last Geospatial preprocessing run zoned it. */
+/**
+ * A building's floors and zones as the last Geospatial preprocessing run zoned
+ * it: by its own override then (decision 0034), else the project's mode.
+ */
 export function buildingZoning(
   state: Pick<WorkbenchState, 'zoning' | 'buildings'>,
   buildingId: string,
@@ -465,7 +710,24 @@ export function buildingZoning(
   const building = state.buildings[buildingId]
   const published = state.zoning.published
   if (!building || !published) return null
-  return zoneBuilding(building, published, publishedStoreys(state, building))
+  return zoneBuilding(
+    building,
+    resolveBuildingZoning(published, buildingId),
+    publishedStoreys(state, building),
+    state.zoning.drawn[buildingId] ?? null,
+  )
+}
+
+/**
+ * How the last run zoned a building and whether by the project's default or
+ * an override; null before a run has zoned it.
+ */
+export function publishedZoningOf(
+  state: Pick<WorkbenchState, 'zoning'>,
+  buildingId: string,
+): (BuildingZoningSetting & { source: ZoningSource }) | null {
+  const published = state.zoning.published
+  return published ? resolveBuildingZoning(published, buildingId) : null
 }
 
 /**
@@ -492,7 +754,7 @@ export function buildingFloors(
   if (!building) return []
   const zoning = zoneBuilding(
     building,
-    state.zoning.published ?? { mode: 'single', perimeterDepthM: 0 },
+    { mode: 'single', perimeterDepthM: 0 },
     publishedStoreys(state, building),
   )
   return zoning?.floors ?? []
@@ -537,20 +799,52 @@ export function selectedBuildingIds(
 /** How many zones a building gets under a setting, as preprocessing publishes. */
 export function zoneCountFor(
   building: Building,
-  setting: ZoningSetting,
+  setting: BuildingZoningSetting,
+  drawn: DrawnZoning | null = null,
 ): number | null {
-  return zoneBuilding(building, setting)?.zones.length ?? null
+  return (
+    zoneBuilding(building, setting, building.floors, drawn)?.zones.length ??
+    null
+  )
+}
+
+/**
+ * What a building would get under the project's current setting and its
+ * override (decision 0034), as the next Geospatial preprocessing run would
+ * zone it; null without a height or floor count.
+ */
+export function plannedZoning(
+  state: Pick<WorkbenchState, 'zoning' | 'buildings'>,
+  buildingId: string,
+): BuildingZoning | null {
+  const building = state.buildings[buildingId]
+  if (!building) return null
+  return zoneBuilding(
+    building,
+    resolveBuildingZoning(state.zoning, buildingId),
+    building.floors,
+    state.zoning.drawn[buildingId] ?? null,
+  )
 }
 
 /** Fallbacks by code over the given buildings, for preprocessing's warnings. */
 export function zoningFallbacks(
   buildings: Building[],
-  setting: ZoningSetting,
+  settingFor: (building: Building) => {
+    setting: BuildingZoningSetting
+    drawn: DrawnZoning | null
+  },
 ): Map<ZoningFallbackCode, string[]> {
   const byCode = new Map<ZoningFallbackCode, string[]>()
-  if (setting.mode !== 'perimeterCore') return byCode
   for (const building of buildings) {
-    const fallback = zoneBuilding(building, setting)?.fallback
+    const { setting, drawn } = settingFor(building)
+    if (setting.mode !== 'perimeterCore' && setting.mode !== 'drawn') continue
+    const fallback = zoneBuilding(
+      building,
+      setting,
+      building.floors,
+      drawn,
+    )?.fallback
     if (!fallback) continue
     const list = byCode.get(fallback.code) ?? []
     list.push(building.id)
@@ -564,11 +858,27 @@ const FALLBACK_SUMMARIES: Record<ZoningFallbackCode, string> = {
   perimeter_inset_failed:
     'their footprints are too narrow somewhere for the perimeter depth',
   core_too_small: 'the core would be too small',
+  drawn_zones_missing: 'they have no drawn zones',
+  drawn_floors_mismatch: 'their drawn plans do not match their floors',
+  drawn_zone_not_simple: 'a drawn zone is not a simple outline',
+  drawn_zone_outside: 'a drawn zone leaves the footprint',
+  drawn_zones_overlap: 'drawn zones overlap',
+  drawn_zones_gap: 'the drawn zones leave part of a floor uncovered',
+}
+
+/** Every fallback code, for matching the coded warnings. */
+export const ZONING_FALLBACK_CODES = Object.keys(
+  FALLBACK_SUMMARIES,
+) as ZoningFallbackCode[]
+
+/** Whether a fallback code belongs to drawn zones. */
+export function isDrawnFallback(code: ZoningFallbackCode): boolean {
+  return code.startsWith('drawn_')
 }
 
 /**
  * RC-style coded warnings for buildings zoned one zone per floor instead of
- * perimeter and core.
+ * perimeter and core, or instead of their drawn zones.
  */
 export function fallbackWarnings(
   byCode: Map<ZoningFallbackCode, string[]>,
@@ -576,7 +886,7 @@ export function fallbackWarnings(
   return [...byCode].map(([code, ids]) => ({
     code,
     buildingIds: ids,
-    message: `${code}: ${ids.length} building${ids.length === 1 ? ' was' : 's were'} zoned one zone per floor instead of perimeter and core because ${FALLBACK_SUMMARIES[code]} (${ids.slice(0, 5).join(', ')}${ids.length > 5 ? `, and ${ids.length - 5} more` : ''}).`,
+    message: `${code}: ${ids.length} building${ids.length === 1 ? ' was' : 's were'} zoned one zone per floor instead of ${isDrawnFallback(code) ? 'drawn zones' : 'perimeter and core'} because ${FALLBACK_SUMMARIES[code]} (${ids.slice(0, 5).join(', ')}${ids.length > 5 ? `, and ${ids.length - 5} more` : ''}).`,
   }))
 }
 

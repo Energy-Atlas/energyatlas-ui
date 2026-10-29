@@ -14,11 +14,17 @@ import {
 } from '../pages/dashboardData.ts'
 import { formatEnergy } from '../format.ts'
 import {
+  BUILDING_ZONING_LABELS,
   DEFAULT_PERIMETER_DEPTH_M,
+  ZONING_FALLBACK_CODES,
   buildingZoning,
+  describeAppliedZoning,
   describeZoning,
   type BuildingZoning,
+  type BuildingZoningMode,
 } from '../../domain/zoning/zoning.ts'
+import { zonesLayer } from '../pages/mapLayers.ts'
+import type { ViewState } from '../view/viewOperations.ts'
 import {
   command,
   layoutCall,
@@ -34,6 +40,8 @@ import type { ReferenceTarget } from './types.ts'
 
 export type ScriptContext = {
   state: () => WorkbenchState
+  /** The view state, for view operations that name a layer (decision 0034). */
+  view: () => ViewState
   stageStates: () => Record<string, StageState>
   /** Values a session carries between its steps. */
   memory: Record<string, unknown>
@@ -995,11 +1003,14 @@ function describeBuildingZones(
   const perimeters = zoning.zones.filter(
     (zone) => zone.kind === 'perimeter',
   ).length
+  const drawn = zoning.zones.filter((zone) => zone.kind === 'drawn').length
   const parts =
-    cores > 0
-      ? `${cores} cores and ${perimeters} perimeter zones, ${perimeters / Math.max(1, cores)} a floor`
-      : `${zoning.zones.length} zone${zoning.zones.length === 1 ? '' : 's'}`
-  return `**${name}** (${zoning.buildingId}) has ${zoning.floors.length} floors of ${zoning.floorHeightM} m (its height over its storeys) and ${zoning.zones.length} zones: ${parts}.${zoning.fallback ? ` ${zoning.fallback.message}` : ''}`
+    drawn > 0
+      ? `${drawn} drawn zones (synthetic outlines stored with the project)`
+      : cores > 0
+        ? `${cores} cores and ${perimeters} perimeter zones, ${perimeters / Math.max(1, cores)} a floor`
+        : `${zoning.zones.length} zone${zoning.zones.length === 1 ? '' : 's'}`
+  return `**${name}** (${zoning.buildingId}) has ${zoning.floors.length} floors of ${zoning.floorHeightM} m (its height over its storeys) and ${zoning.zones.length} zones, ${describeAppliedZoning(zoning).toLowerCase()}: ${parts}.${zoning.fallback ? ` ${zoning.fallback.message}` : ''}`
 }
 
 /** Fallback warnings of the last Geospatial preprocessing run, in a sentence. */
@@ -1007,8 +1018,8 @@ function fallbackSentence(state: WorkbenchState): string {
   const warnings = state.issues.filter(
     (issue) =>
       issue.stageId === STAGE_IDS.preprocessing &&
-      /^(footprint_not_simple|perimeter_inset_failed|core_too_small):/.test(
-        issue.message,
+      ZONING_FALLBACK_CODES.some((code) =>
+        issue.message.startsWith(`${code}:`),
       ),
   )
   return warnings.length === 0
@@ -1100,6 +1111,123 @@ const zoningSession: ScriptedSession = {
   ],
 }
 
+/** One building per mode the published overrides use, drawn zones first. */
+function zoningCases(state: WorkbenchState): string[] {
+  const order: BuildingZoningMode[] = [
+    'drawn',
+    'floors',
+    'perimeterCore',
+    'single',
+  ]
+  const overrides = state.zoning.published?.overrides ?? {}
+  return order.flatMap((mode) => {
+    const id = Object.keys(overrides)
+      .sort()
+      .find((each) => overrides[each] === mode && state.buildings[each])
+    return id ? [id] : []
+  })
+}
+
+const zoningCasesSession: ScriptedSession = {
+  id: 'zoningCases',
+  label: 'Zoning cases in 3D',
+  prompt:
+    'Show me the buildings zoned their own way, with drawn zones, in 3D with exploded floors.',
+  description:
+    "Each building can override the project's zoning (decision 0034). Proposes drawn zones for a building that has drawn outlines but does not use them (it waits for approval), reruns Geospatial preprocessing if needed (approval), then selects one building per zoning case and shows their zones in 3D with exploded floors.",
+  keywords: [
+    /\bdrawn zones?\b/,
+    /\bzoning cases?\b/,
+    /\bper[- ]building zoning\b/,
+    /\bzoned (its|their) own way\b/,
+    /\bexplod(e|ed|ing)\b/,
+  ],
+  steps: [
+    reason(
+      "A building's zoning override is an input of Geospatial preprocessing, like the project's zoning: changing it outdates that stage and every later one until it runs again. Drawn zones are synthetic outlines stored with the project; zones are display only.",
+    ),
+    ensure([STAGE_IDS.enrichment], 'Finding floor counts to zone'),
+    (context) => {
+      const state = context.state()
+      const candidate = Object.keys(state.zoning.drawn)
+        .sort()
+        .find(
+          (id) => state.buildings[id] && state.zoning.overrides[id] !== 'drawn',
+        )
+      if (!candidate) {
+        return reason(
+          'Every building with drawn outlines is already zoned by them.',
+        )
+      }
+      const name = state.buildings[candidate]?.name ?? candidate
+      return propose(
+        `Zone ${candidate} by its drawn zones`,
+        `Set ${name} (${candidate}) to ${BUILDING_ZONING_LABELS.drawn.toLowerCase()}, overriding the project's ${describeZoning(state.zoning).toLowerCase()}. Geospatial preprocessing and every later stage become outdated until preprocessing runs again.`,
+        [
+          {
+            title: `Zone ${candidate} by its drawn zones`,
+            call: command({
+              type: 'zoning.setBuilding',
+              input: { buildingId: candidate, mode: 'drawn' },
+            }),
+          },
+        ],
+      )
+    },
+    ensure([STAGE_IDS.preprocessing], 'Zoning the buildings', 'current'),
+    (context) => {
+      const state = context.state()
+      const ids = zoningCases(state)
+      if (ids.length === 0) {
+        return say(
+          "No building is zoned its own way yet. Choose a building's zoning in its Properties, then run Geospatial preprocessing.",
+        )
+      }
+      const layer = zonesLayer(context.view().map.layers)
+      const zonings = ids.flatMap((id) => {
+        const zoning = buildingZoning(state, id)
+        return zoning ? [zoning] : []
+      })
+      return [
+        tool(
+          `Select ${ids.join(', ')}`,
+          command({
+            type: 'selection.set',
+            input: { entityType: 'building', ids },
+          }),
+        ),
+        tool(
+          'Open the Map',
+          layoutCall({ type: 'layout.openPage', input: { page: 'map' } }),
+        ),
+        tool(
+          'Show the map in 3D',
+          viewCall({ type: 'map.set3d', input: { enabled: true } }),
+        ),
+        ...(layer && !layer.explodeFloors
+          ? [
+              tool(
+                'Explode the zoned floors',
+                viewCall({
+                  type: 'map.setLayerStyle',
+                  input: { layerId: layer.id, explodeFloors: true },
+                }),
+              ),
+            ]
+          : []),
+        tool(
+          'Zoom the map to them',
+          viewCall({ type: 'map.focusSelection', input: {} }),
+        ),
+        say(
+          `${zonings.map((zoning) => describeBuildingZones(state, zoning)).join(' ')} ${layer ? 'Their storeys are drawn apart with lines on the zone edges, so neighbouring zones read apart without colour.' : "No shown building layer extrudes, so the zones are drawn flat; turn on Extrude to height in the map's Properties."} ${fallbackSentence(state)}`,
+        ),
+        reference('Show their floors and zones', { type: 'inspection' }),
+      ]
+    },
+  ],
+}
+
 export const SESSIONS: ScriptedSession[] = [
   layoutSession,
   representationSession,
@@ -1109,6 +1237,7 @@ export const SESSIONS: ScriptedSession[] = [
   scenarioRulesSession,
   schemaSession,
   zoningSession,
+  zoningCasesSession,
   restoreSession,
 ]
 
@@ -1116,6 +1245,7 @@ export const SESSIONS: ScriptedSession[] = [
 const MATCH_ORDER = [
   restoreSession,
   calibrationSession,
+  zoningCasesSession,
   zoningSession,
   layoutSession,
   representationSession,
