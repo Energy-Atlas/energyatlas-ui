@@ -12,7 +12,7 @@ import {
   MAX_CHARTED_SCENARIOS,
   chartedScenarioOrder,
 } from '../pages/dashboardData.ts'
-import { formatEnergy } from '../format.ts'
+import { formatCount, formatEnergy } from '../format.ts'
 import {
   BUILDING_ZONING_LABELS,
   DEFAULT_PERIMETER_DEPTH_M,
@@ -993,6 +993,23 @@ function showcaseZoning(state: WorkbenchState): BuildingZoning | null {
   return best
 }
 
+/**
+ * The buildings the last run zoned their own way (decision 0034), as a
+ * clause after the project's zoning, or nothing when there are none.
+ */
+function overridesClause(state: WorkbenchState): string {
+  const overrides = state.zoning.published?.overrides ?? {}
+  const ids = Object.keys(overrides)
+    .filter((id) => state.buildings[id])
+    .sort()
+  if (ids.length === 0) return ''
+  const named = ids.map((id) => {
+    const mode = overrides[id]
+    return mode ? `${id} (${BUILDING_ZONING_LABELS[mode].toLowerCase()})` : id
+  })
+  return `, except ${ids.length === 1 ? 'one building' : `${ids.length} buildings`} zoned ${ids.length === 1 ? 'its' : 'their'} own way: ${named.join(', ')}`
+}
+
 /** What a building's floors and zones are, for the agent's answers. */
 function describeBuildingZones(
   state: WorkbenchState,
@@ -1006,11 +1023,11 @@ function describeBuildingZones(
   const drawn = zoning.zones.filter((zone) => zone.kind === 'drawn').length
   const parts =
     drawn > 0
-      ? `${drawn} drawn zones (synthetic outlines stored with the project)`
+      ? `${formatCount(drawn, 'drawn zone')} (synthetic outlines stored with the project)`
       : cores > 0
-        ? `${cores} cores and ${perimeters} perimeter zones, ${perimeters / Math.max(1, cores)} a floor`
-        : `${zoning.zones.length} zone${zoning.zones.length === 1 ? '' : 's'}`
-  return `**${name}** (${zoning.buildingId}) has ${zoning.floors.length} floors of ${zoning.floorHeightM} m (its height over its storeys) and ${zoning.zones.length} zones, ${describeAppliedZoning(zoning).toLowerCase()}: ${parts}.${zoning.fallback ? ` ${zoning.fallback.message}` : ''}`
+        ? `${formatCount(cores, 'core')} and ${formatCount(perimeters, 'perimeter zone')}, ${perimeters / Math.max(1, cores)} a floor`
+        : formatCount(zoning.zones.length, 'zone')
+  return `**${name}** (${zoning.buildingId}) has ${formatCount(zoning.floors.length, 'floor')} of ${zoning.floorHeightM} m (its height over its storeys) and ${formatCount(zoning.zones.length, 'zone')}, ${describeAppliedZoning(zoning).toLowerCase()}: ${parts}.${zoning.fallback ? ` ${zoning.fallback.message}` : ''}`
 }
 
 /** Fallback warnings of the last Geospatial preprocessing run, in a sentence. */
@@ -1424,9 +1441,9 @@ const viewerRestoreSession: ScriptedSession = {
 const viewerZonesSession: ScriptedSession = {
   id: 'viewerZones',
   label: 'Floors and zones of a building',
-  prompt: 'Show me the floors and zones of the largest building.',
+  prompt: 'Show me the floors and zones of a building.',
   description:
-    'Reads the handed-over zoning, selects the largest zoned building, and shows its floor slabs and zones on the 3D map through view operations.',
+    'Reads the handed-over zoning, selects a building zoned its own way (else the largest zoned building), and shows its floor slabs and zones on the 3D map through view operations.',
   keywords: [/\bzones?\b/, /\bfloors and zones\b/, /\bslabs?\b/],
   steps: [
     reason(
@@ -1434,7 +1451,10 @@ const viewerZonesSession: ScriptedSession = {
     ),
     (context) => {
       const state = context.state()
-      const zoning = showcaseZoning(state)
+      // A building zoned its own way shows more than one zone per building.
+      const [overridden] = zoningCases(state)
+      const own = overridden ? buildingZoning(state, overridden) : null
+      const zoning = own ?? showcaseZoning(state)
       if (!zoning) {
         return say(
           'This package has no zones to show: Geospatial preprocessing had not zoned the buildings by a zoning setting when it was handed over. Ask the modeller for a new handover.',
@@ -1443,7 +1463,7 @@ const viewerZonesSession: ScriptedSession = {
       const published = state.zoning.published
       return [
         tool(
-          `Select ${zoning.buildingId}, the largest zoned building`,
+          `Select ${zoning.buildingId}, ${own ? 'a building zoned its own way' : 'the largest zoned building'}`,
           command({
             type: 'selection.set',
             input: { entityType: 'building', ids: [zoning.buildingId] },
@@ -1462,7 +1482,7 @@ const viewerZonesSession: ScriptedSession = {
           viewCall({ type: 'map.focusSelection', input: {} }),
         ),
         say(
-          `The buildings were zoned ${published ? describeZoning(published).toLowerCase() : 'by a setting'} when the project was handed over. ${describeBuildingZones(state, zoning)} ${fallbackSentence(state)} Zones are display only, and per-zone results are a synthetic split of the building's demand by floor area.`,
+          `The buildings were zoned ${published ? describeZoning(published).toLowerCase() : 'by a setting'} when the project was handed over${overridesClause(state)}. ${describeBuildingZones(state, zoning)} ${fallbackSentence(state)} Zones are display only, and per-zone results are a synthetic split of the building's demand by floor area.`,
         ),
         reference('Show its floors and zones', { type: 'inspection' }),
         reference('Show the zoning Geospatial preprocessing applied', {
@@ -1490,6 +1510,9 @@ const VIEWER_MATCH_ORDER = [
 ]
 
 export function matchViewerSession(text: string): ScriptedSession | null {
+  // A model change is refused even when it names a session's subject, as in
+  // "reset the baseline results" or "remove the zones from building b-1".
+  if (asksForModelChange(text)) return null
   const normalized = text.toLowerCase()
   return (
     VIEWER_MATCH_ORDER.find((session) =>
@@ -1502,10 +1525,10 @@ export function matchViewerSession(text: string): ScriptedSession | null {
 const MODEL_ACTIONS =
   /\b(rerun|re-run|adopt|calibrate|recalibrate|retry|import|fuse)\b/
 const CHANGE_VERBS =
-  /\b(run|change|edit|modify|add|create|delete|remove|set|save|apply|assign|update|fit|cancel)\b/
+  /\b(run|change|edit|modify|add|create|delete|remove|set|save|apply|assign|update|fit|cancel|reset|restore|clear|rename|duplicate|replace)\b/
 /** What the model is made of, as people name it. */
 const MODEL_OBJECTS =
-  /\b(stages?|baseline|measures?|scenarios?|archetypes?|parts?|rules?|schedules?|adoption|floors?|buildings?|datasets?|mapping|model|project|calibration|jobs?|zoning)\b/
+  /\b(stages?|baseline|measures?|scenarios?|archetypes?|parts?|rules?|schedules?|adoption|floors?|buildings?|datasets?|mapping|model|project|calibration|jobs?|zoning|zones?)\b/
 /** What a viewer may change: how things are shown. */
 const VIEW_WORDS =
   /\b(layers?|map|colou?rs?|styles?|layouts?|table|columns?|filters?|sort|season|camera|zoom|charts?|view|panels?|light|lighting|terrain|3d|basemap|search)\b/
@@ -1527,8 +1550,8 @@ export function asksForModelChange(text: string): boolean {
 }
 
 export const VIEW_ONLY_ANSWER =
-  'This is a **view-only handover**, so I cannot change the model, run or cancel stages, or change the handed-over layouts; the server refuses model changes from the viewer. I can explain the published results, select and point out buildings, change how the map, table, dashboard, and results are shown, and keep your own personal layouts. For model changes, ask the modeller for a new handover.'
+  'This is a **view-only handover**, so I cannot change the model, run or cancel stages, or change the handed-over layouts; the server refuses model changes from the viewer. I can explain the published results, select and point out buildings, change how the map, table, dashboard, and results are shown, apply the handed-over layouts in the Layouts panel, and reset to the handed-over layout. For model changes, ask the modeller for a new handover.'
 
 /** The viewer's answer when no prepared session matches a message. */
 export const VIEWER_UNMATCHED_ANSWER =
-  "I am a **scripted agent** in this prototype and can only run the prepared sessions offered below, so I did not act on this message. You can change views yourself: map layers, colours, seasons, and lighting in the map's Properties, table columns and filters on the Table page, and your personal layouts in View > Layouts."
+  "I am a **scripted agent** in this prototype and can only run the prepared sessions offered below, so I did not act on this message. You can change views yourself: map layers, colours, seasons, and lighting in the map's Properties, table columns and filters on the Table page, and the handed-over layouts in the Layouts panel (View > Layouts), with Reset to handed-over layout to go back."

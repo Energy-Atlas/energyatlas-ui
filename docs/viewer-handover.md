@@ -9,9 +9,10 @@ A separate viewer page (direction B of the [next stages discussion](next-stages-
 opening a frozen handover package (direction C), handed over by catalog and file. The mock server refuses every model
 change from a viewer session on the same command path as the edit lock. Features the viewer cannot use are left out
 of its page, not shown disabled, and its shell shows a View only badge. The viewer's agent answers questions,
-interprets, and changes views, never the model. Project layouts travel in the package and stay read-only there; a
-viewer's own layouts are personal, and resetting returns to the handed-over layout. Result versions are deferred, so a
-package carries the current published results only.
+interprets, and changes views, never the model. Project layouts travel in the package and stay read-only there, and
+resetting returns to the handed-over layout. (Before [decision 0033](decisions/0033-project-layouts-panel-and-scenarios-page.md)
+a viewer could also keep personal layouts of its own; they were removed.) Result versions are deferred, so a package
+carries the current published results only.
 
 ## Observed in RC (read-only, RCEnergySimulator at `7464c140`)
 
@@ -32,7 +33,7 @@ command path; everything else here has no RC counterpart.
 | Modeller | File > Hand over… (`file.handOver` in `src/app/actions.ts`), `src/app/handover/handoverService.ts` (`services.handover`), `src/app/handover/HandoverDialog.tsx`, the `project.handover` agent tool |
 | Viewer entry | `viewer.html`, `src/viewer/main.tsx`, `ViewerApp.tsx`, `ViewerStart.tsx` (package list), `ViewerShell.tsx`, `viewerActions.ts` (`forViewer`, `forViewerStart`), `viewerStore.ts`; two inputs in `vite.config.ts` (`build.rolldownOptions.input`) |
 | One app, two modes | `WorkbenchProvider mode="viewer"` and `useViewOnly()` in `src/app/WorkbenchContext.tsx` |
-| Viewer layout | `LayoutShape`, `VIEWER_LAYOUT`, `VIEWER_LAYOUT_KEY`, `hasPage`, `hasPanel` in `src/app/layout/layoutController.ts`; `setPersonalKey`, `resetToHandedOver` in `src/app/layouts/layoutLibrary.ts`; `viewerLayoutsKey` in `personalLayouts.ts` |
+| Viewer layout | `LayoutShape`, `VIEWER_LAYOUT`, `VIEWER_LAYOUT_KEY`, `hasPage`, `hasPanel` in `src/app/layout/layoutController.ts`; `createLayoutLibrary({ writable: false })` and `resetToHandedOver` in `src/app/layouts/layoutLibrary.ts`; the shared Layouts panel (`src/app/layouts/LayoutsPanel.tsx`) |
 | Viewer agent | `isViewerToolCall`, `describeAgentTools({ viewOnly: true })` in `src/app/agent/tools.ts`; `VIEWER_SESSIONS`, `asksForModelChange`, `VIEW_ONLY_ANSWER` in `sessions.ts`; `viewOnly` in `scriptedAgent.ts` |
 | Shared components | `ViewOnlyBadge` and `HandoverSummary` (`src/app/components/HandoverSummary.tsx`), in the gallery; `ReadOnlyDefinition` (`src/app/properties/`) |
 
@@ -80,27 +81,31 @@ the dialog says it was not kept.
 ### The viewer page
 
 `viewer.html` is a second Vite entry. It creates the same services with `mode: 'viewer'`: the mock server in viewer
-mode, the layout controller with the viewer's shape and its own arrangement key, the layout library with read-only
-project layouts and a personal key per package, the scripted agent with viewer sessions, and the same view store,
-messages, and project client.
+mode, the layout controller with the viewer's shape and its own arrangement key, the layout library with the
+package's project layouts read-only, the scripted agent with viewer sessions, and the same view store, messages, and
+project client.
 
 - **Package list** (start screen): the catalog newest first, a selected package's provenance and warnings, Open
   package, Remove from this browser… (confirmed inline), and Open package file… (a browser file input, Ctrl+O). A link
-  with `?package=<id>` opens that package once the list loads.
+  with `?package=<id>` opens that package once the list loads. While a package opens or a request is pending, these
+  buttons stay focusable and say why they wait; an unreadable catalog shows its error with Try loading packages again
+  and a plain "No packages can be listed until the catalog is read" instead of an empty search.
 - **Shell**: the ribbon with the View only badge and the package name; File (Open package file…, Handover packages…,
   About this handover…), View (pages, panels, docking, layouts, appearance, Reset to handed-over layout), Help. No
   Edit or Run menu, no Save, Undo, or Run buttons. The package's warnings sit under the ribbon until dismissed. The
   status bar shows when the package was handed over instead of the save state, and leaves out Issues, Jobs, the
   current stage, and the simulated workers.
-- **Pages and panels**: Map, Table, Dashboard, Results; Assets, Properties, Messages, Reasoning. Left out: Roadmap,
-  Measures and scenarios, Settings, Issues, Jobs, Schema matching, Data intake, Archetypes, Calibration, Account, and
+- **Pages and panels**: Map, Table, Dashboard, Results; Assets, Properties, Messages, Layouts, Reasoning. Left out:
+  Roadmap, Scenarios, Settings, Issues, Jobs, Schema matching, Data intake, Archetypes, Calibration, Account, and
   the Workflow panel.
 - **Inside shared pages**, `useViewOnly()` leaves out: the Table's cell editing, pending-edit count, Apply, and Discard
   (a note says cells cannot be edited); empty states' Run and Show Workflow buttons (they say the package does not
-  include the data); the Dashboard's Run on outdated results, Open Measures and scenarios, and Apply adoption (the
-  what-if preview stays, unsaved); definition editors in Properties (`ReadOnlyDefinition` shows a definition or stage
-  as handed over); Asset page links to pages the viewer lacks; the demo switch's fixture loader; the Layouts dialog's
-  project scope choice and the Update, Rename, Duplicate, Delete, and default controls of handed-over layouts.
+  include the data); the Dashboard's Run on outdated results, Open Scenarios, and Apply adoption (the what-if preview
+  stays, unsaved); definition editors in Properties (`ReadOnlyDefinition` shows a definition or stage as handed over);
+  Asset page links to pages the viewer lacks (an asset with no page there, such as Attribute mapping rules, says so in
+  the status bar and Messages on Enter or a double-click and shows its Properties); the demo switch's fixture loader;
+  and in the Layouts panel the Save layout form, the row menu (Update, Rename…, Duplicate, Delete…), and the Default
+  column.
 
 ### The server's refusal
 
@@ -113,26 +118,34 @@ work as in the modeller.
 
 ### Layouts in the viewer
 
-Opening a package applies its default project layout, as opening a project does. Handed-over layouts are listed as
-read-only (Apply, Copy to personal). Personal layouts are kept under `eaui.viewer.layouts.v1:<package id>`, apart
-from the modeller's `eaui.layouts.v1` and from other packages. Reset to handed-over layout (View > Layouts, palette,
-agent `layouts.resetToHandover`) applies the package's default layout, or the viewer's default arrangement with the
-package's table settings and map layers when it has none; personal layouts and handed-over layouts are unchanged. The
-viewer's arrangement autosaves under `eaui.viewer.layout.v1`.
+Opening a package applies its default project layout, as opening a project does. The Layouts panel (View > Layouts,
+Ctrl+Alt+L) lists the handed-over layouts with Apply only; its State column marks the applied one and the handed-over
+default, and a package without layouts says so in a line that wraps in the side panel. Reset to handed-over layout
+(View > Layouts, palette, agent `layouts.resetToHandover`) applies the package's default layout, or the viewer's
+default arrangement with the package's table settings and map layers when it has none; the handed-over layouts are
+unchanged. The viewer's arrangement autosaves under `eaui.viewer.layout.v1`; nothing else of the viewer's is kept.
+
+Before decision 0033 the viewer also kept personal layouts per package (`eaui.viewer.layouts.v1:<package id>`, set
+with `setPersonalKey` from `personalLayouts.ts`) in a Layouts dialog with Copy to personal. All of that was removed;
+values earlier builds left in browser storage are ignored.
 
 ### The agent
 
 `describeAgentTools({ viewOnly: true })` lists no server command, draft, lifecycle, or handover tool, no view
-operation of a page the viewer lacks, and no `layouts.setDefault`; `executeToolCall` refuses such a call before it
-reaches the client. Its sessions are Explain the published results (totals, currency, the highest-demand building
-drilled into and selected), Map beside Table with the tallest buildings, and Reset to the handed-over layout. A
-message asking to run, change, add, delete, adopt, save, and the like gets the view-only answer; a session that
-needs data the package lacks says so instead of offering a run.
+operation of a page the viewer lacks, and none of `layouts.save`, `update`, `rename`, `duplicate`, `delete`, or
+`setDefault`; `executeToolCall` refuses such a call before it reaches the client. Its sessions are Explain the
+published results (totals, currency, the highest-demand building drilled into and selected), Map beside Table with the
+tallest buildings, Floors and zones of a building (a building zoned its own way when the package has per-building
+overrides, else the largest zoned building; the answer names the project's zoning and every override), and Reset to
+the handed-over layout. A message asking to run, change, add, delete, reset, adopt, save, and the like on a model
+object gets the view-only answer, even when it also names a session's subject ("reset the baseline results", "remove
+the zones from building b-1"); a session that needs data the package lacks says so instead of offering a run. Its
+answers point to the handed-over layouts in the Layouts panel and Reset to handed-over layout.
 
 ## States
 
 - **Empty**: "No handover packages in this browser yet" with where to get one; a package without saved layouts says
-  so in the Layouts dialog; pages with no published data say the package does not include it.
+  so in the Layouts panel; pages with no published data say the package does not include it.
 - **Loading**: "Loading handover packages…" while the catalog is read; "Opening "name"…" while a package or file is
   opened; the dialog's "Preparing…" while handing over.
 - **Success**: the dialog's handed-over summary; the shell with the View only badge; Messages and the status bar
@@ -149,8 +162,8 @@ needs data the package lacks says so instead of offering a run.
 ## Real, mocked, deferred
 
 - **Real**: freezing and validating packages, the browser catalog, the package file download and file input, the
-  view-only server session and its refusal, the viewer entry under the Pages base path, read-only handed-over layouts,
-  per-package personal layouts and the reset, the viewer's agent tool filter and sessions.
+  view-only server session and its refusal, the viewer entry under the Pages base path, read-only handed-over layouts
+  and the reset, the viewer's agent tool filter and sessions.
 - **Mocked**: "handing over" is a browser-local catalog and a file, served by the in-page mock server (decision
   0023); there is no sharing, account, or access control, which belong in RC (decision 0022). A viewer session is
   read-only because the viewer page asks for it; a real server would bind that to the person, not the page.
@@ -199,19 +212,23 @@ needs data the package lacks says so instead of offering a run.
 13. **Opening a package applies its default project layout**, and tabs the viewer does not show are dropped silently
     (tabs no version knows are still reported).
 14. **Packages can be removed** from the viewer's list and from the modeller's Hand over dialog (both confirmed
-    inline), which lists the packages kept here with their sizes; removal also deletes that package's personal
-    layouts (`eaui.viewer.layouts.v1:<id>`). Downloaded copies are unaffected. **No catalog cap**: the browser's quota
+    inline), which lists the packages kept here with their sizes; the layouts handed over in a package go with it.
+    (Before decision 0033 removal also deleted that package's personal layouts, `eaui.viewer.layouts.v1:<id>`.)
+    Downloaded copies are unaffected. **No catalog cap**: the browser's quota
     is the limit, and a refused save names the space packages take (about 550 KB for the complete fixture) and where
     to remove them; a count cap would refuse a small package while doing nothing about one large one.
-15. **The agent's Hand over tool waits for approval** in the modeller. In the viewer, a message first starts a
-    matching viewer session; otherwise it gets the view-only answer when it names work only the modeller starts
-    (rerun, adopt, calibrate, retry, import) or a change verb on a model object (measure, scenario, archetype, rule,
-    stage, adoption, building, …) without a view word (layer, map, colour, layout, table, season, …), and the view
-    help answer otherwise. "Add a heat layer", "set the season", or "save my layout" are not refused.
+15. **The agent's Hand over tool waits for approval** in the modeller. In the viewer, a message gets the view-only
+    answer when it names work only the modeller starts (rerun, adopt, calibrate, retry, import) or a change verb
+    (including reset, restore, clear, rename) on a model object (measure, scenario, archetype, rule, stage, adoption,
+    building, zone, …) without a view word (layer, map, colour, layout, table, season, …), even when it also matches a
+    viewer session; otherwise it starts the matching session, or gets the view help answer. "Add a heat layer", "set
+    the season", "save my layout", or "reset to the handed-over layout" are not refused. (Before the review of
+    2026-10-29 a matching session ran first, so "reset the baseline results" ran Explain the published results.)
 16. **The viewer's status bar** shows when the package was handed over instead of save state, and leaves out Issues,
     Jobs, the current stage, and the simulated worker count.
-17. **The viewer has no permission modes**: they govern runs and model changes, which its agent never makes; the
-    menu is left out and the agent asks before the only approvals left (updating or deleting a personal layout).
+17. **The viewer has no permission modes**: they govern runs and model changes, which its agent never makes, so the
+    menu is left out. Since decision 0033 its agent has no tool that waits for approval (before it, updating or
+    deleting a personal layout did).
 18. **The viewer's job runner never starts**: a viewer session's mock server does not start the task simulator, which
     executes on the engine directly, past the view-only refusal.
 19. **A package file is size-checked before it is read** (20 MB), and the package list refreshes when another tab
@@ -224,8 +241,8 @@ needs data the package lacks says so instead of offering a run.
 - The package is large (the full model, about the size of a saved project); a browser catalog of several packages
   can fill `localStorage`, which the dialog reports and Download covers.
 - The model-change detection is a scripted keyword heuristic: "change the adoption" is refused while "show the
-  adoption" is not, and a message matching a viewer session (such as one mentioning results) starts that session
-  even if it also asks for a change.
+  adoption" is not, and a change verb with a view word ("reset the map of the baseline") still passes as a view
+  change.
 - The viewer's server session is read-only because the page asks for it (`mode: 'viewer'`); the modeller and the
   viewer each run their own in-page mock server, as every tab does (decision 0023).
 
@@ -256,6 +273,27 @@ the saved copy. Unit tests cover a project never saved, a package holding the sa
 `zoning.set` (with the modeller's change kept), and the saved-copy blockers; the viewer spec checks the unavailable
 menu item, the dialog's warning, and that a project layout added after saving is not in the package. The other
 handover specs save first. Verification is in the completion report.
+
+## Review fixes (2026-10-29)
+
+A review of the next stages after decision 0033 found, all fixed on `claude/next-stages`:
+
+- File > Hand over… stayed unavailable after one handover: `useAppActions` now follows `handover.store` and the
+  session's meta, and `handOver()` resets `busy` in a `finally`, so a failed request cannot leave it busy
+  (`src/app/handover/handoverService.test.ts`; the viewer spec hands over twice).
+- The viewer agent's answers and the modeller's remove confirmation still mentioned personal or viewer layouts; they
+  now name the handed-over layouts in the Layouts panel and Reset to handed-over layout.
+- A model change naming a session's subject ran that session; it is now refused first (decision 15). The zones
+  answer chose a building with one zone and left out the per-building overrides; it now shows a building zoned its
+  own way and names every override, with singular counts ("1 zone").
+- The viewer's start screen: an unreadable catalog no longer shows "Nothing matches" with Clear search, and Open
+  package file…, Open package, and Remove say why they wait instead of being bare disabled buttons.
+- The viewer's Layouts panel: viewer wording for the applied line and the empty state, which wraps; the Default and
+  empty Actions columns are left out (State names the handed-over default).
+- Assets with no page in the viewer (Attribute mapping rules) explain themselves on Enter or a double-click.
+
+Left for the owner: whether the viewer keeps its own view changes between visits; removing or pruning unreadable
+stored packages; merging the three resets (Reset layout, Reset to layout, Reset to handed-over layout).
 
 ## Verification (2026-10-28)
 

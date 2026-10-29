@@ -18,6 +18,7 @@ import { readHandoverCatalog } from '../../server/handoverCatalog.ts'
 import { createScriptedAgent } from './scriptedAgent.ts'
 import {
   asksForModelChange,
+  matchViewerSession,
   VIEW_ONLY_ANSWER,
   VIEWER_UNMATCHED_ANSWER,
 } from './sessions.ts'
@@ -159,6 +160,8 @@ describe("the viewer's agent tools", () => {
       'change the archetype of building 3',
       'delete the heat pump measure',
       'set adoption to 40%',
+      'Reset the baseline results',
+      'Remove the zones from building b-1',
     ])
       expect(asksForModelChange(text), text).toBe(true)
     const { agent, manual } = viewerSetup()
@@ -170,6 +173,36 @@ describe("the viewer's agent tools", () => {
     })
   })
 
+  it('refuses a model change that names a session subject instead of running the session', async () => {
+    for (const text of [
+      'Reset the baseline results',
+      'Remove the zones from building b-1',
+    ]) {
+      const { agent, manual, workbench } = viewerSetup()
+      const before = workbench.getState().selection
+      agent.send(text)
+      await manual.settle(200)
+      const transcript = agent.store.getState().transcript
+      expect(transcript.at(-1), text).toMatchObject({
+        kind: 'agent',
+        markdown: VIEW_ONLY_ANSWER,
+      })
+      expect(transcript.some((item) => item.kind === 'tool')).toBe(false)
+      expect(workbench.getState().selection).toEqual(before)
+    }
+    // The handed-over reset still runs as a session.
+    expect(matchViewerSession('Reset to the handed-over layout')?.id).toBe(
+      'viewerRestore',
+    )
+  })
+
+  it('says what a viewer can do with layouts now that they are kept with the project (decision 0033)', () => {
+    for (const text of [VIEW_ONLY_ANSWER, VIEWER_UNMATCHED_ANSWER]) {
+      expect(text).not.toMatch(/personal/i)
+      expect(text).toContain('Layouts panel')
+    }
+  })
+
   it('shows floors and zones without approvals and refuses a zoning change (decision 0032, stage 6)', async () => {
     expect(asksForModelChange('set the zoning to perimeter and core')).toBe(
       true,
@@ -179,13 +212,16 @@ describe("the viewer's agent tools", () => {
     await manual.settle(200)
     const transcript = agent.store.getState().transcript
     expect(transcript.some((item) => item.kind === 'approval')).toBe(false)
+    // A building zoned its own way shows more than one zone.
     expect(workbench.getState().selection).toEqual({
       entityType: 'building',
-      ids: ['B0464'],
+      ids: ['B0439'],
     })
-    expect(JSON.stringify(transcript)).toContain(
-      'zoned one zone per building when the project was handed over',
+    const text = JSON.stringify(transcript)
+    expect(text).toContain(
+      'zoned one zone per building when the project was handed over, except 3 buildings zoned their own way: B0426 (perimeter and core per floor), B0427 (each floor a zone), B0439 (drawn zones)',
     )
+    expect(text).not.toMatch(/\b1 (zones|floors)\b/)
     const { agent: empty, manual: emptyManual } = viewerSetup('new')
     empty.startPreset('viewerZones')
     await emptyManual.settle(200)

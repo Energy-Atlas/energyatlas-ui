@@ -119,7 +119,8 @@ export function CatalogPackages() {
                 </>
               }
             >
-              Its viewer layouts go with it. Downloaded copies are not affected.
+              The layouts handed over in it go with it. Downloaded copies are
+              not affected.
             </InlineAlert>
           ) : selected ? (
             <div className={shellStyles.dialogActions}>

@@ -140,6 +140,10 @@ export function useAppActions(dialogs: ShellDialogs): AppAction[] {
   const jobsView = useViewState((current) => current.jobs)
   const mapLayers = useViewState((current) => current.map.layers)
   const library = useStore(layouts.store)
+  // Hand over's blocker reads the handover's own state and the session's
+  // saved state, so the File menu follows both.
+  const handoverBusy = useStore(handover.store, (current) => current.busy)
+  const clientMeta = useClientSnapshot((current) => current.meta)
   const toastsShown = useStore(messages.store, (current) => {
     const projectId = snapshot.state.project.id
     return current.toasts.filter((id) => {
@@ -150,6 +154,9 @@ export function useAppActions(dialogs: ShellDialogs): AppAction[] {
 
   return useMemo(() => {
     void layoutVersion
+    // Read by handover.blocker(), named here so the memo follows them.
+    void handoverBusy
+    void clientMeta
     const { state, canUndo, canRedo } = snapshot
     const pendingCount = Object.keys(state.pendingEdits).length
     const currentStageId = state.workflow.currentStageId
@@ -728,6 +735,8 @@ export function useAppActions(dialogs: ShellDialogs): AppAction[] {
     layouts,
     library,
     handover,
+    handoverBusy,
+    clientMeta,
   ])
 }
 

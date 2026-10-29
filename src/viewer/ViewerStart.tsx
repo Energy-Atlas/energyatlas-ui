@@ -4,6 +4,7 @@ import { Button } from 'react-aria-components'
 import { useStore } from 'zustand'
 import { useClientSnapshot, useServices } from '../app/WorkbenchContext.tsx'
 import { useInvokeAction } from '../app/actions.ts'
+import { ActionButton } from '../app/components/ActionButton.tsx'
 import componentStyles from '../app/components/components.module.css'
 import {
   HandoverSummary,
@@ -95,7 +96,11 @@ export function ViewerStart() {
     !meta.packagesReady ||
     pending.some((request) => request.type === 'handover.list')
   const busy = opening !== null || pending.length > 0
-  const busyReason = busy ? 'Wait for the package being opened.' : null
+  const busyReason = opening
+    ? `Wait for "${opening}" to open.`
+    : busy
+      ? 'Wait for the server to answer: the package list is loading or a package is being removed.'
+      : null
   const selected =
     meta.packages.find((pkg) => pkg.id === selectedId) ??
     meta.packages[0] ??
@@ -124,13 +129,14 @@ export function ViewerStart() {
           model.
         </p>
         <div className={projectStyles.actions}>
-          <Button
-            className={cx(componentStyles.button, componentStyles.primary)}
-            isDisabled={busy}
+          <ActionButton
+            variant="primary"
+            label="Open package file…"
+            disabledReason={busyReason}
             onPress={pickPackageFile}
           >
             Open package file…
-          </Button>
+          </ActionButton>
         </div>
         {opening ? (
           <p role="status" className={styles.opening}>
@@ -240,13 +246,11 @@ export function ViewerStart() {
                       : undefined
                   }
                   empty={
-                    meta.packagesError ? null : (
-                      <p className={componentStyles.empty}>
-                        No handover packages in this browser yet. In the
-                        modeller, choose File &gt; Hand over…, or open a package
-                        file someone sent you.
-                      </p>
-                    )
+                    <p className={componentStyles.empty}>
+                      {meta.packagesError
+                        ? 'No packages can be listed until the catalog is read. Try loading them again, or open a package file someone sent you.'
+                        : 'No handover packages in this browser yet. In the modeller, choose File > Hand over…, or open a package file someone sent you.'}
+                    </p>
                   }
                 />
               </>
@@ -281,12 +285,10 @@ export function ViewerStart() {
                       >
                         Keep it
                       </Button>
-                      <Button
-                        className={cx(
-                          componentStyles.button,
-                          componentStyles.primary,
-                        )}
-                        isDisabled={busy}
+                      <ActionButton
+                        variant="primary"
+                        label="Remove package"
+                        disabledReason={busyReason}
                         onPress={() => {
                           void client
                             .removePackage(selected.id)
@@ -303,7 +305,7 @@ export function ViewerStart() {
                         }}
                       >
                         Remove package
-                      </Button>
+                      </ActionButton>
                     </>
                   }
                 >
@@ -311,12 +313,10 @@ export function ViewerStart() {
                 </InlineAlert>
               ) : null}
               <div className={projectStyles.actions}>
-                <Button
-                  className={cx(
-                    componentStyles.button,
-                    componentStyles.primary,
-                  )}
-                  isDisabled={busy}
+                <ActionButton
+                  variant="primary"
+                  label="Open package"
+                  disabledReason={busyReason}
                   onPress={() =>
                     void openPackage(client, {
                       packageId: selected.id,
@@ -325,14 +325,19 @@ export function ViewerStart() {
                   }
                 >
                   Open package
-                </Button>
-                <Button
-                  className={componentStyles.button}
-                  isDisabled={busy || confirmRemove}
+                </ActionButton>
+                <ActionButton
+                  label="Remove from this browser…"
+                  disabledReason={
+                    busyReason ??
+                    (confirmRemove
+                      ? 'Answer the question above first: keep the package or remove it.'
+                      : null)
+                  }
                   onPress={() => setConfirmRemove(true)}
                 >
                   Remove from this browser…
-                </Button>
+                </ActionButton>
               </div>
             </section>
           ) : null}

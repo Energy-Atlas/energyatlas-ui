@@ -11,7 +11,8 @@ right border (`src/app/layouts/LayoutsPanel.tsx`), whose table holds each layout
 Rename, Duplicate, and Delete actions; a layout is saved there by name, or from View > Layouts > Save layout…
 through a name prompt (`src/app/layouts/SaveLayoutPrompt.tsx`). `personalLayouts.ts`, `LayoutsDialog.tsx`, and
 `layoutsDialogStore.ts` are gone (`layoutsPanelStore.ts` holds the marked row and the prompt), the service addresses
-layouts by id, and agent tools no longer take a scope. Text below that mentions personal layouts, the dialog,
+layouts by id, and agent tools no longer take a scope. Review fixes from 2026-10-29 are
+[below](#review-fixes-after-decision-0033-2026-10-29). Text below that mentions personal layouts, the dialog,
 Copy to personal, or unreadable personal storage describes the stage as first built.
 
 ## The owner's decision
@@ -179,6 +180,26 @@ An independent review found nothing high-severity. Fixed on `claude/next-stages`
 - Save current layout… names both reasons when neither scope can take a layout.
 - New unit tests: the selected tab after dropped and repeated tabs, kept fields and defaults, two tabs, and storage
   failing during rename, update, and delete.
+
+## Review fixes after decision 0033 (2026-10-29)
+
+Fixed on `claude/next-stages` from a review of the Layouts panel:
+
+- A layout chosen in the Assets tree stays marked only until a layout is applied (saving and updating apply it too),
+  the chosen layout is deleted, or another project session starts (`clearFocus` in `layoutLibrary.ts`); the panel
+  then marks the applied layout again.
+- Keyboard: after Keep it, Delete layout, or Rename's Cancel or Rename, focus returns to the row's actions menu
+  (the table when the row is gone) instead of the page; Escape cancels the Rename form and the delete confirmation.
+- Updated and Created sort by time, not by their formatted text, and have no range filter.
+- The delete confirmation stacks its message above its buttons in the 320 px panel; an empty list is a wrapping line,
+  not an empty table wider than the panel.
+- A stored `layouts` value that is not a list is no longer dropped by `savedViewSchema` (so the next save erased it):
+  it becomes one unreadable entry, reported in the panel and saved back unchanged beside the readable layouts.
+- In the viewer the applied line and empty text use viewer wording, and the Default column is left out (State names
+  the handed-over default).
+
+Tests: `layoutLibrary.test.ts` (the tree's mark, a non-list layouts value kept) and `e2e/layouts.spec.ts` (marked row
+after Apply, focus after rename and delete, Escape, the stacked confirmation, sorting by time).
 
 ## Verification (2026-10-28)
 

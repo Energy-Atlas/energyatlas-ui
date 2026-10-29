@@ -24,6 +24,7 @@ import { createViewStore } from '../view/viewStore.ts'
 import { createInitialState } from '../../domain/initialState.ts'
 import type { ProjectClient } from '../service/projectClient.ts'
 import { createLayoutLibrary, type LayoutLibrary } from './layoutLibrary.ts'
+import { focusLayout, layoutsPanelStore } from './layoutsPanelStore.ts'
 import {
   applyViewSnapshot,
   captureViewSnapshot,
@@ -543,6 +544,39 @@ describe('layout library', () => {
   })
 })
 
+describe('the layout chosen in the asset tree', () => {
+  const focused = () => layoutsPanelStore.getState().focusId
+
+  it('stays marked only until a layout is applied, it is deleted, or another project opens', () => {
+    const { library } = setup()
+    library.save({ name: 'Alpha' })
+    library.save({ name: 'Beta' })
+    const alpha = saved(library)[0]!.id
+    const beta = saved(library)[1]!.id
+
+    focusLayout(alpha)
+    library.apply(beta)
+    expect(focused()).toBeNull()
+
+    focusLayout(alpha)
+    library.apply(alpha)
+    expect(focused()).toBeNull()
+
+    // Deleting another layout keeps the mark; deleting the chosen one clears it.
+    focusLayout(alpha)
+    library.duplicate(beta)
+    const copy = saved(library)[2]!.id
+    library.remove(copy)
+    expect(focused()).toBe(alpha)
+    library.remove(alpha)
+    expect(focused()).toBeNull()
+
+    focusLayout(beta)
+    library.resetForProject(null, 'another')
+    expect(focused()).toBeNull()
+  })
+})
+
 describe('keeping what others wrote', () => {
   it('keeps fields a later version added, and a default naming an unreadable layout', () => {
     const { library } = setup()
@@ -570,14 +604,32 @@ describe('keeping what others wrote', () => {
 })
 
 describe('saved layouts with the project and for the agent', () => {
-  it('keeps layouts and the default with the saved view, dropping only an unreadable optional field', () => {
+  it('keeps layouts and the default with the saved view, dropping only an unreadable default', () => {
     expect(
       parseSavedView({ tables: {}, layouts: [1], defaultLayoutId: 'a' }),
     ).toEqual({ tables: {}, layouts: [1], defaultLayoutId: 'a' })
-    expect(parseSavedView({ tables: {}, layouts: 'bad' })).toEqual({
+    expect(parseSavedView({ tables: {}, defaultLayoutId: 3 })).toEqual({
       tables: {},
     })
     expect(parseSavedView({ tables: [] })).toBeNull()
+  })
+
+  it('keeps a layouts value that is not a list aside, so saving does not erase it', () => {
+    const odd = { version: 9, items: ['from a later version'] }
+    const view = parseSavedView({ tables: {}, layouts: odd })
+    expect(view).toEqual({ tables: {}, layouts: [odd] })
+    const { library } = setup()
+    library.resetForProject(view, 'k')
+    expect(library.store.getState().project).toEqual({
+      layouts: [],
+      unreadable: [odd],
+    })
+    // Kept through a save alongside a new layout, and reported as unreadable.
+    library.save({ name: 'New' })
+    const stored = library.forSave().layouts
+    expect(stored).toHaveLength(2)
+    expect(stored[1]).toEqual(odd)
+    expect(library.projectDiffers(view)).toBe(true)
   })
 
   it('offers every layout operation as an agent tool, asking approval only to overwrite or delete', async () => {

@@ -7,6 +7,7 @@ import type { LayoutController } from '../layout/layoutController.ts'
 import type { MapLayer } from '../pages/mapLayers.ts'
 import type { TableSettings } from '../tables/tableSettings.ts'
 import type { ViewStore } from '../view/viewStore.ts'
+import { focusLayout, layoutsPanelStore } from './layoutsPanelStore.ts'
 import {
   captureViewSnapshot,
   LAYOUT_FORMAT,
@@ -192,6 +193,19 @@ export function createLayoutLibrary(options: {
 
   const missing = (id: string) => `There is no layout "${id}".`
 
+  /**
+   * A layout chosen in the asset tree stays marked in the Layouts panel only
+   * until a layout is applied (or saved or updated, which apply it), the
+   * chosen one is deleted, or another project session starts; the panel then
+   * marks the applied layout again.
+   */
+  const clearFocus = (onlyId?: string) => {
+    const { focusId } = layoutsPanelStore.getState()
+    if (focusId !== null && (onlyId === undefined || focusId === onlyId)) {
+      focusLayout(null)
+    }
+  }
+
   const fingerprint = () =>
     JSON.stringify({
       arrangement: layout.getArrangement(),
@@ -278,6 +292,7 @@ export function createLayoutLibrary(options: {
     store.setState({
       applied: { id, name: saved.name, fingerprint: fingerprint() },
     })
+    clearFocus()
     const summary =
       type === 'layouts.apply'
         ? `Applied the layout "${saved.name}".`
@@ -319,6 +334,7 @@ export function createLayoutLibrary(options: {
         { record: false },
       )
       store.setState({ applied: null })
+      clearFocus()
       const summary =
         'Reset the panels and views to the handed-over layout: the default arrangement with the table settings and map layers in the package.'
       return {
@@ -368,6 +384,7 @@ export function createLayoutLibrary(options: {
           fingerprint: fingerprint(),
         },
       })
+      clearFocus()
       const summary = `Saved the layout "${created.name}". Save the project to keep it.`
       return {
         status: 'applied',
@@ -405,6 +422,7 @@ export function createLayoutLibrary(options: {
       store.setState({
         applied: { id, name: updated.name, fingerprint: fingerprint() },
       })
+      clearFocus()
       const summary = `Updated the layout "${updated.name}" with the current panels and views.`
       return {
         status: 'applied',
@@ -524,6 +542,7 @@ export function createLayoutLibrary(options: {
           ...(applied?.id === id ? { applied: null } : {}),
         },
       )
+      clearFocus(id)
       const summary = `Deleted the layout "${saved.name}".${wasDefault ? ' The project no longer opens with a default layout.' : ''}`
       return {
         status: 'applied',
@@ -600,6 +619,7 @@ export function createLayoutLibrary(options: {
 
     resetForProject: (saved, key) => {
       sessionView = saved
+      clearFocus()
       const project = parseLayoutList(saved?.layouts)
       const defaultId = defaultFrom(saved, project)
       store.setState({

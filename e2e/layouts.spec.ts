@@ -181,6 +181,105 @@ test('renames, duplicates, and updates layouts from their rows', async ({
   await expect(layoutRow(page, 'Review copy')).toContainText('Applied')
 })
 
+test('marks a layout chosen in the tree until another is applied, and keeps focus on the row after rename and delete', async ({
+  page,
+}) => {
+  test.setTimeout(90_000)
+  await page.goto('/?fixture=complete')
+  const panel = await saveFromPanel(page, 'Alpha')
+  await saveFromPanel(page, 'Beta')
+  const current = (name: string) =>
+    panel.getByRole('row', { name: `${name} (current)` })
+  await expect(current('Beta')).toBeVisible()
+
+  // Choosing Alpha in the asset tree marks its row; applying Beta marks Beta.
+  const assetsTab = page.getByRole('tab', { name: 'Assets', exact: true })
+  if ((await assetsTab.getAttribute('aria-selected')) !== 'true') {
+    await assetsTab.click()
+  }
+  const tree = page.getByRole('treegrid', { name: 'Project assets' })
+  await tree.getByRole('row', { name: 'Alpha', exact: true }).click()
+  await page.keyboard.press('Enter')
+  await expect(current('Alpha')).toBeVisible()
+  await layoutRow(page, 'Beta')
+    .getByRole('button', { name: 'Apply the layout Beta' })
+    .click()
+  await expect(current('Beta')).toBeVisible()
+  await expect(current('Alpha')).toHaveCount(0)
+
+  // Escape cancels Rename; focus goes back to the row's actions menu.
+  const menu = (name: string) =>
+    layoutRow(page, name).getByRole('button', {
+      name: `More actions for the layout ${name}`,
+    })
+  await rowAction(page, 'Beta', 'Rename')
+  const rename = panel.getByRole('textbox', { name: /New name for/ })
+  await expect(rename).toBeFocused()
+  await page.keyboard.press('Escape')
+  await expect(rename).toHaveCount(0)
+  await expect(menu('Beta')).toBeFocused()
+  // Cancel and a saved rename do the same.
+  await rowAction(page, 'Beta', 'Rename')
+  await panel.getByRole('button', { name: 'Cancel' }).click()
+  await expect(menu('Beta')).toBeFocused()
+  await rowAction(page, 'Beta', 'Rename')
+  await rename.fill('Gamma')
+  await page.keyboard.press('Enter')
+  await expect(menu('Gamma')).toBeFocused()
+
+  // Keep it and Escape keep the layout and return to its menu.
+  await rowAction(page, 'Gamma', 'Delete')
+  await expect(panel.getByRole('button', { name: 'Keep it' })).toBeFocused()
+  await page.keyboard.press('Enter')
+  await expect(menu('Gamma')).toBeFocused()
+  await rowAction(page, 'Gamma', 'Delete')
+  await expect(panel.getByRole('button', { name: 'Keep it' })).toBeFocused()
+  await page.keyboard.press('Escape')
+  await expect(panel.getByRole('button', { name: 'Keep it' })).toHaveCount(0)
+  await expect(menu('Gamma')).toBeFocused()
+  // The message sits above its buttons in the narrow panel.
+  await rowAction(page, 'Gamma', 'Delete')
+  const message = panel.getByText('The layout leaves this project')
+  const keep = panel.getByRole('button', { name: 'Keep it' })
+  const messageBox = await message.boundingBox()
+  const keepBox = await keep.boundingBox()
+  expect(keepBox!.y).toBeGreaterThan(messageBox!.y + messageBox!.height - 1)
+  // Once deleted, focus stays in the table.
+  await panel.getByRole('button', { name: 'Delete layout' }).click()
+  await expect(layoutRow(page, 'Gamma')).toHaveCount(0)
+  await expect
+    .poll(() =>
+      page.evaluate(
+        () =>
+          document.activeElement?.closest('[role="grid"]')?.ariaLabel ?? null,
+      ),
+    )
+    .toBe('Layouts')
+})
+
+test('sorts the Updated column by time, not by its text', async ({ page }) => {
+  test.setTimeout(60_000)
+  // Two layouts saved an hour apart, the later one at an earlier clock text.
+  await page.clock.install({ time: new Date('2026-10-29T09:30:00') })
+  await page.goto('/?fixture=complete')
+  await saveFromPanel(page, 'Morning')
+  await page.clock.setSystemTime(new Date('2026-10-29T10:05:00'))
+  await saveFromPanel(page, 'Later')
+  const grid = layoutsPanel(page).getByRole('grid', { name: 'Layouts' })
+  const header = grid.getByRole('columnheader', { name: /^Updated/ })
+  await header.scrollIntoViewIfNeeded()
+  await header.click()
+  const names = () =>
+    grid
+      .getByRole('rowheader')
+      .evaluateAll((cells) =>
+        cells.map((cell) => cell.textContent?.replace(' (current)', '').trim()),
+      )
+  await expect.poll(names).toEqual(['Morning', 'Later'])
+  await header.click()
+  await expect.poll(names).toEqual(['Later', 'Morning'])
+})
+
 test('saves from the View menu prompt and keeps layouts and the default with the project', async ({
   page,
 }) => {

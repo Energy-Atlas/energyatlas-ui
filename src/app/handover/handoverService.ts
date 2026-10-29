@@ -104,19 +104,23 @@ export function createHandoverService(options: {
         return store.getState()
       }
       store.setState({ busy: true, issues: [], last: null })
-      const handed = await client.handOver(source, {
-        viewUnsaved: viewUnsaved(),
-      })
-      store.setState({
-        busy: false,
-        last: handed.package
-          ? { package: handed.package, storeError: handed.storeError }
-          : null,
-        issues:
-          handed.result.outcome.status === 'rejected'
-            ? handed.result.outcome.issues
-            : [],
-      })
+      try {
+        const handed = await client.handOver(source, {
+          viewUnsaved: viewUnsaved(),
+        })
+        store.setState({
+          last: handed.package
+            ? { package: handed.package, storeError: handed.storeError }
+            : null,
+          issues:
+            handed.result.outcome.status === 'rejected'
+              ? handed.result.outcome.issues
+              : [],
+        })
+      } finally {
+        // A failed request must not leave Hand over unavailable for good.
+        store.setState({ busy: false })
+      }
       return store.getState()
     },
     download(pkg, source = 'manual') {

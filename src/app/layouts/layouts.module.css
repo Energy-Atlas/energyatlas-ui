@@ -66,3 +66,17 @@
   display: inline-flex;
   gap: var(--space-1);
 }
+
+/* The delete confirmation in the 320 px side panel: the message takes the
+   full width and the buttons go under it, not beside it. */
+.panel .stackedAlert {
+  grid-template-columns: auto minmax(0, 1fr);
+}
+
+.panel .stackedAlert > :last-child {
+  grid-column: 2;
+}
+
+.emptyText {
+  overflow-wrap: anywhere;
+}

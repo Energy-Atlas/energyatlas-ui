@@ -192,6 +192,10 @@ test('hands over, lists, opens, and explores a package view only', async ({
     row.getByRole('button', { name: 'Apply the layout Results first' }),
   ).toBeVisible()
   await expect(row.getByRole('checkbox')).toHaveCount(0)
+  // The default cannot be chosen here, so its column is left out.
+  await expect(
+    panel.getByRole('columnheader', { name: /^Default/ }),
+  ).toHaveCount(0)
   await expect(panel.getByRole('textbox', { name: 'Layout name' })).toHaveCount(
     0,
   )
@@ -332,6 +336,74 @@ test('shows loading, empty, and warning states; nothing offers a run', async ({
   )
   await expect(results.getByRole('button', { name: /^Run/ })).toHaveCount(0)
   expect(await seriousViolations(page)).toEqual([])
+
+  // A package without layouts: a wrapping empty state in viewer wording.
+  const layouts = await openLayouts(page)
+  await expect(layouts).toContainText(
+    'No handed-over layout is applied; the panels are arranged as the package opened.',
+  )
+  const empty = layouts.getByText(
+    'This package was handed over without saved layouts.',
+  )
+  await expect(empty).toBeVisible()
+  await expect(layouts.getByRole('grid')).toHaveCount(0)
+  const emptyBox = await empty.boundingBox()
+  const layoutsBox = await layouts.boundingBox()
+  expect(emptyBox!.x + emptyBox!.width).toBeLessThanOrEqual(
+    layoutsBox!.x + layoutsBox!.width + 1,
+  )
+
+  // An asset without a page in the viewer says so instead of doing nothing.
+  const assetsTab = tab(page, 'Assets')
+  if ((await assetsTab.getAttribute('aria-selected')) !== 'true') {
+    await assetsTab.click()
+  }
+  const tree = page.getByRole('treegrid', { name: 'Project assets' })
+  const rules = tree.getByRole('row', { name: 'Attribute mapping rules' })
+  await rules.click()
+  await page.keyboard.press('Enter')
+  await expect(page.getByTestId('status-notice')).toContainText(
+    'Attribute mapping rules has no page',
+  )
+  await rules.dblclick()
+  await expect(rules).toHaveAttribute('aria-selected', 'true')
+})
+
+test('hands over again after a handover', async ({ page }) => {
+  test.setTimeout(90_000)
+  await page.goto('/?fixture=complete')
+  await handOver(page)
+  await page.keyboard.press('Escape')
+  await expect(page.getByRole('dialog', { name: 'Handed over' })).toBeHidden()
+  const file = await openMenu(page, 'File')
+  const item = file.getByRole('menuitem', { name: 'Hand over…' })
+  await expect(item).not.toHaveAttribute('aria-disabled', 'true')
+  await item.click()
+  const dialog = page.getByRole('dialog', { name: 'Hand over this project' })
+  await dialog.getByRole('button', { name: 'Hand over the project' }).click()
+  await expect(page.getByRole('dialog', { name: 'Handed over' })).toBeVisible()
+})
+
+test('shows an unreadable catalog without an empty search', async ({
+  page,
+}) => {
+  await page.addInitScript(() => {
+    localStorage.setItem('eaui.handovers.v1', '{not json')
+  })
+  await page.goto('/viewer.html')
+  await expect(page.getByRole('main')).toContainText(
+    'The handover catalog stored in this browser could not be read.',
+  )
+  await expect(page.getByRole('main')).toContainText(
+    'No packages can be listed until the catalog is read.',
+  )
+  await expect(page.getByText(/Nothing matches/)).toHaveCount(0)
+  await expect(page.getByRole('button', { name: 'Clear search' })).toHaveCount(
+    0,
+  )
+  await expect(
+    page.getByRole('button', { name: 'Open package file…' }),
+  ).toBeVisible()
 })
 
 test('keeps the package for download when browser storage is full', async ({

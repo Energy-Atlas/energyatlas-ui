@@ -866,13 +866,22 @@ export const projectStateSchema: z.ZodType<WorkbenchState, unknown> =
  * The views saved beside the model: table arrangements (decision 0029), the
  * map's layer stack (decision 0031), and saved layouts with the one the
  * project opens with (decision 0032). Projects saved before a field existed
- * lack it, which means none; an unreadable optional field is dropped rather
- * than blocking the project. The UI validates the contents when it applies
- * them (`parseLayoutList` in `src/app/layouts/savedLayout.ts`).
+ * lack it, which means none; an unreadable layer stack or default is dropped
+ * rather than blocking the project, and unreadable layouts are kept aside.
+ * The UI validates the contents when it applies them (`parseLayoutList` in
+ * `src/app/layouts/savedLayout.ts`).
  */
 export const savedViewSchema = z.object({
   tables: z.record(z.string(), z.unknown()),
   layers: z.array(z.unknown()).optional().catch(undefined),
-  layouts: z.array(z.unknown()).optional().catch(undefined),
+  // A layouts value that is not a list is kept, not dropped (so the next
+  // save cannot erase it): it becomes one unreadable entry, which the
+  // Layouts panel reports and saves back unchanged with the readable ones.
+  layouts: z
+    .unknown()
+    .transform((value): unknown[] | undefined =>
+      value === undefined ? undefined : Array.isArray(value) ? value : [value],
+    )
+    .optional(),
   defaultLayoutId: z.string().min(1).nullable().optional().catch(undefined),
 })

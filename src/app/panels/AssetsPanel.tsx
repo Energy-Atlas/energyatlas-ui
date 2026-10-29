@@ -30,6 +30,7 @@ import { capabilities } from '../../domain/capabilities.ts'
 import type { AssetKind } from '../../domain/types.ts'
 import { useServices, useWorkbenchSnapshot } from '../WorkbenchContext.tsx'
 import { CapabilityBadge, StatusTag } from '../components/CapabilityBadge.tsx'
+import { useRecordBlocked } from '../components/ActionButton.tsx'
 import { PanelHeader } from '../components/PanelHeader.tsx'
 import { cx } from '../cx.ts'
 import { useStore } from 'zustand'
@@ -110,14 +111,27 @@ export function AssetsPanel() {
   )
   const selectedId =
     selection.entityType === 'asset' ? (selection.ids[0] ?? null) : null
+  const recordBlocked = useRecordBlocked()
 
   const openFirstRelatedPage = (assetId: string) => {
     const asset = assets[assetId]
+    if (!asset) return
+    const related = relatedPages(asset.kind)
     // The viewer opens only the pages it shows (decision 0032, stage 5).
-    const page = asset
-      ? relatedPages(asset.kind).find((candidate) => layout.hasPage(candidate))
-      : undefined
-    if (page) layout.openPage(page)
+    const page = related.find((candidate) => layout.hasPage(candidate))
+    if (page) {
+      layout.openPage(page)
+      return
+    }
+    // Groups open and close instead; any other asset says why nothing opens.
+    if (asset.kind === 'group') return
+    recordBlocked(
+      `Open ${asset.name}`,
+      related.length > 0
+        ? `${asset.name} has no page in the viewer; its details are in Properties.`
+        : `${asset.name} has no page of its own; its details are in Properties.`,
+    )
+    showInspection()
   }
 
   return (
@@ -209,7 +223,7 @@ export function AssetsPanel() {
       </Tree>
       <p className={treeStyles.hint}>
         Choose an asset to see what it is and where it came from in Properties.
-        Press Enter to open its page.
+        Press Enter to open its page, where it has one.
       </p>
     </section>
   )

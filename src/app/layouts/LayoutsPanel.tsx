@@ -1,5 +1,5 @@
 import { MoreHorizontal } from 'lucide-react'
-import { useId, useState } from 'react'
+import { useId, useLayoutEffect, useRef, useState } from 'react'
 import {
   Button,
   Checkbox,
@@ -62,9 +62,36 @@ export function LayoutsPanel() {
   const pendingLayout = pending ? layouts.find(pending.id) : null
   const { writable } = layouts
   const count = library.project.layouts.length
+  const panelRef = useRef<HTMLElement>(null)
+  // The row whose actions menu takes focus back once a rename or delete
+  // closes, so focus never drops to the page (else the row, else the table).
+  const returnFocus = useRef<string | null>(null)
+  useLayoutEffect(() => {
+    const id = returnFocus.current
+    const panel = panelRef.current
+    if (pending !== null || id === null || !panel) return
+    returnFocus.current = null
+    const actions = [
+      ...panel.querySelectorAll<HTMLElement>('[data-layout-actions]'),
+    ].find((each) => each.dataset.layoutActions === id)
+    const target =
+      actions?.querySelector<HTMLElement>('button[aria-haspopup]') ??
+      actions?.closest<HTMLElement>('[role="row"]') ??
+      panel.querySelector<HTMLElement>('[role="grid"]') ??
+      panel.querySelector<HTMLElement>('input')
+    target?.focus()
+  }, [pending])
+  const close = (id: string) => {
+    returnFocus.current = id
+    setPending(null)
+  }
 
   return (
-    <section className={styles.panel} aria-labelledby={headingId}>
+    <section
+      ref={panelRef}
+      className={styles.panel}
+      aria-labelledby={headingId}
+    >
       <PanelHeader
         title="Layouts"
         headingId={headingId}
@@ -87,45 +114,72 @@ export function LayoutsPanel() {
           key={pendingLayout.id}
           library={layouts}
           layout={pendingLayout}
-          onDone={() => setPending(null)}
+          onDone={() => close(pendingLayout.id)}
         />
       ) : null}
       {pending && pendingLayout && pending.mode === 'delete' ? (
-        <InlineAlert
-          tone="warning"
-          title={`Delete "${pendingLayout.name}"?`}
-          actions={
-            <>
-              <Button
-                className={componentStyles.button}
-                // The safe choice takes focus, so Enter twice never deletes.
-                autoFocus
-                onPress={() => setPending(null)}
-              >
-                Keep it
-              </Button>
-              <Button
-                className={cx(componentStyles.button, componentStyles.primary)}
-                onPress={() => {
-                  layouts.remove(pendingLayout.id)
-                  setPending(null)
-                }}
-              >
-                Delete layout
-              </Button>
-            </>
-          }
+        <div
+          onKeyDown={(event) => {
+            // Escape keeps the layout, as in a dialog.
+            if (event.key !== 'Escape') return
+            event.stopPropagation()
+            close(pendingLayout.id)
+          }}
         >
-          The layout leaves this project when you save it. This cannot be
-          undone.
-        </InlineAlert>
+          <InlineAlert
+            tone="warning"
+            // The narrow side panel stacks the buttons under the message.
+            className={styles.stackedAlert}
+            title={`Delete "${pendingLayout.name}"?`}
+            actions={
+              <>
+                <Button
+                  className={componentStyles.button}
+                  // The safe choice takes focus, so Enter twice never deletes.
+                  autoFocus
+                  onPress={() => close(pendingLayout.id)}
+                >
+                  Keep it
+                </Button>
+                <Button
+                  className={cx(
+                    componentStyles.button,
+                    componentStyles.primary,
+                  )}
+                  onPress={() => {
+                    layouts.remove(pendingLayout.id)
+                    close(pendingLayout.id)
+                  }}
+                >
+                  Delete layout
+                </Button>
+              </>
+            }
+          >
+            The layout leaves this project when you save it. This cannot be
+            undone.
+          </InlineAlert>
+        </div>
       ) : null}
-      <LayoutTable
-        library={layouts}
-        markedId={focusId ?? library.applied?.id ?? null}
-        onRename={(id) => setPending({ mode: 'rename', id })}
-        onDelete={(id) => setPending({ mode: 'delete', id })}
-      />
+      {count === 0 ? (
+        // A wrapping line, not an empty table wider than the side panel.
+        <p className={cx(componentStyles.empty, styles.emptyText)}>
+          {writable
+            ? 'No layouts yet. Name the current panels and views above and save them.'
+            : 'This package was handed over without saved layouts. Reset to handed-over layout returns to the arrangement it opened with.'}
+        </p>
+      ) : (
+        <LayoutTable
+          library={layouts}
+          markedId={
+            focusId !== null && layouts.find(focusId)
+              ? focusId
+              : (library.applied?.id ?? null)
+          }
+          onRename={(id) => setPending({ mode: 'rename', id })}
+          onDelete={(id) => setPending({ mode: 'delete', id })}
+        />
+      )}
     </section>
   )
 }
@@ -140,7 +194,9 @@ function AppliedLine({ library }: { library: LayoutLibrary }) {
   if (!applied) {
     return (
       <p className={componentStyles.muted}>
-        No saved layout is applied in this project yet.
+        {library.writable
+          ? 'No saved layout is applied in this project yet.'
+          : 'No handed-over layout is applied; the panels are arranged as the package opened.'}
       </p>
     )
   }
@@ -284,6 +340,11 @@ function RenameForm({
         }}
         maxLength={MAX_LAYOUT_NAME}
         autoFocus
+        // Escape cancels, as in a dialog.
+        onKeyDown={(event) => {
+          if (event.key === 'Escape') onDone()
+          else event.continuePropagation()
+        }}
       >
         <Label className={formStyles.label}>
           New name for &ldquo;{layout.name}&rdquo;
@@ -343,7 +404,7 @@ function LayoutTable({
       action: true,
       width: writable ? 112 : 72,
       render: (layout) => (
-        <span className={styles.rowActions}>
+        <span className={styles.rowActions} data-layout-actions={layout.id}>
           <ActionButton
             label={`Apply the layout ${layout.name}`}
             disabledReason={null}
@@ -401,24 +462,28 @@ function LayoutTable({
         </span>
       ),
     },
-    {
-      id: 'default',
-      header: 'Default',
-      value: (layout) => (snapshot.defaultId === layout.id ? 'Yes' : 'No'),
-      type: 'enum',
-      render: writable
-        ? (layout) => (
-            <Checkbox
-              className={formStyles.checkbox}
-              aria-label={`Open the project with the layout ${layout.name}`}
-              isSelected={snapshot.defaultId === layout.id}
-              onChange={(selected) =>
-                library.setDefault(selected ? layout.id : null)
-              }
-            />
-          )
-        : undefined,
-    },
+    // The viewer cannot choose the default, so State names it there instead.
+    ...(writable
+      ? [
+          {
+            id: 'default',
+            header: 'Default',
+            value: (layout: SavedLayout) =>
+              snapshot.defaultId === layout.id ? 'Yes' : 'No',
+            type: 'enum' as const,
+            render: (layout: SavedLayout) => (
+              <Checkbox
+                className={formStyles.checkbox}
+                aria-label={`Open the project with the layout ${layout.name}`}
+                isSelected={snapshot.defaultId === layout.id}
+                onChange={(selected) =>
+                  library.setDefault(selected ? layout.id : null)
+                }
+              />
+            ),
+          },
+        ]
+      : []),
     {
       id: 'state',
       header: 'State',
@@ -427,26 +492,20 @@ function LayoutTable({
           ? changed
             ? 'Applied, changed since'
             : 'Applied'
-          : null,
+          : !writable && layout.id === snapshot.defaultId
+            ? 'Handed-over default'
+            : null,
       type: 'enum',
       empty: '',
     },
-    {
-      id: 'updated',
-      header: 'Updated',
-      value: (layout) => formatDateTime(layout.updatedAt),
-    },
+    dateColumn('updated', 'Updated', (layout) => layout.updatedAt),
     {
       id: 'savedBy',
       header: 'Saved by',
       value: (layout) => SOURCE_LABELS[layout.createdBy],
       type: 'enum',
     },
-    {
-      id: 'created',
-      header: 'Created',
-      value: (layout) => formatDateTime(layout.createdAt),
-    },
+    dateColumn('created', 'Created', (layout) => layout.createdAt),
   ]
 
   return (
@@ -459,11 +518,31 @@ function LayoutTable({
       rowKey={(layout) => layout.id}
       currentKey={markedId}
       exportable={false}
-      emptyText={
-        writable
-          ? 'No layouts yet. Name the current panels and views above and save them.'
-          : 'The package was handed over without saved layouts.'
-      }
+      emptyText="No layouts."
     />
   )
+}
+
+/**
+ * A date column that sorts by the time itself, not its formatted text, and
+ * shows the date and time. A range filter over timestamps would mean
+ * nothing, so it has none.
+ */
+function dateColumn(
+  id: string,
+  header: string,
+  at: (layout: SavedLayout) => string,
+): DataColumn<SavedLayout> {
+  return {
+    id,
+    header,
+    value: (layout) => {
+      const time = Date.parse(at(layout))
+      return Number.isNaN(time) ? null : time
+    },
+    type: 'number',
+    grouping: false,
+    filterable: false,
+    render: (layout) => formatDateTime(at(layout)),
+  }
 }
