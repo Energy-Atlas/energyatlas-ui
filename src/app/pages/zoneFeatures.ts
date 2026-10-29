@@ -95,7 +95,8 @@ export function slabFeatures(
  * building in its colour (`zone`); with a floor or zone selected, the
  * selected floor solid (`floor`), the selected zone highlighted and the
  * floor's other zones muted (`selected`, `muted`), and the building's other
- * floors hollow (`hollow`).
+ * floors hollow (`hollow`). A selected whole-building zone is highlighted on
+ * every storey (`selected`), with the building's other zones muted.
  */
 export type CellState = 'zone' | 'floor' | 'selected' | 'muted' | 'hollow'
 
@@ -130,12 +131,13 @@ export type ZoneOverlay = {
   planFloor: number
   /**
    * The building and floors a selected floor or zone is on, and the level
-   * selected; null when buildings (or whole-building zones) are selected.
+   * selected (`building zone` for a whole-building zone, on every floor);
+   * null when buildings are selected.
    */
   focus: {
     buildingId: string
     floors: number[]
-    level: 'floor' | 'zone'
+    level: 'floor' | 'zone' | 'building zone'
   } | null
   /** Whether some floors are drawn hollow in 3D. */
   hollow: boolean
@@ -218,6 +220,13 @@ export function zoneOverlay(
     }
     buildingIds.push(buildingId)
     const focusFloors = floorsByBuilding.get(buildingId)
+    // A selected whole-building zone is on no single floor: it is
+    // highlighted on every storey, and nothing is hollow.
+    const wholeSelected =
+      !focusFloors &&
+      zoning.zones.some(
+        (zone) => zone.floor === null && selectedZones.has(zone.id),
+      )
     for (const zone of zoning.zones) {
       kinds.add(zone.kind)
       const floors =
@@ -226,15 +235,19 @@ export function zoneOverlay(
           : zoning.floors.filter((floor) => floor.number === zone.floor)
       for (const floor of floors) {
         const onFocus = focusFloors?.has(floor.number) ?? false
-        const cellState: CellState = !focusFloors
-          ? 'zone'
-          : !onFocus
-            ? 'hollow'
-            : !zoneLevel
-              ? 'floor'
-              : selectedZones.has(zone.id)
-                ? 'selected'
-                : 'muted'
+        const cellState: CellState = wholeSelected
+          ? selectedZones.has(zone.id)
+            ? 'selected'
+            : 'muted'
+          : !focusFloors
+            ? 'zone'
+            : !onFocus
+              ? 'hollow'
+              : !zoneLevel
+                ? 'floor'
+                : selectedZones.has(zone.id)
+                  ? 'selected'
+                  : 'muted'
         if (cellState === 'hollow') hollow = true
         else {
           const slots = legend.get(zone.kind) ?? new Set<number>()
@@ -270,6 +283,18 @@ export function zoneOverlay(
       : null
   const focusFloors = focusBuilding ? floorsByBuilding.get(focusBuilding) : null
   const floors = focusFloors ? [...focusFloors].sort((a, b) => a - b) : []
+  // A whole-building zone selected: its building, on every floor.
+  const wholeZone =
+    focusBuilding && !focusFloors && zoneLevel
+      ? (buildingZoning(state, focusBuilding)?.zones.find(
+          (zone) => zone.floor === null && selectedZones.has(zone.id),
+        ) ?? null)
+      : null
+  const wholeFloors = wholeZone
+    ? (buildingZoning(state, focusBuilding ?? '')?.floors ?? []).map(
+        (floor) => floor.number,
+      )
+    : []
   return {
     cells: { type: 'FeatureCollection', features },
     buildingIds,
@@ -282,7 +307,13 @@ export function zoneOverlay(
             floors,
             level: zoneLevel ? 'zone' : 'floor',
           }
-        : null,
+        : focusBuilding && wholeZone
+          ? {
+              buildingId: focusBuilding,
+              floors: wholeFloors,
+              level: 'building zone',
+            }
+          : null,
     hollow,
     kinds: [...kinds],
     legend: [...legend].map(([kind, slots]) => ({

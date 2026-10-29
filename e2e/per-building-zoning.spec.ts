@@ -243,14 +243,14 @@ test('nested selection on the map: a click goes down a level, Escape goes up, an
     page.getByText('Floor 1 of Building 439', { exact: true }),
   ).toBeVisible()
   await canvas.click({ position: { x, y } })
-  await expect(notice).toContainText('Selected 1 floor(s).')
+  await expect(notice).toContainText('Selected floor 1 of Building 439.')
   await expect(
     properties(page).getByText(/^Floor B0439:F1 of building B0439/),
   ).toBeVisible()
   await expect(legend).toContainText('Floor 1 of B0439 selected.')
   // On the selected floor, a click selects the zone under the pointer.
   await canvas.click({ position: { x, y } })
-  await expect(notice).toContainText('Selected 1 zone(s).')
+  await expect(notice).toContainText(/Selected zone .+ of Building 439\./)
   await expect(
     properties(page).getByText(/^Zone B0439:F1:Z\d of building B0439/),
   ).toBeVisible()
@@ -303,7 +303,7 @@ test('in 3D a selected floor is solid among hollow floors, and a click on it sel
   }
   // The building is selected: a click selects the storey hit.
   await canvas.click({ position: point })
-  await expect(notice).toContainText('Selected 1 floor(s).')
+  await expect(notice).toContainText(/Selected floor \d+ of Building 439\./)
   await expect(
     properties(page).getByText(/^Floor B0439:F\d of building B0439/),
   ).toBeVisible()
@@ -311,7 +311,7 @@ test('in 3D a selected floor is solid among hollow floors, and a click on it sel
   await expect(legend).toContainText('Hollow floors')
   // The same spot is now on the selected floor: a click selects a zone.
   await canvas.click({ position: point })
-  await expect(notice).toContainText('Selected 1 zone(s).')
+  await expect(notice).toContainText(/Selected zone .+ of Building 439\./)
   await expect(
     properties(page).getByText(/^Zone B0439:F\d:Z\d of building B0439/),
   ).toBeVisible()
@@ -327,6 +327,128 @@ test('in 3D a selected floor is solid among hollow floors, and a click on it sel
     properties(page).getByText(/^Floor B0439:F3 of building B0439/),
   ).toBeVisible()
   expect(await seriousViolations(page)).toEqual([])
+})
+
+test('Shift-click adds a zone on the map, the hover label follows the selection, and keys that change nothing say why', async ({
+  page,
+}) => {
+  test.setTimeout(120_000)
+  await page.goto('/?fixture=complete')
+  await expect(page.getByRole('main', { name: 'Workspace' })).toBeVisible()
+  await selectBuilding(page, 'B0439')
+  await properties(page)
+    .getByRole('button', { name: 'Show Building 439 and its zones on the Map' })
+    .click()
+  const notice = page.getByTestId('status-notice')
+  await expect(notice).toContainText('Zoomed the map to 1 selected building')
+  const { canvas, x, y } = await framedPoint(page)
+  await canvas.hover({ position: { x, y } })
+  const floorLabel = page.getByText('Floor 1 of Building 439', { exact: true })
+  await expect(floorLabel).toBeVisible()
+  await canvas.click({ position: { x, y } })
+  await expect(notice).toContainText(/Selected (1 floor\(s\)|floor 1 of)/)
+  // Without moving, the label now names the zone a click would select.
+  await expect(floorLabel).toBeHidden()
+  await expect(page.getByText(/^.+, Building 439$/)).toBeVisible()
+  await canvas.click({ position: { x, y } })
+  await expect(notice).toContainText(/Selected (1 zone\(s\)|zone .+ of)/)
+
+  // Find another zone of the floor: with Shift held, its label adds it.
+  const adds = page.getByText(/, Building 439 and 1 more$/)
+  let spot: { x: number; y: number } | null = null
+  for (const dx of [-120, 120, -80, 80, -40, 40, 0]) {
+    for (const dy of [0, -60, 60, -30, 30]) {
+      if (dx === 0 && dy === 0) continue
+      const position = { x: x + dx, y: y + dy }
+      await canvas.hover({ position, modifiers: ['Shift'] })
+      if (await adds.isVisible()) {
+        spot = position
+        break
+      }
+    }
+    if (spot) break
+  }
+  if (!spot) throw new Error('No other zone of floor 1 was found on screen.')
+  // Shift-clicks reach the selection (box zoom is off).
+  await canvas.click({ position: spot, modifiers: ['Shift'] })
+  await expect(notice).toContainText('Selected 2 zone(s).')
+  await expect(
+    page.getByText(/^Remove .+, Building 439 from the selection$/),
+  ).toBeVisible()
+  await canvas.click({ position: spot, modifiers: ['Shift'] })
+  await expect(notice).toContainText(/Selected (1 zone\(s\)|zone .+ of)/)
+
+  // Page Up stops at the top floor and says so.
+  await canvas.focus()
+  await page.keyboard.press('Escape')
+  await expect(notice).toContainText(/Selected (1 floor\(s\)|floor 1 of)/)
+  for (const floor of [2, 3, 4]) {
+    await page.keyboard.press('PageUp')
+    await expect(
+      properties(page).getByText(
+        new RegExp(`^Floor B0439:F${floor} of building B0439`),
+      ),
+    ).toBeVisible()
+  }
+  await page.keyboard.press('PageUp')
+  await expect(notice).toContainText(
+    'Floor 4 is the top floor of Building 439.',
+  )
+  // A building has no floor to step from.
+  await page.keyboard.press('Escape')
+  await expect(notice).toContainText('Selected 1 building(s).')
+  await page.keyboard.press('PageDown')
+  await expect(notice).toContainText(
+    'Select a floor first: click the selected building, or choose one in its Floors table.',
+  )
+})
+
+test('a selected whole-building zone is highlighted on every storey in 3D, and clicks and keys that cannot go further say so', async ({
+  page,
+}) => {
+  test.setTimeout(120_000)
+  await page.goto('/?fixture=complete')
+  await expect(page.getByRole('main', { name: 'Workspace' })).toBeVisible()
+  await selectBuilding(page, 'B0464')
+  await properties(page)
+    .getByRole('button', {
+      name: 'Show the zones of Building 464 in 3D on the Map',
+    })
+    .click()
+  const notice = page.getByTestId('status-notice')
+  await expect(notice).toContainText('Zoomed the map to 1 selected building')
+  const legend = page.getByTestId('zone-legend')
+  await expect(legend).toContainText('Whole building')
+  const canvas = page
+    .locator('canvas.maplibregl-canvas')
+    .filter({ visible: true })
+  const box = await canvas.boundingBox()
+  if (!box) throw new Error('The map canvas is not on screen.')
+  const point = {
+    x: 64 + (box.width - 64 - 232) / 2,
+    y: 120 + (box.height - 120 - 48) / 2,
+  }
+  await canvas.click({ position: point })
+  await expect(notice).toContainText(/Selected (1 floor\(s\)|floor \d+ of)/)
+  await canvas.click({ position: point })
+  await expect(notice).toContainText(/Selected (1 zone\(s\)|zone .+ of)/)
+  await expect(
+    properties(page).getByText(/^Zone B0464:Z1 of building B0464/),
+  ).toBeVisible()
+  await expect(legend).toContainText(
+    'Whole-building zone of B0464 selected, on every floor.',
+  )
+  await expect(legend).not.toContainText('Hollow floors')
+  // Nothing is smaller than the whole building: a click and the keys say so.
+  await canvas.click({ position: point })
+  await expect(notice).toContainText(
+    /spans all of Building 464, so there is no smaller zone to select/,
+  )
+  await canvas.focus()
+  await page.keyboard.press('PageUp')
+  await expect(notice).toContainText(/spans every floor of Building 464/)
+  await page.keyboard.press('Escape')
+  await expect(notice).toContainText('Selected 1 building(s).')
 })
 
 test('states: a drawn-zones fallback explained before and after the rerun, and a refusal on its field', async ({

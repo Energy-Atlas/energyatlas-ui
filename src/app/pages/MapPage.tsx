@@ -70,8 +70,10 @@ import {
 import { useBasemap } from './useBasemap.ts'
 import { useTerrain } from './useTerrain.ts'
 import {
+  clickNotice,
   clickTarget,
-  describeTarget,
+  describeClick,
+  stepNotice,
   stepTarget,
   upTarget,
   type MapHit,
@@ -101,6 +103,14 @@ import {
 const POINT_KINDS = new Set(['transformer', 'utilityPv', 'bus'])
 
 type Hover = { id: string; label: string; x: number; y: number }
+
+/** Where the pointer last was over the map, and what it was over. */
+type Pointer = {
+  features: MapGeoJSONFeature[]
+  x: number
+  y: number
+  shift: boolean
+}
 
 function baseStyle(background: string): StyleSpecification {
   // Shown while the basemap is off, loading, or unavailable (decision 0012).
@@ -221,7 +231,9 @@ export function MapPage() {
   }, [claimWorked])
   const labelLayerId = useMemo(() => firstSymbolLayerId(mapStyle), [mapStyle])
   const handledFocusRequest = useRef(0)
-  const [hover, setHover] = useState<Hover | null>(null)
+  // The hover label is derived from the last pointer hits on every render,
+  // so it follows a selection changed by a click or a key without a move.
+  const [pointer, setPointer] = useState<Pointer | null>(null)
 
   // Metrics read buildings, results, and scenarios only, so a selection or a
   // job's progress does not rebuild (and re-upload) the map's sources.
@@ -325,21 +337,40 @@ export function MapPage() {
     // Choosing a map object shows it in Properties (decision 0030).
     showInspection()
   }
+  /** Says in the status bar and Messages why a click or key changed nothing. */
+  const reportNotice = (title: string, message: string) => {
+    workbench.record({
+      type: 'view.mapSelection',
+      title,
+      status: 'rejected',
+      summary: '',
+      issues: [{ path: 'selection', message }],
+    })
+  }
   // Escape goes up a level; Page Up and Page Down step between floors.
   const onMapKey = (event: KeyboardEvent<HTMLDivElement>) => {
     const project = { selection, buildings, zoning }
+    const delta =
+      event.key === 'PageUp' ? 1 : event.key === 'PageDown' ? -1 : null
     const target =
       event.key === 'Escape'
         ? upTarget(project)
-        : event.key === 'PageUp'
-          ? stepTarget(project, 1)
-          : event.key === 'PageDown'
-            ? stepTarget(project, -1)
-            : undefined
+        : delta !== null
+          ? stepTarget(project, delta)
+          : undefined
     if (target === undefined) return
     event.preventDefault()
     event.stopPropagation()
-    if (target === null) return
+    if (target === null) {
+      const notice = delta !== null ? stepNotice(project, delta) : null
+      if (notice) {
+        reportNotice(
+          delta === 1 ? 'Select the floor above' : 'Select the floor below',
+          notice,
+        )
+      }
+      return
+    }
     if (target === 'clear') {
       workbench.execute({ type: 'selection.clear', input: {} })
     } else {
@@ -577,6 +608,31 @@ export function MapPage() {
     }
   }, [loaded, order, mapStyle])
 
+  /** The hover label: what a click at the pointer would select. */
+  const hoverOf = (at: Pointer): Hover | null => {
+    const feature = at.features[0]
+    const id: unknown = feature?.properties?.id
+    if (typeof id !== 'string') return null
+    const project = { selection, buildings, zoning }
+    const { target, label: named } = describeClick(
+      project,
+      hitsOf(at.features),
+      { additive: at.shift, planFloor },
+    )
+    const layer = byPickId.get(feature?.layer.id ?? '')
+    const label =
+      target !== null &&
+      target !== 'clear' &&
+      target.entityType === 'building' &&
+      target.ids.length === 1 &&
+      layer?.metric &&
+      layer.values
+        ? `${id}: ${formatValue(layer.values.values[id] ?? null, layer.metric.unit)}`
+        : named || String(feature?.properties?.name ?? id)
+    return { id, label, x: at.x, y: at.y }
+  }
+  const hover = pointer ? hoverOf(pointer) : null
+
   if (state.buildingIds.length === 0) {
     return (
       <section
@@ -623,6 +679,9 @@ export function MapPage() {
             zoom: 15,
           }}
           style={{ width: '100%', height: '100%' }}
+          // Shift-click adds to the selection (decision 0035), so Shift-drag
+          // box zoom, which swallows Shift-clicks, is off.
+          boxZoom={false}
           // 2D stays flat and north-up; 3D allows tilting.
           maxPitch={view3d ? 70 : 0}
           interactiveLayerIds={[
@@ -643,46 +702,36 @@ export function MapPage() {
             }
           }}
           onMouseMove={(event) => {
-            const feature = event.features?.[0]
-            const id: unknown = feature?.properties?.id
-            if (typeof id !== 'string') {
-              setHover(null)
-              return
-            }
             // The label names what a click would select at this level.
-            const target = clickTarget(
-              { selection, buildings, zoning },
-              hitsOf(event.features),
-              { additive: event.originalEvent.shiftKey, planFloor },
+            const features = event.features ?? []
+            setPointer(
+              features.length > 0
+                ? {
+                    features,
+                    x: event.point.x,
+                    y: event.point.y,
+                    shift: event.originalEvent.shiftKey,
+                  }
+                : null,
             )
-            const layer = byPickId.get(feature?.layer.id ?? '')
-            const named = describeTarget(
-              { selection, buildings, zoning },
-              target,
-            )
-            const label =
-              target !== null &&
-              target !== 'clear' &&
-              target.entityType === 'building' &&
-              target.ids.length === 1 &&
-              layer?.metric &&
-              layer.values
-                ? `${id}: ${formatValue(layer.values.values[id] ?? null, layer.metric.unit)}`
-                : named || String(feature?.properties?.name ?? id)
-            setHover({ id, label, x: event.point.x, y: event.point.y })
           }}
-          onMouseLeave={() => setHover(null)}
+          onMouseLeave={() => setPointer(null)}
           onClick={(event) => {
             // Nested selection (decision 0035): building, then floor, then
             // zone. An empty spot selects the map itself: Properties then
             // shows the map's own properties (decision 0030).
-            applyTarget(
-              clickTarget(
-                { selection, buildings, zoning },
-                hitsOf(event.features),
-                { additive: event.originalEvent.shiftKey, planFloor },
-              ),
-            )
+            const project = { selection, buildings, zoning }
+            const hits = hitsOf(event.features)
+            const options = {
+              additive: event.originalEvent.shiftKey,
+              planFloor,
+            }
+            const notice = clickNotice(project, hits, options)
+            if (notice) {
+              reportNotice('Select on the map', notice)
+              return
+            }
+            applyTarget(clickTarget(project, hits, options))
           }}
         >
           {/* Control options apply at creation, so remount when 3D changes. */}
@@ -1018,13 +1067,22 @@ function ZoneLegend({
       ) : null}
       {overlay.focus ? (
         <p className={styles.legendRow}>
-          {overlay.focus.level === 'zone' ? 'Zone on floor' : 'Floor'}
-          {overlay.focus.floors.length > 1 ? 's' : ''}{' '}
-          {overlay.focus.floors.join(', ')} of {overlay.focus.buildingId}{' '}
-          selected
-          {drawing === 'extruded' && overlay.hollow
-            ? '; its other floors are drawn hollow.'
-            : '.'}
+          {overlay.focus.level === 'building zone' ? (
+            <>
+              Whole-building zone of {overlay.focus.buildingId} selected, on
+              every floor.
+            </>
+          ) : (
+            <>
+              {overlay.focus.level === 'zone' ? 'Zone on floor' : 'Floor'}
+              {overlay.focus.floors.length > 1 ? 's' : ''}{' '}
+              {overlay.focus.floors.join(', ')} of {overlay.focus.buildingId}{' '}
+              selected
+              {drawing === 'extruded' && overlay.hollow
+                ? '; its other floors are drawn hollow.'
+                : '.'}
+            </>
+          )}
         </p>
       ) : null}
       {drawing === 'extruded' && overlay.hollow ? (

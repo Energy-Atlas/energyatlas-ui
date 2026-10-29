@@ -94,7 +94,7 @@ export function ZoneLayers({
               'selected',
               palette.selection,
               'muted',
-              palette.deemphasis,
+              palette.hollow.muted,
               color,
             ] as unknown as ExpressionSpecification,
             'fill-extrusion-base': ['get', 'base'],

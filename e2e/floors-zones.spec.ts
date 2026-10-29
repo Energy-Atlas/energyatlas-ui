@@ -154,7 +154,7 @@ test('zoning outdates preprocessing; a rerun draws slabs and zones shared by Pro
   })
   await zoneRow.click()
   await expect(page.getByTestId('status-notice')).toContainText(
-    'Selected 1 zone(s).',
+    'Selected zone Floor 2 perimeter 1 (south) of Building 464.',
   )
   await expect(
     panel.getByText(/^Zone B0464:F2:Z2 of building B0464/),
@@ -240,6 +240,8 @@ test('zoning outdates preprocessing; a rerun draws slabs and zones shared by Pro
 test('states: no heights yet, one zone per building, and a refused zoning on its field', async ({
   page,
 }) => {
+  // Three fixtures and a Location setup run: close to the default 30 s alone.
+  test.setTimeout(90_000)
   await page.goto('/?fixture=partway')
   await selectBuilding(page, 'B0039')
   const floorsZones = properties(page).getByRole('grid', {

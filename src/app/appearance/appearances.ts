@@ -81,9 +81,11 @@ export type DataPalette = {
   deemphasis: string
   /**
    * Floors drawn hollow around a selected floor in 3D (decision 0035): the
-   * shell's opacity and its edges' alpha, so the selected floor reads through.
+   * shell's opacity and its edges' alpha, so the selected floor reads through,
+   * and the colour of the other zones on a selected zone's floor (muted), set
+   * apart from the selection colour.
    */
-  hollow: { opacity: number; edgeAlpha: number }
+  hollow: { opacity: number; edgeAlpha: number; muted: string }
   /** Sequential ramp from low to high values. */
   sequential: readonly string[]
   noData: string
@@ -242,7 +244,7 @@ export const APPEARANCES: Record<AppearanceId, Appearance> = {
     data: {
       categorical: ['#2a78d6', '#eb6834', '#15986a'],
       deemphasis: '#898781',
-      hollow: { opacity: 0.12, edgeAlpha: 0.45 },
+      hollow: { opacity: 0.12, edgeAlpha: 0.45, muted: '#898781' },
       sequential: ['#cde2fb', '#86b6ef', '#3987e5', '#1c5cab', '#0d366b'],
       noData: '#d5dae1',
       selection: '#18202c',
@@ -294,7 +296,7 @@ export const APPEARANCES: Record<AppearanceId, Appearance> = {
     data: {
       categorical: ['#3987e5', '#d95926', '#199e70'],
       deemphasis: '#898781',
-      hollow: { opacity: 0.16, edgeAlpha: 0.5 },
+      hollow: { opacity: 0.16, edgeAlpha: 0.5, muted: '#4d4c48' },
       // The anchor flips so values near zero recede toward the dark surface.
       sequential: ['#104281', '#1c5cab', '#2a78d6', '#6da7ec', '#cde2fb'],
       noData: '#3a3f47',
@@ -350,7 +352,7 @@ export const APPEARANCES: Record<AppearanceId, Appearance> = {
     data: {
       categorical: ['#2f2f2d', '#c2410c', '#2563eb'],
       deemphasis: '#8c8c87',
-      hollow: { opacity: 0.12, edgeAlpha: 0.45 },
+      hollow: { opacity: 0.12, edgeAlpha: 0.45, muted: '#8c8c87' },
       sequential: ['#e4e4e1', '#b8b8b3', '#8a8a85', '#5c5c58', '#2f2f2d'],
       noData: '#efdccb',
       selection: '#c2410c',
@@ -405,7 +407,7 @@ export const APPEARANCES: Record<AppearanceId, Appearance> = {
     data: {
       categorical: ['#1f3a5f', '#c0503a', '#5d84ad'],
       deemphasis: '#968e80',
-      hollow: { opacity: 0.12, edgeAlpha: 0.45 },
+      hollow: { opacity: 0.12, edgeAlpha: 0.45, muted: '#968e80' },
       sequential: ['#e3e8ef', '#b4c2d4', '#7f97b4', '#4a6a91', '#1f3a5f'],
       noData: '#e9dcc8',
       selection: '#c0503a',
@@ -458,7 +460,7 @@ export const APPEARANCES: Record<AppearanceId, Appearance> = {
     data: {
       categorical: ['#0b67c2', '#0f93b0', '#1c2f45'],
       deemphasis: '#87939f',
-      hollow: { opacity: 0.12, edgeAlpha: 0.45 },
+      hollow: { opacity: 0.12, edgeAlpha: 0.45, muted: '#87939f' },
       sequential: ['#dcebf7', '#a9cdea', '#62a6d8', '#1f7cc0', '#0b4f86'],
       noData: '#e3dfd8',
       selection: '#16202a',
@@ -511,7 +513,7 @@ export const APPEARANCES: Record<AppearanceId, Appearance> = {
     data: {
       categorical: ['#6aa3e0', '#d9975b', '#5fb39a'],
       deemphasis: '#7b828a',
-      hollow: { opacity: 0.16, edgeAlpha: 0.5 },
+      hollow: { opacity: 0.16, edgeAlpha: 0.5, muted: '#464b51' },
       sequential: ['#1d3148', '#2c4d6f', '#44719b', '#6d9cc8', '#a9c8e6'],
       noData: '#3a3f46',
       selection: '#f0f2f5',

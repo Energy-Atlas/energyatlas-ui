@@ -2,8 +2,11 @@ import { describe, expect, it } from 'vitest'
 import type { WorkbenchState } from '../../domain/types.ts'
 import { buildFixture } from '../../server/fixtures.ts'
 import {
+  clickNotice,
   clickTarget,
+  describeClick,
   describeTarget,
+  stepNotice,
   stepTarget,
   upTarget,
   type MapHit,
@@ -72,6 +75,26 @@ describe('a click goes down one level at a time', () => {
       entityType: 'floor',
       ids: ['B0439:F4'],
     })
+  })
+
+  it('lets a nearer hit on another building or a grid element win over the selected floor', () => {
+    // Another building in front of the selected floor is what the click is on.
+    expect(
+      clickTarget(floors('B0439:F2'), [cell(1, 1, 'B0427'), cell(2, 3)]),
+    ).toEqual({ entityType: 'building', ids: ['B0427'] })
+    expect(
+      clickTarget(floors('B0439:F2'), [
+        cell(3, 2),
+        cell(1, 1, 'B0427'),
+        cell(2, 3),
+      ]),
+    ).toEqual({ entityType: 'floor', ids: ['B0439:F3'] })
+    expect(
+      clickTarget(zones('B0439:F2:Z3'), [
+        { kind: 'grid', id: 'T1' },
+        cell(2, 4),
+      ]),
+    ).toEqual({ entityType: 'gridElement', ids: ['T1'] })
   })
 
   it('selects another building whatever is selected', () => {
@@ -203,5 +226,64 @@ describe('hover labels name what a click selects', () => {
       'Floor 2 apartment southeast, Building 439',
     )
     expect(name(none, [])).toBe('')
+  })
+
+  it('names the item under the pointer on a Shift-click, not the first selected', () => {
+    const shift = (state: typeof none, hits: MapHit[]) =>
+      describeClick(state, hits, { additive: true }).label
+    expect(shift(floors('B0439:F2'), [cell(3, 1)])).toBe(
+      'Floor 3 of Building 439 and 1 more',
+    )
+    expect(shift(zones('B0439:F2:Z3'), [cell(2, 4)])).toBe(
+      'Floor 2 apartment southwest, Building 439 and 1 more',
+    )
+    expect(shift(floors('B0439:F2', 'B0439:F3'), [cell(3, 1)])).toBe(
+      'Remove Floor 3 of Building 439 from the selection',
+    )
+  })
+})
+
+describe('a click or key that changes nothing says why', () => {
+  it('reports the top and bottom floor, and a level with no floor to step from', () => {
+    expect(stepNotice(floors('B0439:F2'), 1)).toBeNull()
+    expect(stepNotice(floors('B0439:F4'), 1)).toBe(
+      'Floor 4 is the top floor of Building 439.',
+    )
+    expect(stepNotice(zones('B0439:F1:Z2'), -1)).toBe(
+      'Floor 1 is the bottom floor of Building 439.',
+    )
+    expect(stepNotice(building('B0439'), 1)).toBe(
+      'Select a floor first: click the selected building, or choose one in its Floors table.',
+    )
+    expect(stepNotice(zones('B0464:Z1'), -1)).toMatch(
+      /spans every floor of Building 464: choose a floor in its Floors table/,
+    )
+    expect(stepNotice(none, 1)).toMatch(
+      /^Select a building and one of its floors first/,
+    )
+  })
+
+  it('reports a selected whole-building zone clicked again, and Shift on the last item', () => {
+    const hit: MapHit = {
+      kind: 'building',
+      buildingId: 'B0464',
+      floor: 1,
+      zoneId: 'B0464:Z1',
+    }
+    expect(clickTarget(zones('B0464:Z1'), [hit])).toEqual({
+      entityType: 'zone',
+      ids: ['B0464:Z1'],
+    })
+    expect(clickNotice(zones('B0464:Z1'), [hit])).toMatch(
+      /spans all of Building 464, so there is no smaller zone to select/,
+    )
+    expect(
+      clickNotice(floors('B0439:F2'), [cell(2, 1)], { additive: true }),
+    ).toBe(
+      'Shift-click keeps the last selected floor: press Escape to select Building 439.',
+    )
+    // A click that changes the selection needs no notice.
+    expect(clickNotice(building('B0439'), [cell(2, 3)])).toBeNull()
+    expect(clickNotice(zones('B0439:F2:Z3'), [cell(2, 3)])).toBeNull()
   })
 })

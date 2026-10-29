@@ -254,7 +254,7 @@ F5: geometry less changed. Built on `claude/next-stages`; not merged, not pushed
 | Map | `MapPage.tsx`: clicks and hover go through `clickTarget`; keys on the focused map through `upTarget` and `stepTarget`; the selection outline is the whole building |
 | Cell states | `zoneOverlay` in `zoneFeatures.ts`: each cell is `zone`, `floor`, `selected`, `muted`, or `hollow`; `focus` and `hollow` replace the cut; `selectedFloorsByBuilding`, `floorNumberOf` |
 | 3D drawing | `ZoneLayers.tsx`: `zones:extrusion` (solid cells: zone colours, the selected zone in the selection colour, other zones of its floor muted), then the edge layer, then `zones:hollow` (a faint shell); `ZoneEdgeLayer.tsx` draws four edge styles |
-| Tokens | `hollow: { opacity, edgeAlpha }` in every appearance's data palette (`appearances.ts`) |
+| Tokens | `hollow: { opacity, edgeAlpha, muted }` in every appearance's data palette (`appearances.ts`; `muted` added by the review fixes) |
 | Agent | the Zoning cases in 3D session ends by selecting B0439, its floor 2, and a zone on it, through `selection.set` |
 
 **Nested selection.** On the map a click on an unselected building selects it. With a building selected, a click on
@@ -269,7 +269,7 @@ and the agent still select floors and zones directly. Hover labels name what a c
 
 **Keyboard.** With the map focused, Escape goes up a level (zone to its floor, floor to its building, building to
 nothing, a whole-building zone to its building), and with a floor or zone selected Page Up and Page Down select the
-floor above or below (they stop at the top and bottom). MapLibre's own keys (arrows, Shift+arrows, plus and minus) and
+floor above or below (they stop at the top and bottom and say so). MapLibre's own keys (arrows, Shift+arrows, plus and minus) and
 the app's shortcuts use none of these. Properties lists a building's floors and zones for selection, as before.
 
 **Hollow floors.** With a building selected, its zones are drawn as in decision 0034. With a floor or zone selected,
@@ -321,8 +321,12 @@ the selected floor or zone's, else the ground floor.
 ### Known issues
 
 - From straight above, the floors above a selected floor cover it, so another floor cannot be clicked there.
-- Muted zones and the core share the de-emphasis colour, and in the light appearances the selection colour is dark,
-  so a selected zone reads as a dark cell among grey ones; edges in the selection colour mark it too.
+- In the light appearances muted zones and the core share the de-emphasis colour and the selection colour is dark,
+  so a selected zone reads as a dark cell among grey ones; edges in the selection colour mark it too. In Monochrome
+  and Lieflat the selection colour is a hue close in lightness to the muted grey.
+- In the dark appearances, hollow floors below a selected floor read as a dark box against the dark ground (see
+  the review fixes).
+- Shift-drag box zoom is off on the map, since Shift-click selects.
 - Hover labels and clicks depend on MapLibre's 3D hit test of extrusions, checked in e2e at the framed centre only.
 - Hollow floors and edges are checked by screenshot review only.
 
@@ -346,6 +350,38 @@ On the final code, before the commit:
   from above, and from a low angle, in light and dark, a selected zone, and floor 2's flat plan with the zone
   selected; they led to the hollow shell being drawn after the edges, a stronger legend swatch, and the e2e and
   review steps pausing between tilt keys (MapLibre eases each key, and a key pressed during the ease cancels it).
+
+### Review fixes (2026-10-29)
+
+From a review of decision 0035's build; not merged, not pushed.
+
+- **Shift-click reaches the selection.** MapLibre's box zoom (Shift-drag) swallowed every click with Shift held, so
+  Shift never added a floor, zone, or building on the map. Box zoom is off (`boxZoom={false}` in `MapPage.tsx`):
+  **Shift-drag no longer zooms to a box**; the zoom buttons, the wheel, and plus and minus still zoom. New e2e: a
+  Shift-click adds a second zone of floor 1 (`Selected 2 zone(s).`) and a second Shift-click removes it.
+- **A selected whole-building zone** (one zone per building, such as B0464's) is drawn in the selection colour on
+  every storey with selected edges, the building's other zones muted, and the legend says "Whole-building zone of
+  B0464 selected, on every floor." (`focus.level` is `building zone` in `zoneOverlay`).
+- **No silent no-ops on the map.** A click or key that changes nothing says why in the status bar and Messages (a
+  `view.mapSelection` entry with the reason on `selection`, so a warning without a toast): Page Up on the top floor
+  ("Floor 4 is the top floor of Building 439."), Page Down on the bottom floor, either key with a building selected
+  ("Select a floor first: click the selected building, or choose one in its Floors table.") or with a whole-building
+  zone selected, a selected whole-building zone clicked again, a Shift-click that would leave nothing selected, and
+  a click on a selected building with no storeys drawn (`clickNotice` and `stepNotice` in `mapSelection.ts`).
+- **Hover labels follow the selection.** The label is derived from the last pointer hits on every render, so it
+  changes after a click or key without a mouse move; on a Shift-click it names the item under the pointer ("Floor 3
+  of Building 439 and 1 more", or "Remove … from the selection"), not the first selected item (`describeClick`).
+- **The selected floor's hit wins only over its own building**: a nearer hit on another building or a grid element
+  is what the click is on (`primaryHit`; unit test).
+- **Dark appearances**: the other zones of a selected zone's floor take a new `hollow.muted` token, darker than the
+  de-emphasis colour in Dark (`#4d4c48`) and Dark engineering (`#464b51`); the light appearances keep the
+  de-emphasis colour. On lit top faces a selected zone against its neighbours went from about 1.6:1 to 3.3:1. The
+  hollow floors below a selected floor still read dark against the dark ground: the shell is translucent and the
+  ground under it is black, so raising `hollow.opacity` (tried 0.24 and 0.34) only greyed it slightly while
+  veiling the selected floor from above; the opacity is unchanged, and this stays a known issue.
+
+Left for the owner: what a click does with several buildings selected, and whether Page Down on a selected building
+should enter its first floor.
 
 ## Review (2026-10-29)
 

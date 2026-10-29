@@ -276,13 +276,29 @@ describe('3D zones of the three zoning cases (decision 0034)', () => {
         index === 2 ? 'floor' : 'hollow',
       ),
     )
-    // A whole-building zone selects no single floor, so nothing is hollow.
+    // A whole-building zone selects no single floor, so nothing is hollow;
+    // it is highlighted on every storey and the legend names it.
     const single = zoneOverlay({
       ...state,
       selection: { entityType: 'zone', ids: ['B0464:Z1'] },
     })
     expect(single.hollow).toBe(false)
-    expect(single.focus).toBeNull()
+    const storeys = single.cells.features.filter(
+      (cell) => cell.properties.buildingId === 'B0464',
+    )
+    expect(storeys.length).toBeGreaterThan(1)
+    expect(new Set(storeys.map((cell) => cell.properties.state))).toEqual(
+      new Set(['selected']),
+    )
+    expect(single.focus).toEqual({
+      buildingId: 'B0464',
+      floors: storeys.map((cell) => cell.properties.floor),
+      level: 'building zone',
+    })
+    // Its edges are the selected zone's.
+    const [group] = zoneEdges(single.cells.features)
+    expect(group?.edges.selected.length).toBeGreaterThan(0)
+    expect(group?.edges.zone).toEqual([])
   })
 
   it('outlines every cell at its base and top with an upright per corner, by style', () => {
