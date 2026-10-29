@@ -33,7 +33,8 @@ Archetypes, Schema matching, Calibration, and viewer panel content afterwards.
   from the panel by name or from View > Layouts > Save layout… through a name prompt. Measures and scenarios is
   renamed Scenarios. Items 3 below and the saved-layouts scope choices are replaced.
 - Floors and zones in 3D on the map, with one case each of real zoning, each floor as a zone, and perimeter and
-  core: pending the owner's answers in the [discussion](floors-zones-3d-discussion.md).
+  core: answered in the [discussion](floors-zones-3d-discussion.md) and accepted as
+  [decision 0034](decisions/0034-per-building-zoning-and-3d-zones.md); not built yet.
 
 ## Review items for the owner
 

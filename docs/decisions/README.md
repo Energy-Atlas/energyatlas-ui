@@ -34,5 +34,6 @@ Keep short dated records of accepted decisions: status, context, decision, ratio
 - [0031: A map layer stack with the project's own layers, saved with the project](0031-map-layer-stack.md)
 - [0032: Next stages: saved layouts, RC-shaped assignment rules, a viewer page, and floors and zones](0032-next-stages-directions.md)
 - [0033: Layouts kept with the project in a Layouts panel, and the Scenarios page](0033-project-layouts-panel-and-scenarios-page.md)
+- [0034: Per-building zoning, drawn zones, and 3D zones for selected buildings](0034-per-building-zoning-and-3d-zones.md)
 
 Number 0020 is used on the unmerged `feature/agentic` branch.
