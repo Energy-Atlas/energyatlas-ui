@@ -1,4 +1,5 @@
 import { useMemo, useState } from 'react'
+import { definitionLockReason } from '../../domain/archetypes/assignment.ts'
 import { FUEL_LABELS, PART_LABELS } from '../../domain/archetypes/parts.ts'
 import type { ArchetypePart, PartKind } from '../../domain/types.ts'
 import { PART_KINDS } from '../../domain/types.ts'
@@ -100,6 +101,9 @@ export function PartProperties({
 }) {
   const { client, workbench } = useServices()
   const pending = useClientSnapshot((snapshot) => snapshot.pending)
+  const locked = useWorkbenchSnapshot((snapshot) =>
+    definitionLockReason(snapshot.state.tasks),
+  )
   const schedules = useWorkbenchSnapshot((snapshot) => snapshot.state.schedules)
   const rules = useWorkbenchSnapshot((snapshot) => snapshot.state.rules)
   const archetypes = useWorkbenchSnapshot(
@@ -186,7 +190,9 @@ export function PartProperties({
       creating={creating}
       editedCount={edits.editedCount}
       error={error}
-      waiting={waitingReason(pending, 'part.save', 'the part is being saved')}
+      waiting={
+        waitingReason(pending, 'part.save', 'the part is being saved') ?? locked
+      }
       submitLabel={creating ? 'Create part' : 'Save part'}
       onSubmit={submit}
       onCancel={() => {

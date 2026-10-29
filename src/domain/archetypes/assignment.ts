@@ -317,3 +317,18 @@ export function generatesDefaultRules(state: WorkbenchState): boolean {
   const stage = state.workflow.stages[STAGE_IDS.archetypes]
   return Boolean(stage && stage.lastRun === null && state.ruleIds.length === 0)
 }
+
+/**
+ * Why archetype definitions (rules, parts, archetypes, schedules) cannot
+ * change now, or null: the server refuses model changes while any job is
+ * queued or running, so controls say so up front, as Schema matching does.
+ */
+export function definitionLockReason(
+  tasks: WorkbenchState['tasks'],
+): string | null {
+  return Object.values(tasks).some(
+    (task) => task.status === 'queued' || task.status === 'running',
+  )
+    ? 'A job is queued or running. Rules, parts, archetypes, and schedules can change when it finishes.'
+    : null
+}

@@ -47,6 +47,12 @@ function toFields(rule: ScenarioRule | null): RuleFields {
 }
 
 /** Paths the form shows on a field; other messages go to the whole form. */
+/** Words joined as a sentence lists them: "a", "a and b", "a, b, and c". */
+function listWords(words: string[]): string {
+  if (words.length <= 2) return words.join(' and ')
+  return `${words.slice(0, -1).join(', ')}, and ${words.at(-1)}`
+}
+
 function shownPath(path: string): boolean {
   return (
     path === 'name' ||
@@ -165,9 +171,15 @@ export function ScenarioRuleProperties({
   }
 
   const position = rule ? scenario.ruleIds.indexOf(rule.id) + 1 : 1
-  const most = own
-    ? MEASURE_KINDS.reduce((max, kind) => Math.max(max, own.takes[kind]), 0)
-    : 0
+  // Each category the rule sets that rules above it already take for some
+  // of the buildings it matches, with how many.
+  const shadowed =
+    rule?.enabled && own
+      ? MEASURE_KINDS.filter(
+          (kind) =>
+            rule.measures[kind] !== null && own.matched > own.takes[kind],
+        ).map((kind) => ({ kind, count: own.matched - own.takes[kind] }))
+      : []
   return (
     <PropertyForm
       eyebrow={creating ? 'New scenario rule' : 'Scenario rule'}
@@ -277,16 +289,26 @@ export function ScenarioRuleProperties({
               {warning.message}
             </InlineAlert>
           ))}
-          {rule.enabled && own.matched > most ? (
+          {shadowed.length > 0 ? (
             <p>
-              Rules above it already set some of its measures for{' '}
-              {own.matched - most} of the buildings it matches.
+              Rules above it already set{' '}
+              {listWords(
+                shadowed.map(
+                  ({ kind, count }) =>
+                    `the ${kindNoun(kind)} measure for ${count}`,
+                ),
+              )}{' '}
+              of the {own.matched} buildings it matches.
             </p>
           ) : null}
           <ActionButton
             label={`Select the ${own.matched} buildings ${rule.name} matches`}
             disabledReason={
-              own.matched === 0 ? 'The rule matches no building.' : null
+              !rule.enabled
+                ? 'The rule is switched off, so it matches no building. Switch it on to use it.'
+                : own.matched === 0
+                  ? 'The rule matches no building.'
+                  : null
             }
             onPress={() =>
               workbench.execute({

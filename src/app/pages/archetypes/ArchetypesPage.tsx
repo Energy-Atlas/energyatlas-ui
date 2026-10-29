@@ -1,6 +1,7 @@
 import { ListRestart, Plus } from 'lucide-react'
 import { useId, useMemo } from 'react'
 import {
+  definitionLockReason,
   generatesDefaultRules,
   missingDefaults,
   orderedRules,
@@ -66,8 +67,10 @@ import styles from './archetypes.module.css'
 type PreviewRow = {
   id: string
   label: string
+  /** Null for manual parts, what is left, and a switched-off rule. */
   matched: number | null
-  counts: Record<PartKind, number>
+  /** Null for a switched-off rule, which takes nothing. */
+  counts: Record<PartKind, number> | null
 }
 
 type PreviewPart = PartKind | 'all'
@@ -120,15 +123,20 @@ export function ArchetypesPage() {
       (input) =>
         (input as { stageId?: unknown }).stageId === STAGE_IDS.archetypes,
     ) ?? stageSubmitBlocker(state, STAGE_IDS.archetypes)
-  const addBlocker = waitingReason(
-    pending,
-    'archetype.addFromLibrary',
-    'the archetype is being added',
-  )
+  // The server refuses definition changes while any job is queued or running.
+  const lockBlocker = definitionLockReason(state.tasks)
+  const addBlocker =
+    waitingReason(
+      pending,
+      'archetype.addFromLibrary',
+      'the archetype is being added',
+    ) ?? lockBlocker
   const ruleBlocker =
     RULE_COMMANDS.map((type) =>
       waitingReason(pending, type, 'the rules are being changed'),
-    ).find(Boolean) ?? null
+    ).find(Boolean) ??
+    lockBlocker ??
+    null
 
   const selectedOf = (entityType: SelectableEntity) =>
     selection.entityType === entityType ? (selection.ids[0] ?? null) : null
@@ -163,8 +171,13 @@ export function ArchetypesPage() {
   const willGenerate = generatesDefaultRules(state)
   const addedDefaults = missingDefaults(state)
 
+  // A library archetype's parts may not be in the project yet: name them from the library.
   const partName = (id: string | null) =>
-    id ? (state.parts[id]?.name ?? id) : null
+    id
+      ? (state.parts[id]?.name ??
+        PART_LIBRARY.find((part) => part.id === id)?.name ??
+        id)
+      : null
   const kinds: PartKind[] =
     previewPart === 'all' ? [...PART_KINDS] : [previewPart]
   const effectOf = (ruleId: string) => {
@@ -181,9 +194,18 @@ export function ArchetypesPage() {
   const previewRows: PreviewRow[] = [
     ...rules.map((rule, index) => {
       const own = preview.rules.find((each) => each.ruleId === rule.id)
+      // A switched-off rule says so rather than showing zeros.
+      if (!rule.enabled) {
+        return {
+          id: rule.id,
+          label: `${index + 1}. ${rule.name} (switched off)`,
+          matched: null,
+          counts: null,
+        }
+      }
       return {
         id: rule.id,
-        label: `${index + 1}. ${rule.name}${rule.enabled ? '' : ' (off)'}`,
+        label: `${index + 1}. ${rule.name}`,
         matched: own?.matched ?? 0,
         counts: own?.takes ?? {
           construction: 0,
@@ -224,8 +246,9 @@ export function ArchetypesPage() {
     ...kinds.map((kind): DataColumn<PreviewRow> => ({
       id: kind,
       header: PART_LABELS[kind],
-      value: (row) => row.counts[kind],
+      value: (row) => row.counts?.[kind] ?? null,
       type: 'number',
+      empty: '',
     })),
   ]
 
@@ -270,12 +293,7 @@ export function ArchetypesPage() {
     ...PART_KINDS.map((kind): DataColumn<Archetype> => ({
       id: kind,
       header: PART_LABELS[kind],
-      value: (archetype) =>
-        partName(archetype.parts[kind]) ??
-        (archetype.parts[kind]
-          ? (PART_LIBRARY.find((part) => part.id === archetype.parts[kind])
-              ?.name ?? null)
-          : null),
+      value: (archetype) => partName(archetype.parts[kind]),
       type: 'enum',
       empty: 'None',
     })),
@@ -669,7 +687,7 @@ export function ArchetypesPage() {
           barStart={
             <ActionButton
               label="New archetype"
-              disabledReason={null}
+              disabledReason={lockBlocker}
               onPress={() => create('archetype')}
             >
               <Plus size={14} aria-hidden="true" /> New archetype
@@ -712,10 +730,14 @@ export function ArchetypesPage() {
                   items: PART_KINDS.map((kind) => ({
                     id: kind,
                     label: PART_LABELS[kind],
+                    disabledReason: lockBlocker,
                   })),
                 },
               ]}
               onAction={(kind) => create(`part:${kind as PartKind}`)}
+              onBlocked={(entry, reason) =>
+                recordBlocked(`New ${entry.label.toLowerCase()} part`, reason)
+              }
             />
           }
           selection={{
@@ -764,7 +786,7 @@ export function ArchetypesPage() {
           barStart={
             <ActionButton
               label="New schedule"
-              disabledReason={null}
+              disabledReason={lockBlocker}
               onPress={() => create('schedule')}
             >
               <Plus size={14} aria-hidden="true" /> New schedule

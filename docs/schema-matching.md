@@ -181,6 +181,17 @@ Added tests (`src/domain/schema/schema.test.ts`): a fusion retry after a mapping
 after preprocessing, Accept all keeping a hand-mapped field, custom names on load, a reload that outdates nothing, and
 the server refusing a mapping change while a job is queued or running.
 
+## Review fixes (2026-10-29)
+
+1. **`schema.mapValue` with no change** created an empty value map for the target before returning "already
+   unmapped"; the no-op path no longer changes the state (test in `src/domain/schema/schema.test.ts`).
+
+Verification (2026-10-29, three agents sharing the checkout): `npm run typecheck`, `npm run lint`, and `npm run
+format:check` clean; `npx vitest run` 586 passed; the archetypes, assignment rules, schema matching, scenarios,
+scenario rules, calibration, floors and zones, and per-building zoning specs passed against the review server on port
+5180 (`tmp/playwright.5180.config.ts`), after load-related timeouts and trace-file errors passed on a rerun with a
+longer timeout.
+
 ## Known issues and limits
 
 - The page shows one attribute's distribution at a time; numbers are binned in eight equal bins.

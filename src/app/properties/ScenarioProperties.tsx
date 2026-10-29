@@ -217,7 +217,7 @@ export function ScenarioProperties({
     }
     const taking = `${preview.affectedIds.length} of ${preview.buildings} buildings take a measure; ${preview.adoptedIds.length} adopt at ${draft.adoptionPercent}% adoption.`
     return preview.estimate
-      ? `${taking} Estimated ${preview.estimate.reductionPercent}% lower annual demand than the baseline (${formatEnergy(preview.estimate.scenarioKwh)} a year; ${preview.estimate.fullReductionPercent}% if every affected building adopted). Synthetic preview.`
+      ? `${taking} Estimated ${preview.estimate.reductionPercent}% lower annual demand than the baseline (${formatEnergy(preview.estimate.scenarioKwh, 'MWh', 0)} a year; ${preview.estimate.fullReductionPercent}% if every affected building adopted). Synthetic preview.`
       : `${taking} ${preview.reason ?? ''}`
   })()
 

@@ -50,3 +50,17 @@ Verification on the final slice commit (2026-10-26, Edge, 4 workers): `npm run t
 `npm run format:check` clean; `npm test` 291 passed; `npm run test:e2e` 85 passed; `npm run test:e2e:preview`
 3 passed. Calibration screenshots in light and dark engineering at 1280 px and at 900 px were reviewed from ignored
 `tmp/calibration-*.png`.
+
+## Review fixes (2026-10-29)
+
+1. **Headings.** The variant choice has a visible "Choose a variant" heading with a note that the latest is shown until
+   one is chosen, and the residuals table sits under a heading naming its variant ("Monthly residuals of …").
+2. **Unit mismatch.** The unit field is a native select; the mismatch message stays attached through
+   `aria-describedby` and the field is now marked `aria-invalid` and `data-invalid`. Running a fit with a mismatched
+   unit is unchanged; whether it should be refused is an open question for the owner.
+
+Verification (2026-10-29, three agents sharing the checkout): `npm run typecheck`, `npm run lint`, and `npm run
+format:check` clean; `npx vitest run` 586 passed; the archetypes, assignment rules, schema matching, scenarios,
+scenario rules, calibration, floors and zones, and per-building zoning specs passed against the review server on port
+5180 (`tmp/playwright.5180.config.ts`), after load-related timeouts and trace-file errors passed on a rerun with a
+longer timeout.

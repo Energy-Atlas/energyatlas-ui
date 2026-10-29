@@ -126,6 +126,27 @@ export function isBlank(condition: Condition): boolean {
   return condition.field === null
 }
 
+/** Whether two condition lists are the same, values compared trimmed as rules save them. */
+export function sameConditions<Field extends string>(
+  a: readonly Condition<Field>[],
+  b: readonly Condition<Field>[],
+): boolean {
+  return (
+    a.length === b.length &&
+    a.every(
+      (condition, index) =>
+        condition.field === b[index]?.field &&
+        condition.operator === b[index]?.operator &&
+        condition.value.trim() === b[index]?.value.trim(),
+    )
+  )
+}
+
+/** Whether a rule matches every subject: it has no conditions with a field. */
+export function isCatchAll(conditions: readonly Condition[]): boolean {
+  return conditions.every(isBlank)
+}
+
 /**
  * Why a condition with a field cannot be saved, or null. Blank conditions (no
  * field) are allowed and dropped when rules are evaluated, as in RC.

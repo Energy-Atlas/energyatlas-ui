@@ -202,6 +202,25 @@ Not changed: charts the agent adds from specifications (`src/app/view/chartSpec.
 scenario series without a computed reduction, so they show no mixed saving; they still draw the current baseline line
 after a calibration Adopt, while Scenario modeling is outdated.
 
+## Review fixes (2026-10-29)
+
+1. **The modeled comparison after a calibration Adopt** showed the new baseline beside reductions computed against
+   the baseline each scenario was modeled with. Rows now carry `baselineNote` (`baselineChangeNote`, as Results, the
+   CSV, and the Dashboard use), and the comparison shows it in a warning above the table
+   (`src/domain/scenarios/comparison.ts`, `src/app/pages/ScenarioComparison.tsx`; test in `scenarios.test.ts`).
+2. **A switched-off scenario rule** read "Matches no building" in Properties and 0 in the preview; the preview row
+   says "(switched off)" and Select matched buildings explains that the rule is off.
+3. **The shadowed note** appeared only when every category was taken by earlier rules; it now names each category the
+   rules above take, with how many buildings.
+4. **Scenario Properties** gave the estimate to one decimal (96,204.5 MWh) while the comparison rounds to whole MWh;
+   both now read whole MWh through `formatEnergy`.
+
+Verification (2026-10-29, three agents sharing the checkout): `npm run typecheck`, `npm run lint`, and `npm run
+format:check` clean; `npx vitest run` 586 passed; the archetypes, assignment rules, schema matching, scenarios,
+scenario rules, calibration, floors and zones, and per-building zoning specs passed against the review server on port
+5180 (`tmp/playwright.5180.config.ts`), after load-related timeouts and trace-file errors passed on a rerun with a
+longer timeout.
+
 ## Known issues and limits
 
 - The realized adoption share is noisy at district size (decision 5).

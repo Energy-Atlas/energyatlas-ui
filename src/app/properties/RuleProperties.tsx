@@ -1,5 +1,8 @@
 import { useMemo, useState } from 'react'
-import { previewAssignment } from '../../domain/archetypes/assignment.ts'
+import {
+  definitionLockReason,
+  previewAssignment,
+} from '../../domain/archetypes/assignment.ts'
 import { PART_LABELS } from '../../domain/archetypes/parts.ts'
 import { CONDITION_FIELDS } from '../../domain/rules/conditions.ts'
 import type {
@@ -70,6 +73,9 @@ export function RuleProperties({
 }) {
   const { client, workbench } = useServices()
   const pending = useClientSnapshot((snapshot) => snapshot.pending)
+  const locked = useWorkbenchSnapshot((snapshot) =>
+    definitionLockReason(snapshot.state.tasks),
+  )
   const state = useWorkbenchSnapshot((snapshot) => snapshot.state)
   const saved = useMemo(() => toFields(rule), [rule])
   const edits = useEdits(saved, rule ? `rule:${rule.id}` : 'new:rule')
@@ -157,7 +163,9 @@ export function RuleProperties({
       creating={creating}
       editedCount={edits.editedCount}
       error={error}
-      waiting={waitingReason(pending, 'rule.save', 'the rule is being saved')}
+      waiting={
+        waitingReason(pending, 'rule.save', 'the rule is being saved') ?? locked
+      }
       submitLabel={creating ? 'Create rule' : 'Save rule'}
       onSubmit={submit}
       onCancel={() => {

@@ -194,6 +194,33 @@ An independent review on 2026-10-28 found nothing high-severity. Fixed:
    (`src/domain/rules/conditions.test.ts`), and Generate default rules and the preview rows through the UI
    (`e2e/assignment-rules.spec.ts`).
 
+## Review fixes (2026-10-29)
+
+1. **Regenerating put catch-alls first.** `generateDefaultRules` kept the project's own rules above the fresh
+   defaults, so an edited or duplicated fallback (no conditions) took every building. After regenerating, every rule
+   whose conditions are all blank goes below every rule with conditions, in its existing order (`isCatchAll` in
+   `src/domain/rules/conditions.ts`).
+2. **Switching or moving a generated rule** left it generated, so regenerating dropped the switch or the order.
+   `rule.setEnabled` and `rule.move` now make it the project's own, as `rule.save` does.
+3. **`rule.save` without a change** (agent or API) is refused with "No unsaved edits …", with no field path, and
+   outdates nothing.
+4. **The Synthetic library showed part ids** in a new project, whose parts are not yet copied in; part names fall back
+   to the library's.
+5. **Controls the server refuses while a job is queued or running** (rules, parts, archetypes, schedules, and adding a
+   library archetype) are unavailable up front with the reason, as on Schema matching (`definitionLockReason` in
+   `src/domain/archetypes/assignment.ts`, used by the page and the four Properties forms).
+6. **A switched-off rule in the preview** read as matching 0; its row now says "(switched off)" and leaves the counts
+   empty. Selecting one floor or zone now names it in the summary ("Selected floor 2 of Building 439.").
+7. **Tests**: order after regenerating with an edited and a duplicated fallback, switch and move kept, and the refused
+   no-op save (`src/domain/archetypes/archetypes.test.ts`); the selection summary (`src/domain/zoning/zoning.test.ts`,
+   `e2e/floors-zones.spec.ts`, `e2e/per-building-zoning.spec.ts`).
+
+Verification (2026-10-29, three agents sharing the checkout): `npm run typecheck`, `npm run lint`, and `npm run
+format:check` clean; `npx vitest run` 586 passed; the archetypes, assignment rules, schema matching, scenarios,
+scenario rules, calibration, floors and zones, and per-building zoning specs passed against the review server on port
+5180 (`tmp/playwright.5180.config.ts`), after load-related timeouts and trace-file errors passed on a rerun with a
+longer timeout.
+
 ## Known issues and limits
 
 - Rule names are unique per project; parts and archetypes too. Removing a rule leaves published parts that name it

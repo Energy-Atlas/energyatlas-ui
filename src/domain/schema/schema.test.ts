@@ -215,6 +215,28 @@ describe('review and validation', () => {
     ).toBe('rejected')
   })
 
+  test('unmapping a value that is not mapped changes nothing', () => {
+    // Without any value map for use, the no-op must not create an empty one.
+    const initialState = structuredClone(
+      buildFixture('partway', () => new Date()),
+    )
+    delete initialState.schemaMatching.valueMaps.use
+    const workbench = createWorkbench({ initialState })
+    const revision =
+      workbench.getState().workflow.stages[STAGE_IDS.schema]?.editRevision
+    const result = workbench.execute({
+      type: 'schema.mapValue',
+      input: { target: 'use', value: 'yes', to: null },
+    })
+    expect(result.outcome).toMatchObject({
+      status: 'applied',
+      summary: '"yes" is already unmapped.',
+    })
+    const after = workbench.getState()
+    expect('use' in after.schemaMatching.valueMaps).toBe(false)
+    expect(after.workflow.stages[STAGE_IDS.schema]?.editRevision).toBe(revision)
+  })
+
   test('rejects sources and targets that do not exist', () => {
     const workbench = partway()
     expect(

@@ -56,8 +56,9 @@ import styles from './measures.module.css'
 type PreviewRow = {
   id: string
   label: string
+  /** Null for a switched-off rule, which matches nothing. */
   matched: number | null
-  counts: Record<MeasureKind, number>
+  counts: Record<MeasureKind, number> | null
 }
 
 const RULE_COMMANDS = [
@@ -244,9 +245,18 @@ export function MeasuresPage() {
     ? [
         ...rules.map((rule, index) => {
           const own = preview.rules.find((each) => each.ruleId === rule.id)
+          // A switched-off rule says so rather than showing zeros.
+          if (!rule.enabled) {
+            return {
+              id: rule.id,
+              label: `${index + 1}. ${rule.name} (switched off)`,
+              matched: null,
+              counts: null,
+            }
+          }
           return {
             id: rule.id,
-            label: `${index + 1}. ${rule.name}${rule.enabled ? '' : ' (off)'}`,
+            label: `${index + 1}. ${rule.name}`,
             matched: own?.matched ?? 0,
             counts: own?.takes ?? {
               envelope: 0,
@@ -282,7 +292,7 @@ export function MeasuresPage() {
     ...MEASURE_KINDS.map((kind): DataColumn<PreviewRow> => ({
       id: kind,
       header: KIND_LABELS[kind],
-      value: (row) => (row.id === 'none' ? null : row.counts[kind]),
+      value: (row) => (row.id === 'none' ? null : (row.counts?.[kind] ?? null)),
       type: 'number',
       empty: '',
     })),

@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { definitionLockReason } from '../../domain/archetypes/assignment.ts'
 import {
   PART_LABELS,
   archetypeIntensity,
@@ -76,6 +77,9 @@ export function ArchetypeProperties({
 }) {
   const { client, workbench } = useServices()
   const pending = useClientSnapshot((snapshot) => snapshot.pending)
+  const locked = useWorkbenchSnapshot((snapshot) =>
+    definitionLockReason(snapshot.state.tasks),
+  )
   const projectSchedules = useWorkbenchSnapshot(
     (snapshot) => snapshot.state.schedules,
   )
@@ -189,11 +193,11 @@ export function ArchetypeProperties({
             disabledReason={
               inProject
                 ? 'Already in the project.'
-                : waitingReason(
+                : (waitingReason(
                     pending,
                     'archetype.addFromLibrary',
                     'the archetype is being added',
-                  )
+                  ) ?? locked)
             }
             onPress={() =>
               void client
@@ -216,11 +220,13 @@ export function ArchetypeProperties({
       creating={creating}
       editedCount={edits.editedCount}
       error={error}
-      waiting={waitingReason(
-        pending,
-        'archetype.save',
-        'the archetype is being saved',
-      )}
+      waiting={
+        waitingReason(
+          pending,
+          'archetype.save',
+          'the archetype is being saved',
+        ) ?? locked
+      }
       submitLabel={creating ? 'Create archetype' : 'Save archetype'}
       onSubmit={submit}
       onCancel={() => {

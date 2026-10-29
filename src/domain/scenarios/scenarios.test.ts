@@ -718,6 +718,16 @@ describe('review fixes', () => {
     expect(row?.reductionPercent).toBe(
       Math.round((1 - result.totalKwh / old.totalKwh) * 1000) / 10,
     )
+    // The comparison says so, as Results, the CSV, and the Dashboard do.
+    expect(row?.baselineNote).toBe(baselineChangeNote(moved, scenario.id))
+    expect(row?.baselineNote).not.toBeNull()
+    const unmoved = compareScenarios(
+      state,
+      deriveStageStates(state.workflow, state.tasks),
+      S.scenarioModeling,
+      S.baseline,
+    )
+    expect(unmoved.every((item) => item.baselineNote === null)).toBe(true)
   })
 
   test('saving a rule without enabled keeps its switch', () => {

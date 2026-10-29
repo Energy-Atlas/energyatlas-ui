@@ -157,21 +157,28 @@ function previewColumns(unit: MeterUnit): DataColumn<PreviewRow>[] {
   ]
 }
 
+/** The monthly residuals of one variant, under a heading that names it. */
 function VariantDetail({ variant }: { variant: CalibratedVariant }) {
+  const headingId = useId()
   return (
-    <WorkbenchTable
-      id="calibration.residuals"
-      aria-label={`Monthly residuals of ${variant.label}`}
-      columns={RESIDUAL_COLUMNS}
-      rows={variant.meteredKwh.map((metered, index) => ({
-        month: MONTHS[index] ?? String(index + 1),
-        metered,
-        modeled: variant.modeledKwh[index] ?? 0,
-        calibrated: variant.calibratedKwh[index] ?? 0,
-      }))}
-      rowKey={(row) => row.month}
-      exportContext={[`variant: ${variant.label}`]}
-    />
+    <section aria-labelledby={headingId} className={styles.section}>
+      <h4 id={headingId} className={styles.title}>
+        Monthly residuals of {variant.label}
+      </h4>
+      <WorkbenchTable
+        id="calibration.residuals"
+        aria-label={`Monthly residuals of ${variant.label}`}
+        columns={RESIDUAL_COLUMNS}
+        rows={variant.meteredKwh.map((metered, index) => ({
+          month: MONTHS[index] ?? String(index + 1),
+          metered,
+          modeled: variant.modeledKwh[index] ?? 0,
+          calibrated: variant.calibratedKwh[index] ?? 0,
+        }))}
+        rowKey={(row) => row.month}
+        exportContext={[`variant: ${variant.label}`]}
+      />
+    </section>
   )
 }
 
@@ -359,6 +366,9 @@ export function CalibrationPage() {
             id={`${headingId}-unit`}
             className={formStyles.input}
             value={unit}
+            // The mismatch is attached to the field, as forms mark issues.
+            aria-invalid={warning ? true : undefined}
+            data-invalid={warning ? true : undefined}
             aria-describedby={warning ? `${headingId}-unit-warning` : undefined}
             onChange={(event) => {
               if (isUnit(event.target.value)) setUnit(event.target.value)
@@ -458,13 +468,20 @@ export function CalibrationPage() {
             No calibrated variants yet. Run a fit to publish one.
           </p>
         ) : (
-          <WorkbenchTable
-            id="calibration.variants"
-            aria-label="Calibrated variants"
-            columns={variantColumns}
-            rows={variants}
-            rowKey={(variant) => variant.id}
-          />
+          <>
+            <h4 className={styles.title}>Choose a variant</h4>
+            <p className={componentStyles.muted}>
+              Choose a variant&apos;s name to show its monthly residuals below;
+              the latest is shown until you choose.
+            </p>
+            <WorkbenchTable
+              id="calibration.variants"
+              aria-label="Calibrated variants"
+              columns={variantColumns}
+              rows={variants}
+              rowKey={(variant) => variant.id}
+            />
+          </>
         )}
         {detail ? <VariantDetail variant={detail} /> : null}
         {adopted ? (

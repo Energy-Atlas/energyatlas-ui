@@ -406,12 +406,35 @@ describe('the zoning setting', () => {
 
   test('selects floors and zones by id, and refuses ids that do not exist', () => {
     const workbench = preprocessed()
+    const zoned = workbench.getState()
+    const building = zoned.buildings.B0039?.name
+    const zone = buildingZoning(zoned, 'B0039')?.zones[0]
+    // One floor or zone is named in the summary; several are counted.
     expect(
       workbench.execute({
         type: 'selection.set',
         input: { entityType: 'zone', ids: ['B0039:Z1'] },
-      }).outcome.status,
-    ).toBe('applied')
+      }).outcome,
+    ).toMatchObject({
+      status: 'applied',
+      summary: `Selected zone ${zone?.name} of ${building}.`,
+    })
+    expect(
+      workbench.execute({
+        type: 'selection.set',
+        input: { entityType: 'floor', ids: ['B0039:F1'] },
+      }).outcome,
+    ).toMatchObject({ summary: `Selected floor 1 of ${building}.` })
+    expect(
+      workbench.execute({
+        type: 'selection.set',
+        input: { entityType: 'floor', ids: ['B0039:F1', 'B0039:F2'] },
+      }).outcome,
+    ).toMatchObject({ summary: 'Selected 2 floor(s).' })
+    workbench.execute({
+      type: 'selection.set',
+      input: { entityType: 'zone', ids: ['B0039:Z1'] },
+    })
     expect(selectedBuildingIds(workbench.getState().selection)).toEqual([
       'B0039',
     ])

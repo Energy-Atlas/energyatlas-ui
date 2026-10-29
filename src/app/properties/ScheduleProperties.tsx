@@ -1,9 +1,16 @@
 import { Plus, Trash2 } from 'lucide-react'
 import { useId, useState } from 'react'
-import { scheduleStats } from '../../domain/archetypes/assignment.ts'
+import {
+  definitionLockReason,
+  scheduleStats,
+} from '../../domain/archetypes/assignment.ts'
 import { weekdayWeekend } from '../../domain/archetypes/library.ts'
 import { WEEK_DAYS, type Schedule } from '../../domain/types.ts'
-import { useClientSnapshot, useServices } from '../WorkbenchContext.tsx'
+import {
+  useClientSnapshot,
+  useServices,
+  useWorkbenchSnapshot,
+} from '../WorkbenchContext.tsx'
 import { splitIssues } from '../commandErrors.ts'
 import { SegmentedFilter } from '../components/SegmentedFilter.tsx'
 import { Toolbar } from '../components/Toolbar.tsx'
@@ -87,6 +94,9 @@ export function ScheduleProperties({
 }) {
   const { client, workbench } = useServices()
   const pending = useClientSnapshot((snapshot) => snapshot.pending)
+  const locked = useWorkbenchSnapshot((snapshot) =>
+    definitionLockReason(snapshot.state.tasks),
+  )
   const edits = useEdits(
     toFields(schedule),
     schedule
@@ -226,11 +236,13 @@ export function ScheduleProperties({
       creating={creating}
       editedCount={edits.editedCount}
       error={error}
-      waiting={waitingReason(
-        pending,
-        'schedule.save',
-        'the schedule is being saved',
-      )}
+      waiting={
+        waitingReason(
+          pending,
+          'schedule.save',
+          'the schedule is being saved',
+        ) ?? locked
+      }
       submitLabel={creating ? 'Create schedule' : 'Save schedule'}
       onSubmit={submit}
       onCancel={() => {

@@ -1,5 +1,6 @@
 import type { StageState, WorkbenchState } from '../types.ts'
 import {
+  baselineChangeNote,
   describeAggregation,
   publishedAggregation,
   scenarioBaseline,
@@ -22,6 +23,11 @@ export type ComparisonRow = {
   runId: string
   /** How the scenario was aggregated, such as "40% adoption, seed 42: …"; null for the baseline. */
   adoption: string | null
+  /**
+   * Why the reduction compares with an older baseline than the one shown,
+   * as after a calibration Adopt; null when it compares with the shown one.
+   */
+  baselineNote: string | null
 }
 
 /** Baseline and every modeled scenario, with currentness from the stage states. */
@@ -45,6 +51,7 @@ export function compareScenarios(
       current: baselineCurrent,
       runId: baseline.runId,
       adoption: null,
+      baselineNote: null,
     },
   ]
   for (const scenario of Object.values(state.scenarios)) {
@@ -67,6 +74,7 @@ export function compareScenarios(
       adoption: aggregation
         ? describeAggregation(aggregation)
         : 'Saved before scenario rules; run Scenario modeling again',
+      baselineNote: baselineChangeNote(state, scenario.id),
     })
   }
   return rows

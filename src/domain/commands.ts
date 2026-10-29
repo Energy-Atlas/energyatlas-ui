@@ -23,6 +23,8 @@ import {
   CONDITION_FIELD_IDS,
   CONDITION_OPERATORS,
   conditionIssue,
+  isCatchAll,
+  sameConditions,
 } from './rules/conditions.ts'
 import {
   adoptBlocker,
@@ -132,11 +134,14 @@ import {
   MIN_PERIMETER_DEPTH_M,
   ZONING_MODES,
   ZONING_MODE_LABELS,
+  buildingFloors,
+  buildingZoning,
   describeBuildingZoning,
   depthOverrides,
   describeZoning,
   plannedZoning,
   projectZoningChanges,
+  ownerOf,
   resolveBuildingZoning,
   sameBuildingZoning,
 } from './zoning/zoning.ts'
@@ -262,6 +267,29 @@ const SELECTION_NOUNS: Record<SelectableEntity, string> = {
   scenarioRule: 'scenario rule(s)',
   floor: 'floor(s)',
   zone: 'zone(s)',
+}
+
+/** Names one selected floor or zone with its building, for the selection summary. */
+function namedSelection(
+  state: WorkbenchState,
+  entityType: SelectableEntity,
+  ids: string[],
+): string | null {
+  const [id] = ids
+  if (ids.length !== 1 || id === undefined) return null
+  const owner = ownerOf(id)
+  const building = state.buildings[owner]?.name ?? owner
+  if (entityType === 'floor') {
+    const floor = buildingFloors(state, owner).find((each) => each.id === id)
+    return floor ? `Selected floor ${floor.number} of ${building}.` : null
+  }
+  if (entityType === 'zone') {
+    const zone = buildingZoning(state, owner)?.zones.find(
+      (each) => each.id === id,
+    )
+    return zone ? `Selected zone ${zone.name} of ${building}.` : null
+  }
+  return null
 }
 
 const JOB_STATUS_WORDS: Record<Task['status'], string> = {
@@ -489,8 +517,12 @@ function addLibraryArchetype(state: WorkbenchState, entry: Archetype) {
 
 /**
  * Replaces the generated rules with fresh ones from the project's
- * archetypes, below the project's own rules, with the fallback last. The
- * fallback's library parts come into the project when it lacks them.
+ * archetypes, below the project's own rules, with the fallback last. Rules
+ * without conditions match every building, so every such catch-all, the
+ * project's own included, goes below every rule with conditions, keeping
+ * their order; otherwise an edited or duplicated fallback would take every
+ * building. The fallback's library parts come into the project when it
+ * lacks them.
  */
 function generateDefaultRules(state: WorkbenchState): {
   added: number
@@ -523,6 +555,11 @@ function generateDefaultRules(state: WorkbenchState): {
     state.ruleIds.push(id)
     added += 1
   }
+  const catchAll = (id: string) => isCatchAll(state.rules[id]?.conditions ?? [])
+  state.ruleIds = [
+    ...state.ruleIds.filter((id) => !catchAll(id)),
+    ...state.ruleIds.filter(catchAll),
+  ]
   return { added, kept }
 }
 
@@ -1442,14 +1479,14 @@ export const commandDefinitions = {
           'value',
         )
       }
-      const map = (matching.valueMaps[target] ??= {})
-      if ((map[value] ?? null) === to) {
+      if ((matching.valueMaps[target]?.[value] ?? null) === to) {
         return applied(
           to
             ? `"${value}" is already read as ${to}.`
             : `"${value}" is already unmapped.`,
         )
       }
+      const map = (matching.valueMaps[target] ??= {})
       if (to === null) delete map[value]
       else map[value] = to
       if (Object.keys(map).length === 0) delete matching.valueMaps[target]
@@ -1931,6 +1968,23 @@ export const commandDefinitions = {
         })
       }
       if (issues.length > 0) return { status: 'rejected', issues }
+      if (
+        existing &&
+        existing.name === input.name &&
+        existing.enabled === (input.enabled ?? existing.enabled) &&
+        existing.logic === input.logic &&
+        sameConditions(existing.conditions, input.conditions) &&
+        PART_KINDS.every(
+          (kind) => existing.parts[kind] === input.parts[kind],
+        ) &&
+        (input.position === undefined ||
+          state.ruleIds.indexOf(existing.id) ===
+            Math.min(input.position, state.ruleIds.length - 1))
+      ) {
+        return rejected(
+          `No unsaved edits to "${existing.name}"; change the rule before saving it.`,
+        )
+      }
       const id = existing?.id ?? allocateId(state, 'rule')
       state.rules[id] = {
         id,
@@ -1990,6 +2044,8 @@ export const commandDefinitions = {
       }
       state.ruleIds.splice(from, 1)
       state.ruleIds.splice(position, 0, ruleId)
+      // A moved generated rule becomes the project's own, so regenerating keeps it.
+      rule.origin = 'project'
       touchArchetypeInputs(state)
       return applied(
         `Moved "${rule.name}" to position ${position + 1} of ${state.ruleIds.length}.`,
@@ -2016,6 +2072,8 @@ export const commandDefinitions = {
         )
       }
       rule.enabled = enabled
+      // A switched generated rule becomes the project's own, so regenerating keeps it.
+      rule.origin = 'project'
       touchArchetypeInputs(state)
       return applied(`Switched "${rule.name}" ${enabled ? 'on' : 'off'}.`)
     },
@@ -2854,7 +2912,8 @@ export const commandDefinitions = {
       return applied(
         unique.length === 0
           ? 'Selection cleared.'
-          : `Selected ${unique.length} ${SELECTION_NOUNS[entityType]}.`,
+          : (namedSelection(state, entityType, unique) ??
+              `Selected ${unique.length} ${SELECTION_NOUNS[entityType]}.`),
       )
     },
   }),

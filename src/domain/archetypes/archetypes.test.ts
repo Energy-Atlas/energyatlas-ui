@@ -537,7 +537,10 @@ describe('assignment rules', () => {
     workbench.execute({
       type: 'rule.save',
       input: {
-        ...ruleInput(rule.name, rule.conditions, rule.parts),
+        ...ruleInput(rule.name, rule.conditions, {
+          ...rule.parts,
+          systems: heatPump(workbench),
+        }),
         id: rule.id,
       },
     })
@@ -561,7 +564,11 @@ describe('assignment rules', () => {
     const workbench = assigned()
     workbench.execute({
       type: 'rule.save',
-      input: ruleInput('Mine', [], { systems: heatPump(workbench) }),
+      input: ruleInput(
+        'Mine',
+        [{ field: 'use', operator: 'equals', value: 'office' }],
+        { systems: heatPump(workbench) },
+      ),
     })
     workbench.execute({
       type: 'archetype.addFromLibrary',
@@ -572,6 +579,108 @@ describe('assignment rules', () => {
     expect(names[0]).toBe('Mine')
     expect(names).toContain('Office, built before 1950')
     expect(names).toHaveLength(8)
+  })
+})
+
+describe('regenerating default rules keeps catch-alls last', () => {
+  const names = (workbench: Workbench) =>
+    orderedRules(workbench.getState()).map((rule) => rule.name)
+
+  test('an edited fallback stays below every rule with conditions', () => {
+    const workbench = assigned()
+    const fallback = orderedRules(workbench.getState()).at(-1)!
+    expect(fallback.name).toBe(FALLBACK_RULE_NAME)
+    workbench.execute({
+      type: 'rule.save',
+      input: {
+        ...ruleInput(fallback.name, fallback.conditions, {
+          ...fallback.parts,
+          systems: heatPump(workbench),
+        }),
+        id: fallback.id,
+      },
+    })
+    workbench.execute({ type: 'rule.generateDefaults', input: {} })
+    const after = orderedRules(workbench.getState())
+    expect(after.at(-1)).toMatchObject({
+      id: fallback.id,
+      origin: 'project',
+    })
+    expect(after.slice(0, -1).every((rule) => rule.conditions.length > 0)).toBe(
+      true,
+    )
+  })
+
+  test('a duplicated fallback and the fallback both go last, in their order', () => {
+    const workbench = assigned()
+    const fallback = orderedRules(workbench.getState()).at(-1)!
+    workbench.execute({
+      type: 'rule.duplicate',
+      input: { ruleId: fallback.id },
+    })
+    // Moved to the top, the copy would take every building.
+    const copyId = workbench.getState().ruleIds.at(-1)!
+    workbench.execute({
+      type: 'rule.move',
+      input: { ruleId: copyId, position: 0 },
+    })
+    expect(names(workbench)[0]).toBe(`${FALLBACK_RULE_NAME} (copy)`)
+    workbench.execute({ type: 'rule.generateDefaults', input: {} })
+    const order = names(workbench)
+    expect(order.slice(-2)).toEqual([
+      `${FALLBACK_RULE_NAME} (copy)`,
+      FALLBACK_RULE_NAME,
+    ])
+    expect(order).toHaveLength(7)
+  })
+
+  test('switching or moving a generated rule makes it the project’s own, so regenerating keeps it', () => {
+    const workbench = assigned()
+    const [first, second] = workbench.getState().ruleIds
+    workbench.execute({
+      type: 'rule.setEnabled',
+      input: { ruleId: first!, enabled: false },
+    })
+    workbench.execute({
+      type: 'rule.move',
+      input: { ruleId: second!, position: 2 },
+    })
+    const state = workbench.getState()
+    expect(state.rules[first!]?.origin).toBe('project')
+    expect(state.rules[second!]?.origin).toBe('project')
+    workbench.execute({ type: 'rule.generateDefaults', input: {} })
+    const after = workbench.getState()
+    expect(after.rules[first!]?.enabled).toBe(false)
+    expect(after.rules[second!]).toBeDefined()
+    const order = names(workbench)
+    expect(new Set(order).size).toBe(order.length)
+    expect(order).toHaveLength(6)
+  })
+
+  test('saving a rule without a change is refused and outdates nothing', () => {
+    const workbench = assigned()
+    const rule = orderedRules(workbench.getState())[0]!
+    const revision =
+      workbench.getState().workflow.stages[S.archetypes]?.editRevision
+    const result = workbench.execute({
+      type: 'rule.save',
+      input: {
+        ...ruleInput(rule.name, rule.conditions, rule.parts),
+        id: rule.id,
+      },
+    })
+    expect(result.outcome).toMatchObject({
+      status: 'rejected',
+      issues: [
+        { message: expect.stringContaining('No unsaved edits') as unknown },
+      ],
+    })
+    if (result.outcome.status === 'rejected') {
+      expect(result.outcome.issues[0]?.path).toBe('')
+    }
+    const state = workbench.getState()
+    expect(state.workflow.stages[S.archetypes]?.editRevision).toBe(revision)
+    expect(state.rules[rule.id]?.origin).toBe(rule.origin)
   })
 })
 
