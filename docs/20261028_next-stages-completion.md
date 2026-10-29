@@ -34,7 +34,13 @@ Archetypes, Schema matching, Calibration, and viewer panel content afterwards.
   renamed Scenarios. Items 3 below and the saved-layouts scope choices are replaced.
 - Floors and zones in 3D on the map, with one case each of real zoning, each floor as a zone, and perimeter and
   core: answered in the [discussion](floors-zones-3d-discussion.md) and accepted as
-  [decision 0034](decisions/0034-per-building-zoning-and-3d-zones.md); not built yet.
+  [decision 0034](decisions/0034-per-building-zoning-and-3d-zones.md); built in `0b8e061`
+  ([plan and status](per-building-zoning.md)). A building can override the project's zoning in its Properties;
+  B0439 (drawn zones, a synthetic hand-authored plan), B0427 (each floor a zone), and B0426 (perimeter and core) are
+  the fixture's three cases, so the Partway, Failed stage, and Complete fixtures now publish 510 zones instead of
+  464 (results unchanged); Show zones in 3D, exploded floors (a building layer setting), and WebGL zone edges are on
+  the Map. Its 15 decisions taken for review are in the status document. Verification: 555 unit, 133 dev e2e, and 4
+  preview tests passed.
 
 ## Review items for the owner
 

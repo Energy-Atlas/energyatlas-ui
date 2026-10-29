@@ -3,7 +3,7 @@
 Date: 2026-10-29
 
 Status: accepted by the owner (2026-10-28, answering the [floors and zones in 3D discussion](../floors-zones-3d-discussion.md));
-not built yet.
+built on `claude/next-stages`; not merged, not pushed ([plan and status](../per-building-zoning.md)).
 
 ## Context
 

@@ -3,6 +3,16 @@
 Date: 2026-10-28. Stage 6 of 6, the last, of [decision 0032](decisions/0032-next-stages-directions.md), built on
 `claude/next-stages`; not merged into `master`, not pushed.
 
+## Since decision 0034
+
+[Per-building zoning and 3D zones](per-building-zoning.md) (decision 0034, 2026-10-29) changes this stage in these
+places: the zoning setting is now the project default, and a building can override it in its Properties (including
+drawn zones, a fifth zone kind); preprocessing zones each building its own way and publishes the overrides it
+applied; drawn zones fall back to one zone per floor with their own codes and warnings; the complete fixture zones
+three neighbours their own way (510 zones instead of 464); in 3D the map draws zone edges and can explode the
+storeys of zoned buildings (decision 12 below no longer holds); a building's Properties offer Show zones in 3D; and
+the Table page's views name each building's zoning. Everything else below still holds.
+
 ## The owner's decision
 
 Direction A of the [next stages discussion](next-stages-discussion.md#1-floors-and-zones): a zoning setting in RC's

@@ -1,7 +1,8 @@
 # Floors and zones in 3D on the map: discussion
 
 Date: 2026-10-28. Answered by the owner on 2026-10-28: A, R1, S2, and V1, accepted as
-[decision 0034](decisions/0034-per-building-zoning-and-3d-zones.md); not built yet.
+[decision 0034](decisions/0034-per-building-zoning-and-3d-zones.md), built on `claude/next-stages`
+([status](per-building-zoning.md)).
 
 ## The owner's request (2026-10-28, review of stage 6 of decision 0032)
 
