@@ -220,6 +220,35 @@ export function buildingZoningChanged(
   )
 }
 
+/**
+ * The buildings zoned by perimeter and core through their own override: they
+ * use the project's perimeter depth whatever the project's mode is.
+ */
+export function depthOverrides(
+  state: Pick<WorkbenchState, 'zoning' | 'buildings'>,
+): string[] {
+  return Object.entries(state.zoning.overrides)
+    .filter(([id, mode]) => mode === 'perimeterCore' && state.buildings[id])
+    .map(([id]) => id)
+    .sort()
+}
+
+/**
+ * Whether a project setting change gives any building other zones: the mode
+ * or depth of the project's own zoning, or the depth that buildings
+ * overridden to perimeter and core use.
+ */
+export function projectZoningChanges(
+  state: Pick<WorkbenchState, 'zoning' | 'buildings'>,
+  next: ZoningSetting,
+): boolean {
+  return (
+    !sameZoning(next, state.zoning) ||
+    (next.perimeterDepthM !== state.zoning.perimeterDepthM &&
+      depthOverrides(state).length > 0)
+  )
+}
+
 /** Whether any building's zones would differ from the last run's. */
 export function zoningChangedSincePublished(zoning: ZoningState): boolean {
   const published = zoning.published

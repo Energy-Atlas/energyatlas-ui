@@ -133,11 +133,12 @@ import {
   ZONING_MODES,
   ZONING_MODE_LABELS,
   describeBuildingZoning,
+  depthOverrides,
   describeZoning,
   plannedZoning,
+  projectZoningChanges,
   resolveBuildingZoning,
   sameBuildingZoning,
-  sameZoning,
 } from './zoning/zoning.ts'
 import {
   STAGE_IDS,
@@ -2266,16 +2267,28 @@ export const commandDefinitions = {
           perimeterDepthM === undefined ? 'mode' : 'perimeterDepthM',
         )
       }
-      const zonesChange = !sameZoning(next, state.zoning)
+      const zonesChange = projectZoningChanges(state, next)
+      // Buildings overridden to perimeter and core use the project's depth
+      // whatever its mode (decision 0034).
+      const depthUsers = depthOverrides(state)
+      const depthOnly =
+        next.mode === state.zoning.mode &&
+        next.mode !== 'perimeterCore' &&
+        next.perimeterDepthM !== state.zoning.perimeterDepthM
       state.zoning.mode = next.mode
       state.zoning.perimeterDepthM = next.perimeterDepthM
       if (!zonesChange) {
         // A depth kept for perimeter and core changes no zone today.
         return applied(
-          `Perimeter depth set to ${next.perimeterDepthM} m for perimeter and core zoning; the current zoning, ${describeZoning(next).toLowerCase()}, does not use it.`,
+          `Perimeter depth set to ${next.perimeterDepthM} m for perimeter and core zoning; the current zoning, ${describeZoning(next).toLowerCase()}, does not use it, and no building is zoned by perimeter and core of its own.`,
         )
       }
       stage.editRevision = nextRevision(state)
+      if (depthOnly) {
+        return applied(
+          `Perimeter depth set to ${next.perimeterDepthM} m. The project's zoning, ${describeZoning(next).toLowerCase()}, does not use it, but ${depthUsers.length} building${depthUsers.length === 1 ? ' zoned' : 's zoned'} by perimeter and core of ${depthUsers.length === 1 ? 'its' : 'their'} own do (${depthUsers.slice(0, 5).join(', ')}${depthUsers.length > 5 ? ', …' : ''}). "${stage.name}" and the stages after it are outdated until it runs again.`,
+        )
+      }
       const own = Object.keys(state.zoning.overrides).filter(
         (id) => state.buildings[id],
       ).length

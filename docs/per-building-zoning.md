@@ -56,6 +56,11 @@ queued later work is invalidated, exactly as `zoning.set` does. A choice that le
 on a project zoned one zone per building) is saved and outdates nothing. Its summary says when a perimeter-and-core or
 drawn choice will fall back, with the code.
 
+Because buildings overridden to perimeter and core use the project's depth, `zoning.set` treats a depth change as a
+change of zones whenever such a building exists, even while the project's own mode is not perimeter and core
+(`projectZoningChanges`, `depthOverrides`): it outdates preprocessing and names those buildings. Geospatial
+preprocessing's zoning form then shows the depth field too, saying which buildings use it.
+
 Preprocessing zones each building by `resolveBuildingZoning(state.zoning, id)` and publishes the overrides it
 applied in `published.overrides`; floors and zones follow the published zoning (`buildingZoning`), so a building's
 new override shows a warning in Properties until the rerun. The run's summary and the Thermal zones asset name how
@@ -103,13 +108,16 @@ counts, so building totals, the baseline, and scenario results are unchanged.
 - **Show zones in 3D** (a building's Properties, and the palette for the selected buildings): selects the building
   (`selection.set`, replacing the selection), turns the 3D view on (`map.set3d`), opens the Map, and zooms to it
   (`map.focusSelection`); unavailable with a reason when the building has no zones yet or no shown building layer
-  extrudes. Zones stay for the selected buildings only, the first 20 (`MAX_ZONED_BUILDINGS`).
+  extrudes. Zones stay for the selected buildings only, the first 20 (`MAX_ZONED_BUILDINGS`); a larger selection is
+  kept whole, and the zoom's message ("Zones are drawn for the first 20 of N buildings.") and the legend count the
+  rest.
 - **Exploded floors**: in 3D each zoned storey is lifted by 0.8 of its floor height for every storey below it
   (`storeySpan`), so a gap of 2.56 m opens between 3.2 m storeys; the selection outline follows the exploded top. It
   is the `explodeFloors` setting of the topmost shown building layer that extrudes ("Explode zoned floors" in the
   map's Properties, `map.setLayerStyle`), also offered as "Explode floors in 3D" in the building's Properties and
-  "Explode zoned floors in 3D" in the palette, which change that same setting. It is saved with the project's layer
-  stack and in layouts; stacks saved before it are not exploded.
+  "Explode zoned floors in 3D" in the palette, which change that same setting. On any other building layer the
+  checkbox is unavailable and names the layer that decides (it can still be switched off there). It is saved with the
+  project's layer stack and in layouts; stacks saved before it are not exploded.
 - **Zone edges**: in 3D every zone cell is outlined at its base and top with an upright at each corner, drawn by a
   custom WebGL layer (`ZoneEdgeLayer.tsx`) into MapLibre's depth buffer, so edges behind a zone are hidden by it. Each
   edge is a 1.5 px screen-space quad (2.5 px in the selection colour for a selected floor or zone) in the appearance's
@@ -198,8 +206,9 @@ view state, for the layer the zones follow.
    zones, so a project with a bad outline still opens and explains it.
 7. **Drawn zones are a fifth zone kind with a use** ("Drawn: lobby" in tables), named "Floor n name", with ids in
    the plan's order; the core is grey and the other zones take neighbour-aware categorical colours.
-8. **A choice that changes no zone outdates nothing** (One zone on a project zoned one zone per building), as a depth
-   kept for perimeter and core does.
+8. **A choice that changes no zone outdates nothing** (One zone on a project zoned one zone per building). A project
+   depth change outdates nothing only when neither the project's mode nor any building's override is perimeter and
+   core; otherwise it outdates preprocessing, since those buildings use the project's depth.
 9. **Explode floors is a building layer setting** of the layer stack (decision 0031), not a separate zones setting:
    zones replace the building layer's slabs for the zoned buildings, and the topmost shown building layer that
    extrudes decides. This keeps it in the saved stack and in layouts with no new saved field. The building's
@@ -227,10 +236,44 @@ view state, for the layer the zones follow.
 - The selection outline of an exploded building encloses its gaps (it is a prism to the exploded top).
 - Edge corners are not mitred, so a 2.5 px selected edge shows small notches at corners.
 - The flat map's zone legend lists the colours of every floor's zones, not only the floor shown (as before).
+- Edges are lifted by terrain sampled at the mean vertex of the building's first zone cell, not at the footprint
+  centroid MapLibre lifts extrusions by, so on steep terrain they can sit slightly off the zones.
+- Drawn-zone checks sample points along and inside each outline and sum zone areas rather than computing polygon
+  unions and intersections, so a narrow overlap that no sample falls in (thinner than about the sampling step and
+  the 0.25 m tolerance) can slip through, and coverage is judged by summed area.
+- A saved drawn plan may name floors up to 500 (`MAX_DRAWN_FLOOR`); the check counts only the storeys the building
+  has.
 - With the map's Properties hidden while a building is selected, the explode setting is reached from the building's
   Properties or the palette.
 
+## Review (2026-10-29)
+
+An independent review's findings, fixed in one follow-up commit on `claude/next-stages`:
+
+- **Medium**: a project depth change while the project was not zoned by perimeter and core said the depth was unused
+  and outdated nothing, though buildings overridden to perimeter and core use it. It now outdates preprocessing and
+  names them, and the zoning form shows the depth when they exist (unit test).
+- The edge layer detaches and deletes its shaders after linking, deletes the program and vertex array when compiling
+  or linking fails, releases everything on removal, and releases its previous GL resources in `onAdd` (a full style
+  reload drops custom layers without `onRemove` and adds the same layer object again); resources are deleted only
+  through the context that made them (unit test). `SelectionSilhouette` holds no GL resources (it draws on a 2D
+  canvas), so it needed no change.
+- A hand-edited save naming a drawn plan up to floor 10⁹ hung the check, which counted floor by floor: saves are
+  bounded to floor 500, and the check counts only the building's storeys (unit test).
+- "Explode zoned floors" was offered on every extruding building layer though only the topmost shown one decides; it
+  is now unavailable on the others and names the deciding layer. Both explode checkboxes are described by their
+  explanation (`aria-describedby`), which says it takes effect in 3D while the map is flat.
+- Show zones in 3D cut a selection over 20 buildings silently; it keeps the selection and the zoom's message says
+  how many get zones (unit test).
+- Documented: the edges' terrain anchor and the sampled drawn-zone checks (known issues above).
+
 ## Verification (2026-10-29)
+
+After the review fixes: `npm run typecheck`, `npm run lint`, `npm run format:check`, `git diff --check`: clean;
+`npm test`: 559 passed in 51 files (4 more: the depth used by overrides, a plan naming far floors and the bounded
+save, GL release by context, and a large selection's message; a stage 6 test now clears B0426's override before
+keeping a depth); dev e2e on port 5180: 133 passed with 4 workers, none failed or retried; `npm run
+test:e2e:preview`: 4 passed. The review screenshots were retaken.
 
 Built in `0b8e061`. Before it, on the final code:
 

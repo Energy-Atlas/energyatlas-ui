@@ -359,7 +359,13 @@ describe('the zoning setting', () => {
         { path: 'perimeterDepthM', message: 'Use a depth from 1 to 15 m.' },
       ],
     })
-    // A depth kept for later changes no zone and outdates nothing.
+    // A depth kept for later changes no zone and outdates nothing, once no
+    // building overridden to perimeter and core uses it (decision 0034).
+    workbench.execute({
+      type: 'zoning.setBuilding',
+      input: { buildingId: 'B0426', mode: 'default' },
+    })
+    runStageNow(workbench, STAGE_IDS.preprocessing)
     const kept = workbench.execute({
       type: 'zoning.set',
       input: { mode: 'single', perimeterDepthM: 3 },

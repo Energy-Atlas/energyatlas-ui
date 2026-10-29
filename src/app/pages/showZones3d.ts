@@ -4,7 +4,6 @@ import { buildingZoning } from '../../domain/zoning/zoning.ts'
 import type { LayoutController } from '../layout/layoutController.ts'
 import type { ViewStore } from '../view/viewStore.ts'
 import { zonesLayer, type MapLayer } from './mapLayers.ts'
-import { MAX_ZONED_BUILDINGS } from './zoneFeatures.ts'
 
 // "Show zones in 3D" (decision 0034): zones are drawn in 3D for selected
 // buildings only, so this selects the buildings, turns the 3D view on, opens
@@ -37,7 +36,9 @@ export function showZonesIn3d(
   buildingIds: string[],
 ): void {
   const { workbench, view, layout } = services
-  const ids = buildingIds.slice(0, MAX_ZONED_BUILDINGS)
+  // The whole selection is kept; the map draws zones for the first
+  // MAX_ZONED_BUILDINGS and the zoom's message and the legend count the rest.
+  const ids = buildingIds
   const selection = workbench.getState().selection
   const same =
     selection.entityType === 'building' &&

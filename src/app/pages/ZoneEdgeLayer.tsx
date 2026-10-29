@@ -194,6 +194,8 @@ type Input = {
 }
 
 type GlState = {
+  /** The context the resources belong to; only it can delete them. */
+  gl: WebGL2RenderingContext
   program: WebGLProgram
   /**
    * The layer's own vertex array: enabling attributes on whichever array
@@ -215,24 +217,57 @@ type GlState = {
   }
 }
 
+/** Deletes a layer's GL resources, when the context they belong to is the one given. */
+export function releaseGl(state: GlState, gl: WebGL2RenderingContext): void {
+  // Resources of another (lost or replaced) context cannot be deleted here.
+  if (state.gl !== gl) return
+  gl.deleteProgram(state.program)
+  gl.deleteVertexArray(state.vertexArray)
+  for (const buffer of state.buffers.values()) gl.deleteBuffer(buffer)
+  state.buffers.clear()
+  state.meshes = null
+}
+
 function compile(gl: WebGL2RenderingContext): GlState | null {
   const shader = (type: number, source: string) => {
     const result = gl.createShader(type)
     if (!result) return null
     gl.shaderSource(result, source)
     gl.compileShader(result)
-    return gl.getShaderParameter(result, gl.COMPILE_STATUS) ? result : null
+    if (gl.getShaderParameter(result, gl.COMPILE_STATUS)) return result
+    gl.deleteShader(result)
+    return null
   }
   const vertex = shader(gl.VERTEX_SHADER, VERTEX_SHADER)
   const fragment = shader(gl.FRAGMENT_SHADER, FRAGMENT_SHADER)
   const program = gl.createProgram()
   const vertexArray = gl.createVertexArray()
-  if (!vertex || !fragment || !program || !vertexArray) return null
+  const discard = () => {
+    if (vertex) gl.deleteShader(vertex)
+    if (fragment) gl.deleteShader(fragment)
+    if (program) gl.deleteProgram(program)
+    if (vertexArray) gl.deleteVertexArray(vertexArray)
+  }
+  if (!vertex || !fragment || !program || !vertexArray) {
+    discard()
+    return null
+  }
   gl.attachShader(program, vertex)
   gl.attachShader(program, fragment)
   gl.linkProgram(program)
-  if (!gl.getProgramParameter(program, gl.LINK_STATUS)) return null
+  const linked = gl.getProgramParameter(program, gl.LINK_STATUS) as boolean
+  // A linked program keeps its code; the shaders are no longer needed.
+  gl.detachShader(program, vertex)
+  gl.detachShader(program, fragment)
+  gl.deleteShader(vertex)
+  gl.deleteShader(fragment)
+  if (!linked) {
+    gl.deleteProgram(program)
+    gl.deleteVertexArray(vertexArray)
+    return null
+  }
   return {
+    gl,
     program,
     vertexArray,
     buffers: new Map(),
@@ -371,13 +406,13 @@ export function ZoneEdgeLayer({
       type: 'custom',
       renderingMode: '3d',
       onAdd: (_map, gl) => {
+        // A full style reload drops custom layers without onRemove, and the
+        // same layer object is added again: release what it held first.
+        if (glState) releaseGl(glState, gl)
         glState = compile(gl)
       },
       onRemove: (_map, gl) => {
-        if (!glState) return
-        gl.deleteProgram(glState.program)
-        gl.deleteVertexArray(glState.vertexArray)
-        for (const buffer of glState.buffers.values()) gl.deleteBuffer(buffer)
+        if (glState) releaseGl(glState, gl)
         glState = null
       },
       render: (gl, options) => {
@@ -407,6 +442,9 @@ export function ZoneEdgeLayer({
       } catch {
         // The map is being removed with its style.
       }
+      // The layer may have left the style already without onRemove.
+      if (glState) releaseGl(glState, glState.gl)
+      glState = null
     }
   }, [mapRef, loaded, enabled])
 

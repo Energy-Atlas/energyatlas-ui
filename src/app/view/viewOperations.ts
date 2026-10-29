@@ -62,6 +62,8 @@ import {
   validateChartSpec,
   type ChartSpec,
 } from './chartSpec.ts'
+import { selectedBuildingIds } from '../../domain/zoning/zoning.ts'
+import { MAX_ZONED_BUILDINGS } from '../pages/zoneFeatures.ts'
 
 // View operations change what the workbench shows, not the project model. Like
 // commands they validate their input and return a result, and every one is
@@ -472,7 +474,16 @@ export const viewOperationDefinitions = {
         )
       }
       view.map.focusRequest += 1
-      return applied(`Zoomed the map to ${ids.length} selected ${noun}.`)
+      // Zones are drawn for the first buildings only (decision 0034); say so
+      // rather than leave the rest unexplained.
+      const owners = selectedBuildingIds(project.selection).length
+      const beyond =
+        view.map.view3d && owners > MAX_ZONED_BUILDINGS
+          ? ` Zones are drawn for the first ${MAX_ZONED_BUILDINGS} of ${owners} buildings.`
+          : ''
+      return applied(
+        `Zoomed the map to ${ids.length} selected ${noun}.${beyond}`,
+      )
     },
   }),
 

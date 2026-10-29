@@ -1,4 +1,4 @@
-import { useMemo } from 'react'
+import { useId, useMemo } from 'react'
 import type { WorkbenchState } from '../../domain/types.ts'
 import { STAGE_IDS } from '../../domain/workflow.ts'
 import {
@@ -90,6 +90,8 @@ export function FloorsAndZones({ buildingId }: { buildingId: string }) {
   const { workbench, view, layout } = useServices()
   const viewOnly = useViewOnly()
   const layers = useViewState((current) => current.map.layers)
+  const view3d = useViewState((current) => current.map.view3d)
+  const explodeHelpId = useId()
   const state = useWorkbenchSnapshot((snapshot) => snapshot.state)
   const stageStates = useStageStates()
   const building = state.buildings[buildingId]
@@ -342,13 +344,14 @@ export function FloorsAndZones({ buildingId }: { buildingId: string }) {
             className={formStyles.checkbox}
             isSelected={exploded}
             isDisabled={explodeReason !== null}
+            aria-describedby={explodeHelpId}
             onChange={(enabled) => setExplodeFloors(view, enabled)}
           >
             Explode floors in 3D
           </Checkbox>
-          <p className={formStyles.description}>
+          <p id={explodeHelpId} className={formStyles.description}>
             {explodeReason ??
-              `Opens a gap between the storeys of the zoned buildings in 3D; a setting of the "${zonesLayer(layers)?.name ?? 'Buildings'}" map layer, saved with the project.`}
+              `Opens a gap between the storeys of the zoned buildings in 3D; a setting of the "${zonesLayer(layers)?.name ?? 'Buildings'}" map layer, saved with the project.${view3d ? '' : ' It takes effect when the map is shown in 3D.'}`}
           </p>
         </div>
       ) : null}

@@ -14,7 +14,7 @@ import {
   SELECTABLE_ENTITIES,
   type WorkbenchState,
 } from '../domain/types.ts'
-import { DRAWN_ZONE_USES } from '../domain/zoning/drawn.ts'
+import { DRAWN_ZONE_USES, MAX_DRAWN_FLOOR } from '../domain/zoning/drawn.ts'
 import {
   BUILDING_ZONING_MODES,
   MAX_PERIMETER_DEPTH_M,
@@ -230,8 +230,8 @@ const drawnZoning = z.object({
   plans: z.array(
     z
       .object({
-        fromFloor: number.int().positive(),
-        toFloor: number.int().positive(),
+        fromFloor: number.int().positive().max(MAX_DRAWN_FLOOR),
+        toFloor: number.int().positive().max(MAX_DRAWN_FLOOR),
         zones: z.array(
           z.object({
             name: text.min(1),

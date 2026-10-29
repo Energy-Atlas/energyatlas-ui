@@ -76,9 +76,15 @@ export function ZoningForm() {
     'zoning.set',
     'the zoning is being set',
   )
-  // The depth belongs to perimeter and core; other modes neither compare
-  // nor send it, so a hidden depth is never saved.
-  const perimeterCore = mode === 'perimeterCore'
+  // The depth belongs to perimeter and core: the project's mode, or
+  // buildings overridden to it, which use the project's depth (decision
+  // 0034). Otherwise it is neither compared nor sent, so a hidden depth is
+  // never saved.
+  const depthUsers = Object.entries(zoning.overrides)
+    .filter(([, own]) => own === 'perimeterCore')
+    .map(([id]) => id)
+    .sort()
+  const perimeterCore = mode === 'perimeterCore' || depthUsers.length > 0
   const depthError =
     errors.perimeterDepthM ??
     (perimeterCore && depth === null
@@ -163,7 +169,7 @@ export function ZoningForm() {
         </Text>
         <FieldError className={formStyles.fieldError}>{errors.mode}</FieldError>
       </RadioGroup>
-      {mode === 'perimeterCore' ? (
+      {perimeterCore ? (
         <NumberField
           className={formStyles.field}
           value={depth ?? Number.NaN}
@@ -191,13 +197,20 @@ export function ZoningForm() {
           <Text slot="description" className={formStyles.description}>
             {MIN_PERIMETER_DEPTH_M} to {MAX_PERIMETER_DEPTH_M} m; 4.5 m is about
             15 ft.
+            {mode !== 'perimeterCore'
+              ? ` Used by the ${depthUsers.length} building${depthUsers.length === 1 ? '' : 's'} zoned by perimeter and core of ${depthUsers.length === 1 ? 'its' : 'their'} own (${depthUsers.slice(0, 5).join(', ')}${depthUsers.length > 5 ? ', …' : ''}).`
+              : ''}
           </Text>
           <FieldError className={formStyles.fieldError}>
             {depthError}
           </FieldError>
         </NumberField>
       ) : null}
-      {!unchanged && published && !sameZoning(draft, zoning) ? (
+      {!unchanged &&
+      published &&
+      (!sameZoning(draft, zoning) ||
+        (depthUsers.length > 0 &&
+          draft.perimeterDepthM !== zoning.perimeterDepthM)) ? (
         <p className={componentStyles.muted}>
           Saving makes this stage and every later stage outdated until it runs
           again.

@@ -275,7 +275,11 @@ function cutTop(
  */
 export type ZoneEdges = {
   buildingId: string
-  /** The building's footprint centroid, where terrain lifts it. */
+  /**
+   * Where terrain is sampled to lift the building's edges: the mean vertex of
+   * its first zone cell, near but not the footprint centroid MapLibre lifts
+   * extrusions by, so on steep terrain edges can sit slightly off.
+   */
   anchor: LngLat
   edges: number[]
   selected: number[]

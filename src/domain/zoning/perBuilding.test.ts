@@ -486,3 +486,57 @@ describe('saved projects and packages keep per-building zoning', () => {
     expect(drawn?.source).toContain('Synthetic')
   })
 })
+
+describe('review fixes (decision 0034)', () => {
+  test('a depth change with the project not zoned by perimeter and core still outdates buildings overridden to it', () => {
+    const workbench = createWorkbench({
+      initialState: buildFixture('complete', NOW),
+      now: NOW,
+    })
+    expect(workbench.getState().zoning.mode).toBe('single')
+    const set = workbench.execute({
+      type: 'zoning.set',
+      input: { mode: 'single', perimeterDepthM: 2 },
+    })
+    expect(set.outcome.status === 'applied' && set.outcome.summary).toBe(
+      'Perimeter depth set to 2 m. The project\'s zoning, one zone per building, does not use it, but 1 building zoned by perimeter and core of its own do (B0426). "Geospatial preprocessing" and the stages after it are outdated until it runs again.',
+    )
+    const state = workbench.getState()
+    expect(stagesOf(state)[STAGE_IDS.preprocessing]).toBe('stale')
+    expect(buildingZoningChanged(state.zoning, 'B0426')).toBe(true)
+    // Without such overrides the depth is kept and outdates nothing.
+    const plain = createWorkbench({
+      initialState: buildFixture('complete', NOW),
+      now: NOW,
+    })
+    plain.execute({
+      type: 'zoning.setBuilding',
+      input: { buildingId: 'B0426', mode: 'default' },
+    })
+    runStageNow(plain, STAGE_IDS.preprocessing)
+    const kept = plain.execute({
+      type: 'zoning.set',
+      input: { mode: 'single', perimeterDepthM: 2 },
+    })
+    expect(kept.outcome.status === 'applied' && kept.outcome.summary).toContain(
+      'does not use it, and no building is zoned by perimeter and core of its own.',
+    )
+    expect(stagesOf(plain.getState())[STAGE_IDS.preprocessing]).toBe('executed')
+  })
+
+  test('a plan naming a floor far beyond the building is refused at once, and saves bound it', () => {
+    const started = Date.now()
+    const far = drawnPlanProblem(FOOTPRINT, [plan(OFFICES, 1, 1e9)], 2)
+    expect(Date.now() - started).toBeLessThan(1000)
+    expect(far?.message).toContain(
+      'describe floors 3 to 1000000000, but the building has 2 floors',
+    )
+    const fixture = buildFixture('complete', NOW)
+    const saved = JSON.parse(JSON.stringify(fixture)) as WorkbenchState
+    const drawn = saved.zoning.drawn.B0439!
+    drawn.plans[2] = { ...drawn.plans[2]!, toFloor: 501 }
+    expect(projectStateSchema.safeParse(saved).success).toBe(false)
+    drawn.plans[2] = { ...drawn.plans[2], toFloor: 500 }
+    expect(projectStateSchema.safeParse(saved).success).toBe(true)
+  })
+})

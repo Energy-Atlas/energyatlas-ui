@@ -13,7 +13,12 @@ import {
   zoneEdges,
   zoneOverlay,
 } from './zoneFeatures.ts'
-import { edgeVertices, parseColor, translated } from './ZoneEdgeLayer.tsx'
+import {
+  edgeVertices,
+  parseColor,
+  releaseGl,
+  translated,
+} from './ZoneEdgeLayer.tsx'
 import { layerSummary, parseStoredLayers, zonesLayer } from './mapLayers.ts'
 import { showZonesIn3d, zones3dBlocker } from './showZones3d.ts'
 
@@ -355,5 +360,51 @@ describe('3D zones of the three zoning cases (decision 0034)', () => {
     expect(view.getState().map.view3d).toBe(true)
     expect(view.getState().map.focusRequest).toBe(1)
     expect(opened).toEqual(['map'])
+  })
+})
+
+describe('review fixes (decision 0034)', () => {
+  it('releases the edge layer only through the context that made it', () => {
+    const deleted: string[] = []
+    const gl = {
+      deleteProgram: () => deleted.push('program'),
+      deleteVertexArray: () => deleted.push('vertexArray'),
+      deleteBuffer: () => deleted.push('buffer'),
+    } as unknown as WebGL2RenderingContext
+    const other = {} as WebGL2RenderingContext
+    const state = {
+      gl,
+      program: {},
+      vertexArray: {},
+      buffers: new Map([[new Float32Array(1), {}]]),
+      meshes: [],
+    } as unknown as Parameters<typeof releaseGl>[0]
+    releaseGl(state, other)
+    expect(deleted).toEqual([])
+    releaseGl(state, gl)
+    expect(deleted).toEqual(['program', 'vertexArray', 'buffer'])
+    expect(state.buffers.size).toBe(0)
+  })
+
+  it('keeps a large selection and says how many buildings get zones', () => {
+    const state = buildFixture('complete', NOW)
+    const workbench = createWorkbench({ initialState: state, now: NOW })
+    const view = createViewStore(workbench)
+    const ids = state.buildingIds.slice(0, MAX_ZONED_BUILDINGS + 5)
+    showZonesIn3d(
+      {
+        workbench,
+        view,
+        layout: { openPage: () => undefined } as unknown as Parameters<
+          typeof showZonesIn3d
+        >[0]['layout'],
+      },
+      ids,
+    )
+    expect(workbench.getState().selection.ids).toHaveLength(ids.length)
+    const last = workbench.store.getState().log.at(-1)
+    expect(last?.summary).toBe(
+      `Zoomed the map to ${ids.length} selected building(s). Zones are drawn for the first ${MAX_ZONED_BUILDINGS} of ${ids.length} buildings.`,
+    )
   })
 })

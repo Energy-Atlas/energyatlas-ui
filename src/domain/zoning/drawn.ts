@@ -68,6 +68,8 @@ export type DrawnFallbackCode =
 
 /** How far a drawn corner may stray from where it should be, in metres. */
 export const DRAWN_TOLERANCE_M = 0.25
+/** The highest floor a saved drawn plan may name. */
+export const MAX_DRAWN_FLOOR = 500
 /** Drawn zones must cover at least this share of the floor. */
 export const DRAWN_MIN_COVERAGE = 0.98
 
@@ -200,14 +202,20 @@ export function drawnPlanProblem(
     }
   }
   const counts = Array.from({ length: storeys }, () => 0)
-  const beyond = new Set<number>()
+  // Ranges outside the building, kept as ranges: a hand-edited save can name
+  // any floor, so only the storeys the building has are counted one by one.
+  const beyond: [number, number][] = []
   for (const plan of plans) {
-    for (let floor = plan.fromFloor; floor <= plan.toFloor; floor += 1) {
-      if (floor >= 1 && floor <= storeys) {
-        counts[floor - 1] = (counts[floor - 1] ?? 0) + 1
-      } else {
-        beyond.add(floor)
-      }
+    const from = Math.max(1, plan.fromFloor)
+    const to = Math.min(storeys, plan.toFloor)
+    for (let floor = from; floor <= to; floor += 1) {
+      counts[floor - 1] = (counts[floor - 1] ?? 0) + 1
+    }
+    if (plan.fromFloor < 1) {
+      beyond.push([plan.fromFloor, Math.min(0, plan.toFloor)])
+    }
+    if (plan.toFloor > storeys) {
+      beyond.push([Math.max(storeys + 1, plan.fromFloor), plan.toFloor])
     }
   }
   const missing = counts.flatMap((count, index) =>
@@ -228,11 +236,15 @@ export function drawnPlanProblem(
       message: `${PREFIX}: ${doubled.length === 1 ? 'floor' : 'floors'} ${doubled.join(', ')} ${doubled.length === 1 ? 'has' : 'have'} more than one drawn plan.`,
     }
   }
-  if (beyond.size > 0) {
-    const floors = [...beyond].sort((a, b) => a - b)
+  if (beyond.length > 0) {
+    const ranges = beyond.sort((a, b) => a[0] - b[0])
+    const many = ranges.length > 1 || ranges[0]?.[0] !== ranges[0]?.[1]
+    const named = ranges
+      .map(([from, to]) => (from === to ? `${from}` : `${from} to ${to}`))
+      .join(', ')
     return {
       code: 'drawn_floors_mismatch',
-      message: `${PREFIX}: the drawn plans describe ${floors.length === 1 ? 'floor' : 'floors'} ${floors.join(', ')}, but the building has ${storeys} ${storeys === 1 ? 'floor' : 'floors'}.`,
+      message: `${PREFIX}: the drawn plans describe ${many ? 'floors' : 'floor'} ${named}, but the building has ${storeys} ${storeys === 1 ? 'floor' : 'floors'}.`,
     }
   }
   const outline = cleanRing(footprint)
