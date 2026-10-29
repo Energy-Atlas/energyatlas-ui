@@ -10,7 +10,6 @@ import {
   FilePlus,
   FolderTree,
   FlaskConical,
-  Layers3,
   Info,
   LayoutTemplate,
   ListChecks,
@@ -51,13 +50,7 @@ import {
 } from './WorkbenchContext.tsx'
 import { freshRunAndSelect, retryAndSelect } from './pages/jobs/jobActions.ts'
 import { selectedBuildingIds } from '../domain/zoning/zoning.ts'
-import { zonesLayer } from './pages/mapLayers.ts'
-import {
-  explodeBlocker,
-  setExplodeFloors,
-  showZonesIn3d,
-  zones3dBlocker,
-} from './pages/showZones3d.ts'
+import { showZonesIn3d, zones3dBlocker } from './pages/showZones3d.ts'
 import {
   cancelBlocker,
   freshRunBlocker,
@@ -404,19 +397,6 @@ export function useAppActions(dialogs: ShellDialogs): AppAction[] {
           showZonesIn3d(
             { workbench, view, layout },
             selectedBuildingIds(state.selection),
-          ),
-      },
-      {
-        id: 'view.explodeZonedFloors',
-        label: 'Explode zoned floors in 3D',
-        group: 'View',
-        icon: Layers3,
-        pressed: zonesLayer(mapLayers)?.explodeFloors ?? false,
-        disabledReason: explodeBlocker(mapLayers),
-        perform: () =>
-          setExplodeFloors(
-            view,
-            !(zonesLayer(mapLayers)?.explodeFloors ?? false),
           ),
       },
       {
@@ -786,7 +766,6 @@ const VIEWER_ACTION_IDS = new Set([
   'view.toggleRightSide',
   'view.inspectSelection',
   'view.showZones3d',
-  'view.explodeZonedFloors',
   'view.toggleMaximize',
   'view.resetLayout',
   'view.layouts',

@@ -267,7 +267,7 @@ describe('scripted agent', () => {
     expect(text).toContain('perimeter_inset_failed')
   })
 
-  it('zones a building by its drawn zones after approval and shows the three zoning cases exploded in 3D (decision 0034)', async () => {
+  it('zones a building by its drawn zones after approval and shows the three zoning cases in 3D, then a floor and a zone (decisions 0034 and 0035)', async () => {
     const {
       workbench,
       client,
@@ -285,7 +285,7 @@ describe('scripted agent', () => {
     await manual.settle(50)
     expect(workbench.getState().zoning.overrides.B0439).toBeUndefined()
     expect(matchSession('Show the drawn zones in 3D')?.id).toBe('zoningCases')
-    expect(matchSession('Explode the floors')?.id).toBe('zoningCases')
+    expect(matchSession('Draw the other floors hollow')?.id).toBe('zoningCases')
     agent.startPreset('zoningCases')
     await manual.settle(50)
     expect(lastApproval().title).toBe('Zone B0439 by its drawn zones')
@@ -299,9 +299,10 @@ describe('scripted agent', () => {
     expect(agent.store.getState().status).toBe('idle')
     const state = workbench.getState()
     expect(state.zoning.published?.overrides.B0439).toBe('drawn')
+    // It ends one level down at a time: the building, floor 2, a zone.
     expect(state.selection).toEqual({
-      entityType: 'building',
-      ids: ['B0439', 'B0427', 'B0426'],
+      entityType: 'zone',
+      ids: ['B0439:F2:Z2'],
     })
     expect(
       agentEntries()
@@ -312,13 +313,16 @@ describe('scripted agent', () => {
       'selection.set',
       'layout.openPage',
       'map.set3d',
-      'map.setLayerStyle',
       'map.focusSelection',
+      'selection.set',
+      'selection.set',
+      'selection.set',
     ])
     const text = JSON.stringify(transcript())
     expect(text).toContain('25 drawn zones')
     expect(text).toContain('each floor a zone')
-    expect(text).toContain('drawn apart')
+    expect(text).toContain('floor 2 drawn solid with its other floors hollow')
+    expect(text).toContain('Floor 2 corridor')
   })
 
   it('asks before changing the zoning of a building, and describes the tool', () => {

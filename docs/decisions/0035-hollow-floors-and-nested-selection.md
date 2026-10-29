@@ -3,8 +3,8 @@
 Date: 2026-10-29
 
 Status: accepted by the owner (2026-10-29, reviewing F5 of [decision 0034](0034-per-building-zoning-and-3d-zones.md));
-the choices marked "for review" were made by the implementer and are open to the owner's review. Being built on
-`claude/next-stages`; not merged, not pushed ([status](../per-building-zoning.md)).
+the choices marked "for review" were made by the implementer and are open to the owner's review. Built on
+`claude/next-stages`; not merged, not pushed ([status](../per-building-zoning.md#since-decision-0035)).
 
 ## Context
 

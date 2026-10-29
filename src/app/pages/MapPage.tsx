@@ -5,9 +5,20 @@ import {
   Source,
   type MapRef,
 } from '@vis.gl/react-maplibre'
-import type { ExpressionSpecification, StyleSpecification } from 'maplibre-gl'
+import type {
+  ExpressionSpecification,
+  MapGeoJSONFeature,
+  StyleSpecification,
+} from 'maplibre-gl'
 import 'maplibre-gl/dist/maplibre-gl.css'
-import { useEffect, useId, useMemo, useRef, useState } from 'react'
+import {
+  useEffect,
+  useId,
+  useMemo,
+  useRef,
+  useState,
+  type KeyboardEvent,
+} from 'react'
 import { DISTRICT_CENTER } from '../../domain/simulation.ts'
 import type { LngLat } from '../../domain/types.ts'
 import { STAGE_IDS } from '../../domain/workflow.ts'
@@ -58,13 +69,21 @@ import {
 } from './terrain.ts'
 import { useBasemap } from './useBasemap.ts'
 import { useTerrain } from './useTerrain.ts'
-import { zonesLayer } from './mapLayers.ts'
+import {
+  clickTarget,
+  describeTarget,
+  stepTarget,
+  upTarget,
+  type MapHit,
+  type MapTarget,
+} from './mapSelection.ts'
 import {
   selectedBuildingIds,
   type ZoneKind,
 } from '../../domain/zoning/zoning.ts'
 import type { WorkbenchState } from '../../domain/types.ts'
 import {
+  floorNumberOf,
   slabFeatures,
   zoneEdges,
   zoneOverlay,
@@ -238,12 +257,9 @@ export function MapPage() {
     () => slabFeatures({ buildingIds, buildings, zoning }, metrics),
     [buildingIds, buildings, zoning, metrics],
   )
-  // Exploded floors follow the topmost shown building layer that extrudes
-  // (decision 0034); they open only in 3D.
-  const explode = (view3d && zonesLayer(mapView.layers)?.explodeFloors) ?? false
   const overlay = useMemo(
-    () => zoneOverlay({ selection, buildings, zoning }, { explode }),
-    [selection, buildings, zoning, explode],
+    () => zoneOverlay({ selection, buildings, zoning }),
+    [selection, buildings, zoning],
   )
   const zoneDrawing: ZoneDrawing =
     overlay.buildingIds.length === 0 || !buildingLayerShown
@@ -257,12 +273,79 @@ export function MapPage() {
     () => (zoneDrawing === 'extruded' ? zoneEdges(overlay.cells.features) : []),
     [zoneDrawing, overlay],
   )
-  const zonePickId =
+  // Hollow floors stay pickable, so a click can choose another floor
+  // (decision 0035).
+  const zonePickIds: string[] =
     zoneDrawing === 'extruded'
-      ? ZONE_LAYER_IDS.extrusion
+      ? [ZONE_LAYER_IDS.extrusion, ZONE_LAYER_IDS.hollow]
       : zoneDrawing === 'plan'
-        ? ZONE_LAYER_IDS.fill
-        : null
+        ? [ZONE_LAYER_IDS.fill]
+        : []
+  /** What a map feature is, as a hit for the nested selection rules. */
+  const hitOf = (feature: MapGeoJSONFeature): MapHit | null => {
+    const id: unknown = feature.properties.id
+    if (typeof id !== 'string') return null
+    if (zonePickIds.includes(feature.layer.id)) {
+      const floor: unknown = feature.properties.floor
+      return {
+        kind: 'building',
+        buildingId: String(feature.properties.buildingId ?? ''),
+        floor: typeof floor === 'number' ? floor : null,
+        zoneId: id,
+      }
+    }
+    const layer = byPickId.get(feature.layer.id)
+    if (layer?.layer.kind === 'buildings') {
+      const floorId: unknown = feature.properties.floorId
+      return {
+        kind: 'building',
+        buildingId: id,
+        floor: typeof floorId === 'string' ? floorNumberOf(floorId) : null,
+        zoneId: null,
+      }
+    }
+    return layer ? { kind: 'grid', id } : null
+  }
+  const hitsOf = (features: MapGeoJSONFeature[] | undefined): MapHit[] =>
+    (features ?? []).flatMap((feature) => {
+      const hit = hitOf(feature)
+      return hit ? [hit] : []
+    })
+  // A flat map shows one floor's plan: a hit on it is on that floor.
+  const planFloor = view3d && extrudedShown ? null : overlay.planFloor
+  const applyTarget = (target: MapTarget) => {
+    if (target === null) return
+    if (target === 'clear') {
+      if (selection.ids.length > 0) {
+        workbench.execute({ type: 'selection.clear', input: {} })
+      }
+    } else {
+      workbench.execute({ type: 'selection.set', input: target })
+    }
+    // Choosing a map object shows it in Properties (decision 0030).
+    showInspection()
+  }
+  // Escape goes up a level; Page Up and Page Down step between floors.
+  const onMapKey = (event: KeyboardEvent<HTMLDivElement>) => {
+    const project = { selection, buildings, zoning }
+    const target =
+      event.key === 'Escape'
+        ? upTarget(project)
+        : event.key === 'PageUp'
+          ? stepTarget(project, 1)
+          : event.key === 'PageDown'
+            ? stepTarget(project, -1)
+            : undefined
+    if (target === undefined) return
+    event.preventDefault()
+    event.stopPropagation()
+    if (target === null) return
+    if (target === 'clear') {
+      workbench.execute({ type: 'selection.clear', input: {} })
+    } else {
+      workbench.execute({ type: 'selection.set', input: target })
+    }
+  }
 
   const buildingsGeoJson = useMemo(
     () => ({
@@ -418,20 +501,16 @@ export function MapPage() {
     () =>
       selectedBuildingIds(selection).flatMap((id) => {
         const building = state.buildings[id]
-        // A zoned building is outlined to the top drawn: its cut above a
-        // selected floor, or its exploded storeys.
-        const drawnTop =
-          zoneDrawing === 'extruded' ? overlay.topsM[id] : undefined
         return building
           ? [
               {
                 footprint: building.footprint,
-                heightM: drawnTop ?? building.heightM ?? 0,
+                heightM: building.heightM ?? 0,
               },
             ]
           : []
       }),
-    [selection, state.buildings, zoneDrawing, overlay.topsM],
+    [selection, state.buildings],
   )
 
   // Mirror the shared selection into feature state.
@@ -533,7 +612,8 @@ export function MapPage() {
         <CapabilityBadge id="map.view" />
       </header>
 
-      <div className={styles.mapArea}>
+      {/* Keys reach here from the focused map canvas (decision 0035). */}
+      <div className={styles.mapArea} onKeyDown={onMapKey}>
         <MapView
           ref={mapRef}
           mapStyle={mapStyle}
@@ -546,7 +626,7 @@ export function MapPage() {
           // 2D stays flat and north-up; 3D allows tilting.
           maxPitch={view3d ? 70 : 0}
           interactiveLayerIds={[
-            ...(zonePickId ? [zonePickId] : []),
+            ...zonePickIds,
             ...shown.map((resolved) => resolved.pickId),
           ]}
           onLoad={() => setLoaded(true)}
@@ -569,49 +649,40 @@ export function MapPage() {
               setHover(null)
               return
             }
+            // The label names what a click would select at this level.
+            const target = clickTarget(
+              { selection, buildings, zoning },
+              hitsOf(event.features),
+              { additive: event.originalEvent.shiftKey, planFloor },
+            )
             const layer = byPickId.get(feature?.layer.id ?? '')
+            const named = describeTarget(
+              { selection, buildings, zoning },
+              target,
+            )
             const label =
-              feature?.layer.id === zonePickId
-                ? `${String(feature?.properties?.name ?? id)}, ${String(feature?.properties?.buildingId ?? '')}`
-                : layer?.metric && layer.values
-                  ? `${id}: ${formatValue(layer.values.values[id] ?? null, layer.metric.unit)}`
-                  : `${String(feature?.properties?.name ?? id)}`
+              target !== null &&
+              target !== 'clear' &&
+              target.entityType === 'building' &&
+              target.ids.length === 1 &&
+              layer?.metric &&
+              layer.values
+                ? `${id}: ${formatValue(layer.values.values[id] ?? null, layer.metric.unit)}`
+                : named || String(feature?.properties?.name ?? id)
             setHover({ id, label, x: event.point.x, y: event.point.y })
           }}
           onMouseLeave={() => setHover(null)}
           onClick={(event) => {
-            const feature = event.features?.[0]
-            const id: unknown = feature?.properties?.id
-            if (typeof id !== 'string') {
-              // An empty spot selects the map itself: Properties then shows
-              // the map's own properties (decision 0030).
-              if (selection.ids.length > 0) {
-                workbench.execute({ type: 'selection.clear', input: {} })
-              }
-              showInspection()
-              return
-            }
-            const entityType =
-              feature?.layer.id === zonePickId
-                ? 'zone'
-                : byPickId.get(feature?.layer.id ?? '')?.layer.kind ===
-                    'buildings'
-                  ? 'building'
-                  : 'gridElement'
-            const additive =
-              event.originalEvent.shiftKey &&
-              selection.entityType === entityType
-            const ids = additive
-              ? selection.ids.includes(id)
-                ? selection.ids.filter((selected) => selected !== id)
-                : [...selection.ids, id]
-              : [id]
-            workbench.execute({
-              type: 'selection.set',
-              input: { entityType, ids },
-            })
-            // Choosing a map object shows it in Properties (decision 0030).
-            showInspection()
+            // Nested selection (decision 0035): building, then floor, then
+            // zone. An empty spot selects the map itself: Properties then
+            // shows the map's own properties (decision 0030).
+            applyTarget(
+              clickTarget(
+                { selection, buildings, zoning },
+                hitsOf(event.features),
+                { additive: event.originalEvent.shiftKey, planFloor },
+              ),
+            )
           }}
         >
           {/* Control options apply at creation, so remount when 3D changes. */}
@@ -716,6 +787,7 @@ export function MapPage() {
           edges={edges}
           color={ink.primary}
           selectedColor={palette.selection}
+          hollowAlpha={palette.hollow.edgeAlpha}
         />
 
         <SelectionSilhouette
@@ -814,7 +886,9 @@ export function MapPage() {
         the same buildings and shares the selection.
         {view3d
           ? ' With the map focused, Shift+arrow keys rotate and tilt it.'
-          : ''}
+          : ''}{' '}
+        With a floor or zone selected and the map focused, Escape selects the
+        level above, and Page Up and Page Down select the floor above or below.
       </p>
     </section>
   )
@@ -940,15 +1014,31 @@ function ZoneLegend({
         </span>
       </p>
       {drawing === 'extruded' ? (
+        <p className={styles.legendRow}>Lines mark zone edges.</p>
+      ) : null}
+      {overlay.focus ? (
         <p className={styles.legendRow}>
-          {overlay.exploded
-            ? 'Floors exploded apart; lines mark zone edges.'
-            : 'Lines mark zone edges.'}
+          {overlay.focus.level === 'zone' ? 'Zone on floor' : 'Floor'}
+          {overlay.focus.floors.length > 1 ? 's' : ''}{' '}
+          {overlay.focus.floors.join(', ')} of {overlay.focus.buildingId}{' '}
+          selected
+          {drawing === 'extruded' && overlay.hollow
+            ? '; its other floors are drawn hollow.'
+            : '.'}
         </p>
       ) : null}
-      {drawing === 'extruded' && overlay.cutAbove !== null ? (
+      {drawing === 'extruded' && overlay.hollow ? (
         <p className={styles.legendRow}>
-          Floors above floor {overlay.cutAbove} are cut away.
+          <span
+            className={styles.swatch}
+            // A faint fill in a full-strength outline: the shell.
+            style={{
+              background: `color-mix(in srgb, ${palette.deemphasis} ${Math.round(palette.hollow.opacity * 100)}%, transparent)`,
+              outline: `1px solid ${palette.deemphasis}`,
+              outlineOffset: -1,
+            }}
+          />{' '}
+          Hollow floors
         </p>
       ) : null}
       {/* One row per kind of zone drawn, with the colours its cells use. */}

@@ -26,12 +26,6 @@ export type MapLayer = {
    * (decision 0032, stage 6). Stacks saved before it get slabs.
    */
   floorSlabs: boolean
-  /**
-   * Buildings only: the storeys of buildings drawn as zones open apart in 3D
-   * (decision 0034). The topmost shown building layer that extrudes decides.
-   * Stacks saved before it are not exploded.
-   */
-  explodeFloors: boolean
 }
 
 export const LAYER_KINDS: Record<
@@ -82,7 +76,6 @@ export function newLayer(
     colorBy: 'floors',
     extrude: true,
     floorSlabs: true,
-    explodeFloors: false,
   }
 }
 
@@ -113,7 +106,8 @@ const layerSchema = z.object({
   colorBy: z.enum(BUILDING_COLORS),
   extrude: z.boolean(),
   floorSlabs: z.boolean().default(true),
-  explodeFloors: z.boolean().default(false),
+  // explodeFloors (decision 0034, removed by decision 0035) is dropped when
+  // a stack saved on this branch is read: zod strips unknown keys.
 })
 
 /**
@@ -148,7 +142,6 @@ export function layerSummary(layer: MapLayer): string {
     parts.push(colorLabel(layer.colorBy))
     if (layer.extrude) {
       parts.push(layer.floorSlabs ? 'extruded' : 'extruded whole')
-      if (layer.explodeFloors) parts.push('zoned floors exploded')
     }
   }
   if (layer.opacityPercent !== 100) parts.push(`${layer.opacityPercent}%`)
@@ -157,8 +150,9 @@ export function layerSummary(layer: MapLayer): string {
 }
 
 /**
- * The layer whose settings the zones of selected buildings follow in 3D
- * (decision 0034): the topmost shown building layer that extrudes.
+ * The layer whose 3D drawing the zones of selected buildings take the place
+ * of (decisions 0034 and 0035): the topmost shown building layer that
+ * extrudes.
  */
 export function zonesLayer(layers: MapLayer[]): MapLayer | undefined {
   return layers.find(

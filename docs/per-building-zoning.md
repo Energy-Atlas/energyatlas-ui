@@ -13,7 +13,9 @@ decision 0032).
 - **Drawn zones are the "real zoning" case (R1)**: zone outlines per floor that no mode generated, stored with the
   project and labelled synthetic. IDF, gbXML, and IFC import stays deferred (RC has none either).
 - **3D zones for selected buildings only (S2)**, with a "Show zones in 3D" action.
-- **MapLibre extrusions with exploded floors and drawn edges (V1)**, no new package.
+- **MapLibre extrusions with exploded floors and drawn edges (V1)**, no new package. Exploded floors were removed
+  by [decision 0035](decisions/0035-hollow-floors-and-nested-selection.md) in favour of hollow floors and nested
+  selection ([below](#since-decision-0035)).
 
 ## Observed in RC (read-only, RCEnergySimulator at `7464c140`)
 
@@ -34,11 +36,11 @@ only. Nothing here is copied from RC.
 | Command | `zoning.setBuilding` in `src/domain/commands.ts`, a server and model command (`src/server/server.ts`) |
 | Preprocessing | `preprocessItem` and `publishPreprocessing` in `src/domain/commands.ts` and `src/domain/simulation.ts` |
 | Saved state and packages | `zoning.overrides`, `zoning.drawn`, `published.overrides` in `src/server/projectSchema.ts`, each defaulting to none |
-| Properties | `src/app/properties/BuildingZoningForm.tsx` in `FloorsAndZones.tsx` (the viewer shows facts instead); Show zones in 3D and Explode floors in 3D beside Show on Map |
-| Show zones in 3D | `src/app/pages/showZones3d.ts` (`zones3dBlocker`, `showZonesIn3d`, `explodeBlocker`, `setExplodeFloors`); app actions `view.showZones3d` and `view.explodeZonedFloors` in `src/app/actions.ts` |
-| Exploded floors | `explodeFloors` building layer setting in `src/app/pages/mapLayers.ts` (`zonesLayer`), `map.setLayerStyle`, `src/app/panels/MapLayers.tsx`; `storeySpan` and `topsM` in `src/app/pages/zoneFeatures.ts` |
+| Properties | `src/app/properties/BuildingZoningForm.tsx` in `FloorsAndZones.tsx` (the viewer shows facts instead); Show zones in 3D beside Show on Map |
+| Show zones in 3D | `src/app/pages/showZones3d.ts` (`zones3dBlocker`, `showZonesIn3d`); the app action `view.showZones3d` in `src/app/actions.ts` |
+| Exploded floors | removed by decision 0035; `storeySpan` in `src/app/pages/zoneFeatures.ts` keeps every storey at its height |
 | Zone edges in 3D | `zoneEdges` in `zoneFeatures.ts`; the custom WebGL layer `src/app/pages/ZoneEdgeLayer.tsx`; `zones:edges` in `ZoneLayers.tsx` |
-| Map legend | `ZoneLegend` in `src/app/pages/MapPage.tsx`: drawn zones, edges, exploded floors |
+| Map legend | `ZoneLegend` in `src/app/pages/MapPage.tsx`: drawn zones, edges, and (decision 0035) the selected floor among hollow floors |
 | Table page | Buildings: Zoning and Zoning from (`TablePage.tsx`); Floors and Zones: Zoning and Zoning from as the last run applied (`FloorZoneTables.tsx`); drawn zone types |
 | Viewer | building zoning as facts in Properties; building overrides in Geospatial preprocessing's read-only facts (`ReadOnlyDefinition.tsx`) |
 | Agent | `zoningCasesSession` ("Zoning cases in 3D") in `src/app/agent/sessions.ts`; `ScriptContext.view` |
@@ -111,13 +113,7 @@ counts, so building totals, the baseline, and scenario results are unchanged.
   extrudes. Zones stay for the selected buildings only, the first 20 (`MAX_ZONED_BUILDINGS`); a larger selection is
   kept whole, and the zoom's message ("Zones are drawn for the first 20 of N buildings.") and the legend count the
   rest.
-- **Exploded floors**: in 3D each zoned storey is lifted by 0.8 of its floor height for every storey below it
-  (`storeySpan`), so a gap of 2.56 m opens between 3.2 m storeys; the selection outline follows the exploded top. It
-  is the `explodeFloors` setting of the topmost shown building layer that extrudes ("Explode zoned floors" in the
-  map's Properties, `map.setLayerStyle`), also offered as "Explode floors in 3D" in the building's Properties and
-  "Explode zoned floors in 3D" in the palette, which change that same setting. On any other building layer the
-  checkbox is unavailable and names the layer that decides (it can still be switched off there). It is saved with the
-  project's layer stack and in layouts; stacks saved before it are not exploded.
+- **Exploded floors** were removed by decision 0035; see [Since decision 0035](#since-decision-0035).
 - **Zone edges**: in 3D every zone cell is outlined at its base and top with an upright at each corner, drawn by a
   custom WebGL layer (`ZoneEdgeLayer.tsx`) into MapLibre's depth buffer, so edges behind a zone are hidden by it. Each
   edge is a 1.5 px screen-space quad (2.5 px in the selection colour for a selected floor or zone) in the appearance's
@@ -126,11 +122,11 @@ counts, so building totals, the baseline, and scenario results are unchanged.
   layer has its own vertex array. Flat, zones keep their existing outlines.
 - In 3D, zooming to a selection now stops at zoom 17.5 with more room at the top (18 before), so a zoned building's
   storeys show.
-- The legend names drawn zones (synthetic), that lines mark zone edges, and when floors are exploded.
+- The legend names drawn zones (synthetic) and that lines mark zone edges.
 
 ### Properties
 
-A building's Floors and zones section gains Show zones in 3D, Explode floors in 3D, and **Zoning of this building**:
+A building's Floors and zones section gains Show zones in 3D and **Zoning of this building**:
 what the last run zoned it by and whether by the project default or an override, five choices (the project default
 names the project's mode), a hint per choice (for drawn zones, what the stored plans hold and that editing them is
 deferred, with the Simulated badge and the source), a warning when the choice would fall back, a note when saving
@@ -147,15 +143,15 @@ from**; the Zones view's note counts the buildings zoned their own way.
 ### Viewer
 
 Packages carry the overrides, the drawn zones, and the published overrides through the saved-project schema. The
-viewer shows a building's zoning as facts (Zoning, Drawn zones) with no form, offers Show zones in 3D and exploded
-floors (view changes), and lists building overrides among Geospatial preprocessing's read-only facts.
+viewer shows a building's zoning as facts (Zoning, Drawn zones) with no form, offers Show zones in 3D and the map's nested selection (view changes), and lists building overrides among Geospatial preprocessing's read-only facts.
 
 ### Agent
 
 `zoning.setBuilding` is an agent tool that waits for approval, like every undoable server command; the viewer's agent
 does not have it. The modeller's **Zoning cases in 3D** session proposes drawn zones for a building whose drawn
 outlines are not used (approval), reruns Geospatial preprocessing when needed (approval), then selects one building
-per case, shows them in 3D, explodes their floors, zooms to them, and describes each one. Its context can read the
+per case, shows them in 3D, zooms to them, and describes each one, then (decision 0035) selects the drawn building, its
+floor 2, and a zone on it. Its context can read the
 view state, for the layer the zones follow.
 
 ## States
@@ -171,15 +167,15 @@ view state, for the layer the zones follow.
   its code after the run and as a coded preprocessing warning, preprocessing outdated.
 - **Error**: an unknown building, an unchanged choice, an unknown mode, and a change while preprocessing runs, each
   refused on its field and shown in the form; a server refusal on its field (demo condition).
-- **Keyboard**: the zoning radios (arrows), Save, Show zones in 3D, and the explode checkbox in Properties; both app
-  actions in the palette; Shift+arrow keys tilt the focused map.
+- **Keyboard**: the zoning radios (arrows), Save, and Show zones in 3D in Properties; the Show zones in 3D app action
+  in the palette; Shift+arrow keys tilt the focused map, and (decision 0035) Escape, Page Up, and Page Down change
+  the selection level and floor.
 
 ## Real, mocked, deferred
 
 - **Real**: per-building overrides and their command with validation, undo, outdating, and invalidation; preprocessing
   per building; the published overrides; drawn zones stored with the project and checked against the footprint with
-  coded fallbacks; saved projects and packages with defaults for older ones; the explode setting saved with the
-  stack; the 3D edges; the Properties control, Table columns, viewer facts, palette actions, and agent session.
+  coded fallbacks; saved projects and packages with defaults for older ones; the 3D edges; the Properties control, Table columns, viewer facts, palette actions, and agent session.
 - **Mocked (synthetic)**: the drawn floor plan of B0439 (hand-authored, not a real plan); heights (floors × 3.2 m);
   per-zone results (the building's result split by floor area).
 - **Deferred**: editing drawn outlines in the UI, importing them from IDF, gbXML, or IFC, per-building perimeter
@@ -209,12 +205,12 @@ view state, for the layer the zones follow.
 8. **A choice that changes no zone outdates nothing** (One zone on a project zoned one zone per building). A project
    depth change outdates nothing only when neither the project's mode nor any building's override is perimeter and
    core; otherwise it outdates preprocessing, since those buildings use the project's depth.
-9. **Explode floors is a building layer setting** of the layer stack (decision 0031), not a separate zones setting:
+9. *(Removed by decision 0035.)* **Explode floors is a building layer setting** of the layer stack (decision 0031), not a separate zones setting:
    zones replace the building layer's slabs for the zoned buildings, and the topmost shown building layer that
    extrudes decides. This keeps it in the saved stack and in layouts with no new saved field. The building's
    Properties and the palette offer the same setting so it can be switched while a building is selected (the map's
    Properties show only while nothing is selected).
-10. **Only the zoned (selected) buildings explode**, by 0.8 of a floor height per storey below; other buildings keep
+10. *(Removed by decision 0035.)* **Only the zoned (selected) buildings explode**, by 0.8 of a floor height per storey below; other buildings keep
     their slabs.
 11. **Edges use the appearance's primary ink** (the selection colour for a selected floor or zone), 1.5 px wide, and
     show only in 3D; the flat map keeps its surface-coloured outlines.
@@ -222,18 +218,18 @@ view state, for the layer the zones follow.
     now stops at zoom 17.5 instead of 18.
 13. **The Buildings view shows the setting now; the Floors and Zones views show the zoning the last run applied**, so
     a pending change appears in Buildings before the rerun and in Floors and Zones after it.
-14. **The viewer keeps Show zones in 3D and exploded floors** as view changes; the zoning control is left out.
+14. **The viewer keeps Show zones in 3D** (and, until decision 0035, exploded floors) as view changes; the zoning
+    control is left out.
 15. **A pre-existing defect was fixed**: switching the zones from the flat plan to 3D in one step (as Show zones in
     3D does) kept MapLibre's flat plan layer, because react-maplibre keeps the id and type a layer was mounted with and
     React reused the unkeyed layer; the zone layers are now keyed.
 
 ## Known issues and limits
 
-- Edges and exploded floors are checked by screenshot review only; the specs check the legend, the setting, and the
+- Edges and hollow floors are checked by screenshot review only; the specs check the legend, the selection, and the
   controls, not WebGL pixels.
 - The edge layer uses the Mercator matrix and draws nothing while the globe projection is still blending in (zoomed
   far out, where zones are too small to read anyway).
-- The selection outline of an exploded building encloses its gaps (it is a prism to the exploded top).
 - Edge corners are not mitred, so a 2.5 px selected edge shows small notches at corners.
 - The flat map's zone legend lists the colours of every floor's zones, not only the floor shown (as before).
 - Edges are lifted by terrain sampled at the mean vertex of the building's first zone cell, not at the footprint
@@ -243,8 +239,113 @@ view state, for the layer the zones follow.
   the 0.25 m tolerance) can slip through, and coverage is judged by summed area.
 - A saved drawn plan may name floors up to 500 (`MAX_DRAWN_FLOOR`); the check counts only the storeys the building
   has.
-- With the map's Properties hidden while a building is selected, the explode setting is reached from the building's
-  Properties or the palette.
+
+## Since decision 0035
+
+Date: 2026-10-29. [Decision 0035](decisions/0035-hollow-floors-and-nested-selection.md), from the owner's review of
+F5: geometry less changed. Built on `claude/next-stages`; not merged, not pushed.
+
+### What changed
+
+| Part | Where |
+| --- | --- |
+| Exploded floors removed | the `explodeFloors` layer setting, both checkboxes, the palette action, the agent's step, the storey lift, and the legend text; `mapLayers.ts` drops the key from stacks saved with it (zod strips it), so they open with no unsaved change |
+| Selection levels | `src/app/pages/mapSelection.ts`: `clickTarget` (what a click selects from the selection now and the hits, nearest first), `upTarget` (Escape), `stepTarget` (Page Up and Page Down), `describeTarget` (hover labels) |
+| Map | `MapPage.tsx`: clicks and hover go through `clickTarget`; keys on the focused map through `upTarget` and `stepTarget`; the selection outline is the whole building |
+| Cell states | `zoneOverlay` in `zoneFeatures.ts`: each cell is `zone`, `floor`, `selected`, `muted`, or `hollow`; `focus` and `hollow` replace the cut; `selectedFloorsByBuilding`, `floorNumberOf` |
+| 3D drawing | `ZoneLayers.tsx`: `zones:extrusion` (solid cells: zone colours, the selected zone in the selection colour, other zones of its floor muted), then the edge layer, then `zones:hollow` (a faint shell); `ZoneEdgeLayer.tsx` draws four edge styles |
+| Tokens | `hollow: { opacity, edgeAlpha }` in every appearance's data palette (`appearances.ts`) |
+| Agent | the Zoning cases in 3D session ends by selecting B0439, its floor 2, and a zone on it, through `selection.set` |
+
+**Nested selection.** On the map a click on an unselected building selects it. With a building selected, a click on
+it selects the floor under the pointer: in 3D the storey hit, flat the floor whose plan is shown. With a floor
+selected, a click on it selects the zone under the pointer, and a click on another of its floors selects that floor.
+With a zone selected, a click on its floor selects another zone, and elsewhere in the building the floor hit. A
+click on another building selects that building, and an empty spot clears the selection as before. Shift adds or
+removes at the same level within the building (floors of the selected building, zones of the selected floor); Shift
+on another building selects it, and buildings still add and remove with Shift. The Table, Assets, Properties tables,
+and the agent still select floors and zones directly. Hover labels name what a click would select, such as
+"Floor 2 of Building 439".
+
+**Keyboard.** With the map focused, Escape goes up a level (zone to its floor, floor to its building, building to
+nothing, a whole-building zone to its building), and with a floor or zone selected Page Up and Page Down select the
+floor above or below (they stop at the top and bottom). MapLibre's own keys (arrows, Shift+arrows, plus and minus) and
+the app's shortcuts use none of these. Properties lists a building's floors and zones for selection, as before.
+
+**Hollow floors.** With a building selected, its zones are drawn as in decision 0034. With a floor or zone selected,
+that floor is solid with its zones and emphasised edges (2.25 px), the selected zone takes the selection colour with
+2.5 px edges in that colour and the floor's other zones are muted, and the building's other floors are hollow: a
+faint shell in the de-emphasis colour at the appearance's `hollow.opacity` (0.12 in light appearances, 0.16 in dark
+ones) with 1 px edges at `hollow.edgeAlpha`. Nothing is cut away or moved. MapLibre writes a translucent extrusion's
+depth before its colour, so the solid cells and the edges are drawn first and the hollow shell last; the selected
+floor and its edges show through the shells from above and from a low angle (checked by screenshot in light and
+dark). MapLibre sorts 3D hits across extrusion layers by depth, and a hit on the selected floor wins over nearer
+hollow floors in front of it, so its zones can be picked through them. Flat, the map still shows one floor's plan:
+the selected floor or zone's, else the ground floor.
+
+### States
+
+- **Empty**: nothing selected draws no zones; a selected building without zones has no floor level on the map until
+  preprocessing zones it (a click on it changes nothing in 3D without slabs; flat it selects the floor shown).
+- **Success**: each click and key reports the selection in the status bar and Messages, and Properties follows it.
+- **Warning/error**: none new; selection ids are still checked by `selection.set`.
+- **Keyboard**: Escape, Page Up, and Page Down on the focused map; the Properties tables; the palette's Show zones in
+  3D.
+
+### Real, mocked, deferred
+
+- **Real**: the selection levels and their rules, the keys, the hollow and solid drawing with its tokens, the hover
+  labels, and the agent's levels.
+- **Mocked**: nothing new; zones stay display only.
+- **Deferred**: picking a hollow floor that lies entirely behind the selected floor from where one looks (from above,
+  floors above the selected one cover it: use Page Up, Page Down, or a side view), and keyboard picking of a zone
+  inside a floor (use the Properties zones table).
+
+### Decisions taken for review (decision 0035)
+
+1. **Page Up and Page Down** step floors and **Escape** goes up a level, on the focused map only; arrow keys stay
+   MapLibre's.
+2. **A hit on the selected floor wins** over hollow floors in front of it, so zones can be picked from above; another
+   floor is chosen where it is not in front of the selected one, or by keyboard.
+3. **Shift** adds within the building at the floor or zone level; Shift on another building selects that building
+   (it does not add across buildings), while buildings still add with Shift.
+4. **Flat**, a click on a selected building selects the floor whose plan is shown (floor 1 until another is chosen).
+5. **Colours**: a selected zone in the selection colour, the floor's other zones and a muted core in the de-emphasis
+   colour; hollow shells in the de-emphasis colour; new `hollow` tokens per appearance.
+6. **The selection outline** is the whole building again (nothing is cut away).
+7. **Properties is unchanged**: its Floors and Zones tables already list every floor and zone for selection; the
+   Zones table is not narrowed to the selected floor.
+8. **The agent session** demonstrates the levels with `selection.set` on B0439, its floor 2, and the floor's first
+   zone that is not its core (its corridor).
+
+### Known issues
+
+- From straight above, the floors above a selected floor cover it, so another floor cannot be clicked there.
+- Muted zones and the core share the de-emphasis colour, and in the light appearances the selection colour is dark,
+  so a selected zone reads as a dark cell among grey ones; edges in the selection colour mark it too.
+- Hover labels and clicks depend on MapLibre's 3D hit test of extrusions, checked in e2e at the framed centre only.
+- Hollow floors and edges are checked by screenshot review only.
+
+### Verification (decision 0035)
+
+On the final code, before the commit:
+
+- `npm run typecheck`, `npm run lint`, `npm run format:check`, `git diff --check`: clean.
+- `npm test`: 571 passed in 52 files (12 more than the 559 before). New: `src/app/pages/mapSelection.test.ts` (12:
+  building, floor, then zone; another floor from a floor or a zone; the selected floor picked through nearer hollow
+  floors; another building; the flat map's floor; an empty spot and grid elements; Shift for floors, zones, and
+  buildings; Escape; Page Up and Page Down with their ends; hover labels). Changed: `zoneFeatures.test.ts` (cell states
+  instead of the cut, storeys kept at their heights, a floor of one case among hollow floors, a whole-building zone,
+  edges by style, and a stack saved with `explodeFloors` opening without it and with no unsaved change) and the agent's
+  Zoning cases session (it ends on B0439's floor 2 corridor).
+- Dev e2e on port 5180 (`npx playwright test -c tmp/playwright.5180.config.ts`, 4 workers): 134 passed (the explode
+  test was replaced by two: clicks down on the flat map with the hover label, Page Up and Page Down, and Escape up;
+  and in 3D a floor then a zone clicked with hollow floors in the legend), none failed or retried.
+- `npm run test:e2e:preview`: 4 passed.
+- Review screenshots at 1440x900: a selected building's zones, floor 2 selected among hollow floors from the side,
+  from above, and from a low angle, in light and dark, a selected zone, and floor 2's flat plan with the zone
+  selected; they led to the hollow shell being drawn after the edges, a stronger legend swatch, and the e2e and
+  review steps pausing between tilt keys (MapLibre eases each key, and a key pressed during the ease cancels it).
 
 ## Review (2026-10-29)
 

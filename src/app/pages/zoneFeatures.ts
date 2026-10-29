@@ -22,26 +22,19 @@ function slabGap(floorHeightM: number): number {
 }
 
 /**
- * How far exploded floors open (decision 0034): each storey is lifted by this
- * share of its floor height for every storey below it, so a gap of the given
- * share opens between neighbouring storeys.
+ * Where a zoned storey is drawn: at its own height, its top less the slab
+ * gap (decision 0035 keeps every storey in place).
  */
-export const EXPLODE_GAP_SHARE = 0.8
-
-/**
- * Where a zoned storey is drawn: its base and top less the slab gap, lifted
- * when floors are exploded.
- */
-export function storeySpan(
-  floor: { number: number; bottomM: number; topM: number },
-  explode: boolean,
-): { base: number; top: number } {
+export function storeySpan(floor: {
+  number: number
+  bottomM: number
+  topM: number
+}): { base: number; top: number } {
   const height = floor.topM - floor.bottomM
-  const lift = explode ? (floor.number - 1) * height * EXPLODE_GAP_SHARE : 0
   const round = (value: number) => Math.round(value * 100) / 100
   return {
-    base: round(floor.bottomM + lift),
-    top: round(Math.max(floor.bottomM, floor.topM - slabGap(height)) + lift),
+    base: round(floor.bottomM),
+    top: round(Math.max(floor.bottomM, floor.topM - slabGap(height))),
   }
 }
 
@@ -97,6 +90,15 @@ export function slabFeatures(
   return { type: 'FeatureCollection', features }
 }
 
+/**
+ * How a zone cell is drawn (decision 0035): every zone of a selected
+ * building in its colour (`zone`); with a floor or zone selected, the
+ * selected floor solid (`floor`), the selected zone highlighted and the
+ * floor's other zones muted (`selected`, `muted`), and the building's other
+ * floors hollow (`hollow`).
+ */
+export type CellState = 'zone' | 'floor' | 'selected' | 'muted' | 'hollow'
+
 export type ZoneCell = {
   type: 'Feature'
   properties: {
@@ -109,7 +111,9 @@ export type ZoneCell = {
     floor: number
     /** 0 to 2 for the categorical slots, -1 for the core. */
     colorSlot: number
+    /** A selected zone, or a cell on a selected floor (the flat map's outline). */
     selected: boolean
+    state: CellState
     base: number
     top: number
   }
@@ -125,13 +129,16 @@ export type ZoneOverlay = {
   /** The floor a flat map shows: the selected floor or zone's, else the ground floor. */
   planFloor: number
   /**
-   * The selected floor or zone's floor: in 3D, the selected building's
-   * floors above it are cut away so its plan shows. Null when the selection
-   * is a building or a whole-building zone.
+   * The building and floors a selected floor or zone is on, and the level
+   * selected; null when buildings (or whole-building zones) are selected.
    */
-  cutAbove: number | null
-  /** The cut building and the height it is cut at, for the 3D outline. */
-  cut: { buildingId: string; topM: number } | null
+  focus: {
+    buildingId: string
+    floors: number[]
+    level: 'floor' | 'zone'
+  } | null
+  /** Whether some floors are drawn hollow in 3D. */
+  hollow: boolean
   /** What the zones are, for the legend. */
   kinds: ZoneKind[]
   /**
@@ -141,48 +148,68 @@ export type ZoneOverlay = {
   legend: { kind: ZoneKind; slots: number[] }[]
   /** Selected buildings with no zones yet. */
   withoutZones: number
-  /** Whether storeys are drawn apart (decision 0034). */
-  exploded: boolean
-  /** The top of each zoned building as drawn: after the cut, and lifted when exploded. */
-  topsM: Record<string, number>
+}
+
+/** The floor number of a floor id, `<building>:F<n>`. */
+export function floorNumberOf(floorId: string): number | null {
+  const match = /:F(\d+)$/.exec(floorId)
+  return match ? Number(match[1]) : null
+}
+
+/**
+ * The floors selected in each building: selected floors, or the floors of
+ * selected zones. A whole-building zone selects no single floor, so its
+ * building shows every floor.
+ */
+export function selectedFloorsByBuilding(
+  state: Pick<WorkbenchState, 'selection' | 'buildings' | 'zoning'>,
+): Map<string, Set<number>> {
+  const { selection } = state
+  const byBuilding = new Map<string, Set<number>>()
+  const add = (buildingId: string, floor: number) => {
+    const floors = byBuilding.get(buildingId) ?? new Set<number>()
+    floors.add(floor)
+    byBuilding.set(buildingId, floors)
+  }
+  if (selection.entityType === 'floor') {
+    for (const id of selection.ids) {
+      const number = floorNumberOf(id)
+      if (number !== null) add(ownerOf(id), number)
+    }
+  } else if (selection.entityType === 'zone') {
+    for (const id of selection.ids) {
+      const zone = buildingZoning(state, ownerOf(id))?.zones.find(
+        (each) => each.id === id,
+      )
+      if (zone && zone.floor !== null) add(ownerOf(id), zone.floor)
+    }
+  }
+  return byBuilding
 }
 
 /**
  * The selected buildings' zones as one cell per zone and floor (a
  * whole-building zone has a cell on every floor), so a selected floor or zone
- * can be highlighted in 3D and a flat map can show one floor's plan.
+ * can be shown solid among hollow floors in 3D and a flat map can show one
+ * floor's plan. Geometry never moves: every cell keeps its storey's height.
  */
 export function zoneOverlay(
   state: Pick<WorkbenchState, 'selection' | 'buildings' | 'zoning'>,
-  options: { explode?: boolean } = {},
 ): ZoneOverlay {
-  const explode = options.explode ?? false
-  const topsM: Record<string, number> = {}
   const selection = state.selection
   const all = selectedBuildingIds(selection)
   const shown = all.slice(0, MAX_ZONED_BUILDINGS)
   const selectedZones = new Set(
     selection.entityType === 'zone' ? selection.ids : [],
   )
-  const selectedFloors = new Set(
-    selection.entityType === 'floor' ? selection.ids : [],
-  )
-  const focus = selection.ids[0]
-  let cutAbove: number | null = null
-  if (focus && selection.entityType === 'floor') {
-    cutAbove = Number(focus.slice(focus.lastIndexOf(':F') + 2)) || null
-  } else if (focus && selection.entityType === 'zone') {
-    const zone = buildingZoning(state, ownerOf(focus))?.zones.find(
-      (each) => each.id === focus,
-    )
-    cutAbove = zone?.floor ?? null
-  }
-  const cutBuilding = focus ? ownerOf(focus) : null
+  const zoneLevel = selection.entityType === 'zone'
+  const floorsByBuilding = selectedFloorsByBuilding(state)
   const features: ZoneCell[] = []
   const buildingIds: string[] = []
   const kinds = new Set<ZoneKind>()
   const legend = new Map<ZoneKind, Set<number>>()
   let withoutZones = 0
+  let hollow = false
   for (const buildingId of shown) {
     const zoning = buildingZoning(state, buildingId)
     if (!zoning) {
@@ -190,6 +217,7 @@ export function zoneOverlay(
       continue
     }
     buildingIds.push(buildingId)
+    const focusFloors = floorsByBuilding.get(buildingId)
     for (const zone of zoning.zones) {
       kinds.add(zone.kind)
       const floors =
@@ -197,18 +225,23 @@ export function zoneOverlay(
           ? zoning.floors
           : zoning.floors.filter((floor) => floor.number === zone.floor)
       for (const floor of floors) {
-        if (
-          cutAbove !== null &&
-          buildingId === cutBuilding &&
-          floor.number > cutAbove
-        ) {
-          continue
+        const onFocus = focusFloors?.has(floor.number) ?? false
+        const cellState: CellState = !focusFloors
+          ? 'zone'
+          : !onFocus
+            ? 'hollow'
+            : !zoneLevel
+              ? 'floor'
+              : selectedZones.has(zone.id)
+                ? 'selected'
+                : 'muted'
+        if (cellState === 'hollow') hollow = true
+        else {
+          const slots = legend.get(zone.kind) ?? new Set<number>()
+          slots.add(zone.colorSlot ?? -1)
+          legend.set(zone.kind, slots)
         }
-        const span = storeySpan(floor, explode)
-        topsM[buildingId] = Math.max(topsM[buildingId] ?? 0, span.top)
-        const slots = legend.get(zone.kind) ?? new Set<number>()
-        slots.add(zone.colorSlot ?? -1)
-        legend.set(zone.kind, slots)
+        const span = storeySpan(floor)
         features.push({
           type: 'Feature',
           properties: {
@@ -219,8 +252,8 @@ export function zoneOverlay(
             kind: zone.kind,
             floor: floor.number,
             colorSlot: zone.colorSlot ?? -1,
-            selected:
-              selectedZones.has(zone.id) || selectedFloors.has(floor.id),
+            selected: selectedZones.has(zone.id) || (!zoneLevel && onFocus),
+            state: cellState,
             base: span.base,
             top: span.top,
           },
@@ -229,49 +262,54 @@ export function zoneOverlay(
       }
     }
   }
+  // The flat map and the legend follow the first selected floor or zone.
+  const first = selection.ids[0]
+  const focusBuilding =
+    first && (selection.entityType === 'floor' || zoneLevel)
+      ? ownerOf(first)
+      : null
+  const focusFloors = focusBuilding ? floorsByBuilding.get(focusBuilding) : null
+  const floors = focusFloors ? [...focusFloors].sort((a, b) => a - b) : []
   return {
     cells: { type: 'FeatureCollection', features },
     buildingIds,
     omitted: all.length - shown.length,
-    planFloor: cutAbove ?? 1,
-    cutAbove,
-    cut:
-      cutAbove !== null && cutBuilding
+    planFloor: floors[0] ?? 1,
+    focus:
+      focusBuilding && floors.length > 0
         ? {
-            buildingId: cutBuilding,
-            topM: cutTop(
-              buildingFloors(state, cutBuilding).find(
-                (floor) => floor.number === cutAbove,
-              ),
-              explode,
-            ),
+            buildingId: focusBuilding,
+            floors,
+            level: zoneLevel ? 'zone' : 'floor',
           }
         : null,
+    hollow,
     kinds: [...kinds],
     legend: [...legend].map(([kind, slots]) => ({
       kind,
       slots: [...slots].sort((a, b) => a - b),
     })),
     withoutZones,
-    exploded: explode,
-    topsM,
   }
 }
 
-/** The top of the cut storey as drawn (its slab top when exploded). */
-function cutTop(
-  floor: { number: number; bottomM: number; topM: number } | undefined,
-  explode: boolean,
-): number {
-  if (!floor) return 0
-  return explode ? storeySpan(floor, true).top : floor.topM
+/** Which edges a cell's outline joins, by how it is drawn. */
+export type EdgeStyle = 'zone' | 'focus' | 'selected' | 'hollow'
+
+const EDGE_STYLE: Record<CellState, EdgeStyle> = {
+  zone: 'zone',
+  floor: 'focus',
+  selected: 'selected',
+  muted: 'focus',
+  hollow: 'hollow',
 }
 
 /**
- * The edges of zone cells in 3D (decision 0034), as segments of
+ * The edges of zone cells in 3D (decisions 0034 and 0035), as segments of
  * [longitude, latitude, metres] pairs flattened six numbers a segment: every
- * cell's outline at its base and top, and one upright per corner. Selected
- * cells' edges are kept apart so they take the selection colour.
+ * cell's outline at its base and top, and one upright per corner, grouped by
+ * how they are drawn: ordinary zone edges, the emphasised edges of a
+ * selected floor, the selected zone's, and the thin edges of hollow floors.
  */
 export type ZoneEdges = {
   buildingId: string
@@ -281,8 +319,7 @@ export type ZoneEdges = {
    * extrusions by, so on steep terrain edges can sit slightly off.
    */
   anchor: LngLat
-  edges: number[]
-  selected: number[]
+  edges: Record<EdgeStyle, number[]>
 }
 
 export function zoneEdges(cells: ZoneCell[]): ZoneEdges[] {
@@ -305,12 +342,11 @@ export function zoneEdges(cells: ZoneCell[]): ZoneEdges[] {
           open.reduce((sum, point) => sum + point[0], 0) / count,
           open.reduce((sum, point) => sum + point[1], 0) / count,
         ],
-        edges: [],
-        selected: [],
+        edges: { zone: [], focus: [], selected: [], hollow: [] },
       }
       byBuilding.set(cell.properties.buildingId, entry)
     }
-    const target = cell.properties.selected ? entry.selected : entry.edges
+    const target = entry.edges[EDGE_STYLE[cell.properties.state]]
     const { base, top } = cell.properties
     open.forEach((point, index) => {
       const next = open[(index + 1) % open.length] ?? point

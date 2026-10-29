@@ -1,4 +1,4 @@
-import { useId, useMemo } from 'react'
+import { useMemo } from 'react'
 import type { WorkbenchState } from '../../domain/types.ts'
 import { STAGE_IDS } from '../../domain/workflow.ts'
 import {
@@ -26,15 +26,7 @@ import {
   useWorkbenchSnapshot,
 } from '../WorkbenchContext.tsx'
 import { PropertyList } from '../components/PropertyList.tsx'
-import { Checkbox } from 'react-aria-components'
-import {
-  explodeBlocker,
-  setExplodeFloors,
-  showZonesIn3d,
-  zones3dBlocker,
-} from '../pages/showZones3d.ts'
-import { zonesLayer } from '../pages/mapLayers.ts'
-import formStyles from '../components/forms.module.css'
+import { showZonesIn3d, zones3dBlocker } from '../pages/showZones3d.ts'
 import { BuildingZoningForm, drawnSummary } from './BuildingZoningForm.tsx'
 import { ActionButton } from '../components/ActionButton.tsx'
 import { CapabilityBadge } from '../components/CapabilityBadge.tsx'
@@ -90,8 +82,6 @@ export function FloorsAndZones({ buildingId }: { buildingId: string }) {
   const { workbench, view, layout } = useServices()
   const viewOnly = useViewOnly()
   const layers = useViewState((current) => current.map.layers)
-  const view3d = useViewState((current) => current.map.view3d)
-  const explodeHelpId = useId()
   const state = useWorkbenchSnapshot((snapshot) => snapshot.state)
   const stageStates = useStageStates()
   const building = state.buildings[buildingId]
@@ -264,8 +254,6 @@ export function FloorsAndZones({ buildingId }: { buildingId: string }) {
     view.execute({ type: 'map.focusSelection', input: {} })
   }
   const zones3dReason = zones3dBlocker(state, layers, [buildingId])
-  const explodeReason = explodeBlocker(layers)
-  const exploded = zonesLayer(layers)?.explodeFloors ?? false
   const appliedSource = publishedZoningOf(state, buildingId)?.source ?? null
   const drawn = state.zoning.drawn[buildingId]
   const zoningControl = viewOnly ? (
@@ -338,23 +326,6 @@ export function FloorsAndZones({ buildingId }: { buildingId: string }) {
           Show zones in 3D
         </ActionButton>
       </div>
-      {zoning ? (
-        <div>
-          <Checkbox
-            className={formStyles.checkbox}
-            isSelected={exploded}
-            isDisabled={explodeReason !== null}
-            aria-describedby={explodeHelpId}
-            onChange={(enabled) => setExplodeFloors(view, enabled)}
-          >
-            Explode floors in 3D
-          </Checkbox>
-          <p id={explodeHelpId} className={formStyles.description}>
-            {explodeReason ??
-              `Opens a gap between the storeys of the zoned buildings in 3D; a setting of the "${zonesLayer(layers)?.name ?? 'Buildings'}" map layer, saved with the project.${view3d ? '' : ' It takes effect when the map is shown in 3D.'}`}
-          </p>
-        </div>
-      ) : null}
       {notes.map((note) => (
         <InlineAlert key={note} tone="warning">
           {note}

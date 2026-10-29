@@ -1,4 +1,4 @@
-import { useId, useState } from 'react'
+import { useState } from 'react'
 import {
   Checkbox,
   FieldError,
@@ -23,7 +23,6 @@ import {
   LAYER_KINDS,
   layerSummary,
   MAP_LAYER_KINDS,
-  zonesLayer,
   type MapLayer,
   type MapLayerKind,
 } from '../pages/mapLayers.ts'
@@ -148,12 +147,7 @@ export function MapLayersSection() {
           }
         />
         {chosen ? (
-          <LayerSettings
-            key={chosen.id}
-            layer={chosen}
-            view3d={view3d}
-            zonesLayer={zonesLayer(layers)}
-          />
+          <LayerSettings key={chosen.id} layer={chosen} view3d={view3d} />
         ) : null}
       </div>
     </section>
@@ -163,26 +157,11 @@ export function MapLayersSection() {
 function LayerSettings({
   layer,
   view3d,
-  zonesLayer: decider,
 }: {
   layer: MapLayer
   view3d: boolean
-  /** The layer whose explode setting zoned buildings follow (decision 0034). */
-  zonesLayer: MapLayer | undefined
 }) {
   const { view } = useServices()
-  const explodeHelpId = useId()
-  // Only the topmost shown building layer that extrudes decides; another
-  // layer's setting would change nothing, so it is unavailable (but can be
-  // switched off if it was left on).
-  const decides = decider?.id === layer.id
-  const explodeHelp = !layer.extrude
-    ? 'Exploded floors need Extrude to height.'
-    : !decides
-      ? decider
-        ? `Zoned buildings follow "${decider.name}", the topmost shown building layer that extrudes; its setting decides.`
-        : 'Zoned buildings follow the topmost shown building layer that extrudes; show this layer to use its setting.'
-      : `In 3D, the storeys of selected buildings drawn as zones open apart, so each storey’s zones and edges show.${view3d ? '' : ' It takes effect in the 3D view.'}`
   const state = useWorkbenchSnapshot((snapshot) => snapshot.state)
   const [name, setName] = useState(layer.name)
   const [nameError, setNameError] = useState<string | null>(null)
@@ -291,18 +270,6 @@ function LayerSettings({
               ? 'One slab per storey, each the building height over its floors. Selected buildings show their zones instead.'
               : 'Slabs need Extrude to height.'}
           </p>
-          <Checkbox
-            className={formStyles.checkbox}
-            isSelected={layer.explodeFloors}
-            isDisabled={!layer.extrude || (!decides && !layer.explodeFloors)}
-            aria-describedby={explodeHelpId}
-            onChange={(explodeFloors) => style({ explodeFloors })}
-          >
-            Explode zoned floors
-          </Checkbox>
-          <p id={explodeHelpId} className={formStyles.description}>
-            {explodeHelp}
-          </p>
         </>
       ) : null}
       <ViewSlider
@@ -328,5 +295,4 @@ type StyleInput = {
   colorBy?: MapLayer['colorBy']
   extrude?: boolean
   floorSlabs?: boolean
-  explodeFloors?: boolean
 }

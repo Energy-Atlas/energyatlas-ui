@@ -1,10 +1,11 @@
 import { AxeBuilder } from '@axe-core/playwright'
-import { expect, properties, saveAndReopen, test, type Page } from './test.ts'
+import { expect, properties, test, type Page } from './test.ts'
 
 // Per-building zoning and 3D zones (decision 0034): a building's own zoning
 // in its Properties, outdating Geospatial preprocessing until it runs again;
 // the complete fixture's three cases (drawn zones, each floor a zone,
-// perimeter and core) shown in 3D; exploded floors saved with the project;
+// perimeter and core) shown in 3D; nested selection on the map and hollow
+// floors around a selected floor (decision 0035);
 // a drawn-zones fallback explained; and the viewer showing the zoning
 // read-only.
 
@@ -203,62 +204,128 @@ test('shows each fixture case in 3D: drawn zones, each floor a zone, and perimet
   expect(await seriousViolations(page)).toEqual([])
 })
 
-test('explodes zoned floors, a building layer setting kept through Save and reopen', async ({
+/** The point of the map the selected building is framed around. */
+async function framedPoint(page: Page) {
+  const canvas = page
+    .locator('canvas.maplibregl-canvas')
+    .filter({ visible: true })
+  const box = await canvas.boundingBox()
+  if (!box) throw new Error('The map canvas is not on screen.')
+  // map.focusSelection keeps 64 px on the left, 232 px on the right (the
+  // legend), and 48 px (120 px at the top when tilted) above and below.
+  const top = 48
+  return {
+    canvas,
+    x: 64 + (box.width - 64 - 232) / 2,
+    y: top + (box.height - top - 48) / 2,
+  }
+}
+
+test('nested selection on the map: a click goes down a level, Escape goes up, and Page Up and Page Down change floor', async ({
   page,
 }) => {
   test.setTimeout(120_000)
   await page.goto('/?fixture=complete')
   await expect(page.getByRole('main', { name: 'Workspace' })).toBeVisible()
-  await selectBuilding(page, 'B0427')
+  await selectBuilding(page, 'B0439')
+  // Flat: the plan of floor 1 is shown, so a click selects floor 1.
   await properties(page)
-    .getByRole('button', { name: /^Show the zones of .* in 3D on the Map$/ })
+    .getByRole('button', { name: 'Show Building 439 and its zones on the Map' })
+    .click()
+  const legend = page.getByTestId('zone-legend')
+  await expect(legend).toContainText('Zones of B0439, floor 1')
+  const notice = page.getByTestId('status-notice')
+  await expect(notice).toContainText('Zoomed the map to 1 selected building')
+  const { canvas, x, y } = await framedPoint(page)
+  // The hover label names what a click would select at this level.
+  await canvas.hover({ position: { x, y } })
+  await expect(
+    page.getByText('Floor 1 of Building 439', { exact: true }),
+  ).toBeVisible()
+  await canvas.click({ position: { x, y } })
+  await expect(notice).toContainText('Selected 1 floor(s).')
+  await expect(
+    properties(page).getByText(/^Floor B0439:F1 of building B0439/),
+  ).toBeVisible()
+  await expect(legend).toContainText('Floor 1 of B0439 selected.')
+  // On the selected floor, a click selects the zone under the pointer.
+  await canvas.click({ position: { x, y } })
+  await expect(notice).toContainText('Selected 1 zone(s).')
+  await expect(
+    properties(page).getByText(/^Zone B0439:F1:Z\d of building B0439/),
+  ).toBeVisible()
+
+  // The keyboard: Page Up and Page Down move between floors.
+  await canvas.focus()
+  await page.keyboard.press('PageUp')
+  await expect(
+    properties(page).getByText(/^Floor B0439:F2 of building B0439/),
+  ).toBeVisible()
+  await expect(legend).toContainText('Zones of B0439, floor 2')
+  await page.keyboard.press('PageDown')
+  await expect(
+    properties(page).getByText(/^Floor B0439:F1 of building B0439/),
+  ).toBeVisible()
+  // Escape goes up a level: floor to building, building to nothing.
+  await page.keyboard.press('Escape')
+  await expect(notice).toContainText('Selected 1 building(s).')
+  await expect(properties(page).getByText('Building B0439')).toBeVisible()
+  await page.keyboard.press('Escape')
+  await expect(notice).toContainText('Selection cleared.')
+  expect(await seriousViolations(page)).toEqual([])
+})
+
+test('in 3D a selected floor is solid among hollow floors, and a click on it selects a zone', async ({
+  page,
+}) => {
+  test.setTimeout(120_000)
+  await page.goto('/?fixture=complete')
+  await expect(page.getByRole('main', { name: 'Workspace' })).toBeVisible()
+  await selectBuilding(page, 'B0439')
+  await properties(page)
+    .getByRole('button', {
+      name: 'Show the zones of Building 439 in 3D on the Map',
+    })
     .click()
   const legend = page.getByTestId('zone-legend')
   await expect(legend).toContainText('Lines mark zone edges.')
-  const explode = properties(page).getByRole('checkbox', {
-    name: 'Explode floors in 3D',
-  })
-  await expect(explode).not.toBeChecked()
-  await explode.focus()
-  await page.keyboard.press('Space')
-  await expect(page.getByTestId('status-notice')).toContainText(
-    'Map layer "Buildings": floors of zoned buildings exploded in 3D.',
-  )
-  await expect(legend).toContainText('Floors exploded apart')
-  await expect(explode).toBeChecked()
-
-  // The same setting is in the map's Properties, on the building layer.
-  await properties(page)
-    .getByRole('button', { name: 'Clear selection from Properties' })
-    .click()
-  await page.getByRole('heading', { name: 'Map', exact: true }).click()
-  const panel = properties(page)
+  await expect(legend).not.toContainText('hollow')
+  const notice = page.getByTestId('status-notice')
+  await expect(notice).toContainText('Zoomed the map to 1 selected building')
+  const canvas = page
+    .locator('canvas.maplibregl-canvas')
+    .filter({ visible: true })
+  const box = await canvas.boundingBox()
+  if (!box) throw new Error('The map canvas is not on screen.')
+  const point = {
+    x: 64 + (box.width - 64 - 232) / 2,
+    y: 120 + (box.height - 120 - 48) / 2,
+  }
+  // The building is selected: a click selects the storey hit.
+  await canvas.click({ position: point })
+  await expect(notice).toContainText('Selected 1 floor(s).')
   await expect(
-    panel.getByRole('heading', { name: 'Map properties' }),
+    properties(page).getByText(/^Floor B0439:F\d of building B0439/),
   ).toBeVisible()
-  await panel
-    .getByRole('grid', { name: 'Map layers, top first' })
-    .getByRole('row', { name: /Buildings/ })
+  await expect(legend).toContainText('its other floors are drawn hollow.')
+  await expect(legend).toContainText('Hollow floors')
+  // The same spot is now on the selected floor: a click selects a zone.
+  await canvas.click({ position: point })
+  await expect(notice).toContainText('Selected 1 zone(s).')
+  await expect(
+    properties(page).getByText(/^Zone B0439:F\d:Z\d of building B0439/),
+  ).toBeVisible()
+  await expect(legend).toContainText('Zone on floor')
+  // Properties still selects a floor directly.
+  await selectBuilding(page, 'B0439')
+  await properties(page)
+    .getByRole('grid', { name: 'Floors of Building 439' })
+    .getByRole('row')
+    .nth(3)
     .click()
-  const settings = panel.getByRole('group', { name: /^Settings of/ })
   await expect(
-    settings.getByRole('checkbox', { name: 'Explode zoned floors' }),
-  ).toBeChecked()
-
-  // Saved with the project's layer stack, like the other layer settings.
-  await saveAndReopen(page)
-  await selectBuilding(page, 'B0427')
-  await expect(
-    properties(page).getByRole('checkbox', { name: 'Explode floors in 3D' }),
-  ).toBeChecked()
-  // The palette closes the storeys again.
-  await page.getByRole('main', { name: 'Workspace' }).focus()
-  await page.keyboard.press('Control+k')
-  await page.keyboard.type('Explode zoned floors')
-  await page.keyboard.press('Enter')
-  await expect(page.getByTestId('status-notice')).toContainText(
-    'floors of zoned buildings closed up',
-  )
+    properties(page).getByText(/^Floor B0439:F3 of building B0439/),
+  ).toBeVisible()
   expect(await seriousViolations(page)).toEqual([])
 })
 

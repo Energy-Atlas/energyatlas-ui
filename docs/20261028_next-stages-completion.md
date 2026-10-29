@@ -38,9 +38,14 @@ Archetypes, Schema matching, Calibration, and viewer panel content afterwards.
   ([plan and status](per-building-zoning.md)). A building can override the project's zoning in its Properties;
   B0439 (drawn zones, a synthetic hand-authored plan), B0427 (each floor a zone), and B0426 (perimeter and core) are
   the fixture's three cases, so the Partway, Failed stage, and Complete fixtures now publish 510 zones instead of
-  464 (results unchanged); Show zones in 3D, exploded floors (a building layer setting), and WebGL zone edges are on
-  the Map. Its 15 decisions taken for review are in the status document. Verification: 555 unit, 133 dev e2e, and 4
-  preview tests passed.
+  464 (results unchanged); Show zones in 3D and WebGL zone edges are on the Map. Its 15 decisions taken for review are in the status document. Verification: 555 unit, 133 dev e2e, and 4
+  preview tests passed. Review fixes followed in `bd573e4`.
+- Exploded floors, reviewed in F5, were replaced on the owner's request by
+  [decision 0035](decisions/0035-hollow-floors-and-nested-selection.md)
+  ([status](per-building-zoning.md#since-decision-0035)): the map selects a building, then a floor, then a zone, one
+  level per click (Shift at the same level, Escape up, Page Up and Page Down between floors), and a selected floor
+  is drawn solid among the building's other floors drawn hollow, nothing cut away or moved. Verification: 571 unit,
+  134 dev e2e, and 4 preview tests passed.
 
 ## Review items for the owner
 

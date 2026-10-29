@@ -1128,19 +1128,72 @@ function zoningCases(state: WorkbenchState): string[] {
   })
 }
 
+/**
+ * The selection levels of decision 0035, one at a time through selection.set:
+ * a building, its floor 2 (the first floor above the ground, else floor 1),
+ * then the first zone on that floor that is not its core.
+ */
+function levelSteps(
+  state: WorkbenchState,
+  buildingId: string | undefined,
+): Step[] {
+  const zoning = buildingId ? buildingZoning(state, buildingId) : null
+  if (!buildingId || !zoning) return []
+  const floor =
+    zoning.floors.find((each) => each.number === 2) ?? zoning.floors[0]
+  if (!floor) return []
+  const onFloor = zoning.zones.filter(
+    (zone) => zone.floor === floor.number || zone.floor === null,
+  )
+  const zone =
+    onFloor.find((each) => each.kind !== 'core' && each.use !== 'core') ??
+    onFloor[0]
+  const name = state.buildings[buildingId]?.name ?? buildingId
+  return [
+    tool(
+      `Select ${buildingId}`,
+      command({
+        type: 'selection.set',
+        input: { entityType: 'building', ids: [buildingId] },
+      }),
+    ),
+    tool(
+      `Select floor ${floor.number} of ${buildingId}`,
+      command({
+        type: 'selection.set',
+        input: { entityType: 'floor', ids: [floor.id] },
+      }),
+    ),
+    ...(zone
+      ? [
+          tool(
+            `Select ${zone.name}`,
+            command({
+              type: 'selection.set',
+              input: { entityType: 'zone', ids: [zone.id] },
+            }),
+          ),
+        ]
+      : []),
+    say(
+      `Then one level at a time in **${name}**: the building with all its zones, floor ${floor.number} drawn solid with its other floors hollow around it, and ${zone ? `**${zone.name}** highlighted, the floor's other zones muted` : 'its zones'}. On the map a click goes the same way, building, then floor, then zone; Escape goes back up a level, and Page Up and Page Down move to the floor above or below.`,
+    ),
+  ]
+}
+
 const zoningCasesSession: ScriptedSession = {
   id: 'zoningCases',
   label: 'Zoning cases in 3D',
   prompt:
-    'Show me the buildings zoned their own way, with drawn zones, in 3D with exploded floors.',
+    'Show me the buildings zoned their own way in 3D, then one floor and one zone of the drawn building.',
   description:
-    "Each building can override the project's zoning (decision 0034). Proposes drawn zones for a building that has drawn outlines but does not use them (it waits for approval), reruns Geospatial preprocessing if needed (approval), then selects one building per zoning case and shows their zones in 3D with exploded floors.",
+    "Each building can override the project's zoning (decision 0034). Proposes drawn zones for a building that has drawn outlines but does not use them (it waits for approval), reruns Geospatial preprocessing if needed (approval), selects one building per zoning case and shows their zones in 3D, then goes down the selection levels of decision 0035: the drawn building, its floor 2 (the other floors hollow), and a zone on it.",
   keywords: [
     /\bdrawn zones?\b/,
     /\bzoning cases?\b/,
     /\bper[- ]building zoning\b/,
     /\bzoned (its|their) own way\b/,
-    /\bexplod(e|ed|ing)\b/,
+    /\bhollow\b/,
   ],
   steps: [
     reason(
@@ -1204,25 +1257,15 @@ const zoningCasesSession: ScriptedSession = {
           'Show the map in 3D',
           viewCall({ type: 'map.set3d', input: { enabled: true } }),
         ),
-        ...(layer && !layer.explodeFloors
-          ? [
-              tool(
-                'Explode the zoned floors',
-                viewCall({
-                  type: 'map.setLayerStyle',
-                  input: { layerId: layer.id, explodeFloors: true },
-                }),
-              ),
-            ]
-          : []),
         tool(
           'Zoom the map to them',
           viewCall({ type: 'map.focusSelection', input: {} }),
         ),
         say(
-          `${zonings.map((zoning) => describeBuildingZones(state, zoning)).join(' ')} ${layer ? 'Their storeys are drawn apart with lines on the zone edges, so neighbouring zones read apart without colour.' : "No shown building layer extrudes, so the zones are drawn flat; turn on Extrude to height in the map's Properties."} ${fallbackSentence(state)}`,
+          `${zonings.map((zoning) => describeBuildingZones(state, zoning)).join(' ')} ${layer ? 'Lines on the zone edges let neighbouring zones read apart without colour.' : "No shown building layer extrudes, so the zones are drawn flat; turn on Extrude to height in the map's Properties."} ${fallbackSentence(state)}`,
         ),
-        reference('Show their floors and zones', { type: 'inspection' }),
+        ...levelSteps(state, ids[0]),
+        reference('Show its floors and zones', { type: 'inspection' }),
       ]
     },
   ],

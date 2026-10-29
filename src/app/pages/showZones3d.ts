@@ -56,23 +56,3 @@ export function showZonesIn3d(
   layout.openPage('map')
   view.execute({ type: 'map.focusSelection', input: {} })
 }
-
-/** Why exploded floors cannot be switched, or null. */
-export function explodeBlocker(layers: MapLayer[]): string | null {
-  return zonesLayer(layers)
-    ? null
-    : 'No shown building layer extrudes in 3D: show a building layer and turn on “Extrude to height” in the map’s Properties.'
-}
-
-/**
- * Opens or closes the storeys of zoned buildings in 3D: a setting of the
- * building layer the zones follow (map.setLayerStyle explodeFloors).
- */
-export function setExplodeFloors(view: ViewStore, enabled: boolean): void {
-  const layer = zonesLayer(view.getState().map.layers)
-  if (!layer) return
-  view.execute({
-    type: 'map.setLayerStyle',
-    input: { layerId: layer.id, explodeFloors: enabled },
-  })
-}

@@ -8,7 +8,7 @@ import {
   type RefObject,
 } from 'react'
 import { toMercator } from './silhouette.ts'
-import type { ZoneEdges } from './zoneFeatures.ts'
+import type { EdgeStyle, ZoneEdges } from './zoneFeatures.ts'
 import { ZONE_EDGES_LAYER_ID } from './ZoneLayers.tsx'
 
 // Zone edges in 3D (decision 0034). MapLibre draws no outlines on
@@ -24,8 +24,18 @@ import { ZONE_EDGES_LAYER_ID } from './ZoneLayers.tsx'
 const ZONE_EDGE_LAYER_ID = ZONE_EDGES_LAYER_ID
 
 /** Edge width in CSS pixels. */
-const EDGE_WIDTH_PX = 1.5
-const SELECTED_WIDTH_PX = 2.5
+/**
+ * Edge widths in CSS pixels by style (decision 0035): zone edges, the
+ * emphasised edges of a selected floor, a selected zone's, and the thin
+ * edges of hollow floors.
+ */
+const WIDTH_PX: Record<EdgeStyle, number> = {
+  zone: 1.5,
+  focus: 2.25,
+  selected: 2.5,
+  hollow: 1,
+}
+const EDGE_STYLES: EdgeStyle[] = ['hollow', 'zone', 'focus', 'selected']
 /** Pulls edges this far towards the camera in clip space, so faces do not cover them. */
 const DEPTH_BIAS = 0.00025
 /** Matches MapLibre's earth circumference for Mercator altitude units. */
@@ -96,8 +106,8 @@ type Mesh = {
   anchor: [number, number]
   /** Mercator origin of the coordinates. */
   origin: [number, number, number]
-  /** One buffer for ordinary edges and one for selected ones. */
-  parts: { data: Float32Array; count: number; selected: boolean }[]
+  /** One buffer per edge style, drawn hollow first and selected last. */
+  parts: { data: Float32Array; count: number; style: EdgeStyle }[]
 }
 
 /** Six vertices (two triangles) per segment: position, other end, side. */
@@ -144,26 +154,23 @@ export function edgeVertices(
 
 function buildMeshes(groups: ZoneEdges[]): Mesh[] {
   return groups.flatMap((group) => {
-    const first = group.edges.length > 0 ? group.edges : group.selected
-    if (first.length < 6) return []
+    const first = EDGE_STYLES.map((style) => group.edges[style]).find(
+      (segments) => segments.length >= 6,
+    )
+    if (!first) return []
     const origin = toMercator([first[0] ?? 0, first[1] ?? 0], 0)
     return [
       {
         buildingId: group.buildingId,
         anchor: group.anchor,
         origin,
-        parts: [
-          {
-            data: edgeVertices(group.edges, origin),
-            count: group.edges.length,
-            selected: false,
-          },
-          {
-            data: edgeVertices(group.selected, origin),
-            count: group.selected.length,
-            selected: true,
-          },
-        ].filter((part) => part.count > 0),
+        parts: EDGE_STYLES.filter((style) => group.edges[style].length > 0).map(
+          (style) => ({
+            data: edgeVertices(group.edges[style], origin),
+            count: group.edges[style].length,
+            style,
+          }),
+        ),
       },
     ]
   })
@@ -187,10 +194,20 @@ export function translated(
   return out
 }
 
+type Rgba = [number, number, number, number]
+
 type Input = {
   meshes: Mesh[]
-  color: [number, number, number, number]
-  selectedColor: [number, number, number, number]
+  color: Rgba
+  selectedColor: Rgba
+  /** Hollow floors' edges: the ink at the appearance's hollow edge alpha. */
+  hollowColor: Rgba
+}
+
+function colorOf(input: Input, style: EdgeStyle): Rgba {
+  if (style === 'selected') return input.selectedColor
+  if (style === 'hollow') return input.hollowColor
+  return input.color
 }
 
 type GlState = {
@@ -332,12 +349,9 @@ function render(
       ]),
     )
     for (const part of mesh.parts) {
-      const [r, g, b, a] = part.selected ? input.selectedColor : input.color
+      const [r, g, b, a] = colorOf(input, part.style)
       gl.uniform4f(locations.color, r * a, g * a, b * a, a)
-      gl.uniform1f(
-        locations.width,
-        ((part.selected ? SELECTED_WIDTH_PX : EDGE_WIDTH_PX) * ratio) / 2,
-      )
+      gl.uniform1f(locations.width, (WIDTH_PX[part.style] * ratio) / 2)
       let buffer = state.buffers.get(part.data)
       if (!buffer) {
         const created = gl.createBuffer()
@@ -366,6 +380,23 @@ type Props = {
   edges: ZoneEdges[]
   color: string
   selectedColor: string
+  /** The alpha of hollow floors' edges (an appearance token). */
+  hollowAlpha: number
+}
+
+function inputOf(
+  meshes: Mesh[],
+  color: string,
+  selectedColor: string,
+  hollowAlpha: number,
+): Input {
+  const ink = parseColor(color)
+  return {
+    meshes,
+    color: ink,
+    selectedColor: parseColor(selectedColor),
+    hollowColor: [ink[0], ink[1], ink[2], ink[3] * hollowAlpha],
+  }
 }
 
 /**
@@ -380,22 +411,17 @@ export function ZoneEdgeLayer({
   edges,
   color,
   selectedColor,
+  hollowAlpha,
 }: Props) {
   const meshes = useMemo(() => buildMeshes(edges), [edges])
-  const latest = useRef<Input>({
-    meshes,
-    color: parseColor(color),
-    selectedColor: parseColor(selectedColor),
-  })
+  const latest = useRef<Input>(
+    inputOf(meshes, color, selectedColor, hollowAlpha),
+  )
 
   useLayoutEffect(() => {
-    latest.current = {
-      meshes,
-      color: parseColor(color),
-      selectedColor: parseColor(selectedColor),
-    }
+    latest.current = inputOf(meshes, color, selectedColor, hollowAlpha)
     mapRef.current?.getMap().triggerRepaint()
-  }, [meshes, color, selectedColor, mapRef])
+  }, [meshes, color, selectedColor, hollowAlpha, mapRef])
 
   useEffect(() => {
     const map = mapRef.current?.getMap()

@@ -6,7 +6,6 @@ import { buildFixture } from '../../server/fixtures.ts'
 import { createViewStore } from '../view/viewStore.ts'
 import { METRICS, computeMetric, type MetricId } from './mapMetrics.ts'
 import {
-  EXPLODE_GAP_SHARE,
   MAX_ZONED_BUILDINGS,
   slabFeatures,
   storeySpan,
@@ -19,7 +18,13 @@ import {
   releaseGl,
   translated,
 } from './ZoneEdgeLayer.tsx'
-import { layerSummary, parseStoredLayers, zonesLayer } from './mapLayers.ts'
+import {
+  defaultLayers,
+  layerSummary,
+  layersDiffer,
+  parseStoredLayers,
+  zonesLayer,
+} from './mapLayers.ts'
 import { showZonesIn3d, zones3dBlocker } from './showZones3d.ts'
 
 // Floors and zones on the map (decision 0032, stage 6).
@@ -60,7 +65,7 @@ describe('floor slabs and zone cells', () => {
     expect(first?.properties.top).toBeGreaterThan(6)
   })
 
-  it('draws the zones of selected buildings only, and cuts away floors above a selected zone', () => {
+  it('draws the zones of selected buildings only, and a selected floor or zone solid among hollow floors', () => {
     const workbench = zoned()
     expect(zoneOverlay(workbench.getState()).cells.features).toEqual([])
     workbench.execute({
@@ -70,7 +75,12 @@ describe('floor slabs and zone cells', () => {
     let overlay = zoneOverlay(workbench.getState())
     expect(overlay.buildingIds).toEqual(['B0039'])
     expect(overlay.kinds.sort()).toEqual(['core', 'perimeter'])
-    expect(overlay.cutAbove).toBeNull()
+    expect(overlay.focus).toBeNull()
+    expect(overlay.hollow).toBe(false)
+    // A selected building shows every zone in its colour.
+    expect(
+      new Set(overlay.cells.features.map((cell) => cell.properties.state)),
+    ).toEqual(new Set(['zone']))
     const floors = workbench.getState().buildings.B0039?.floors ?? 0
     expect(
       new Set(overlay.cells.features.map((cell) => cell.properties.floor)).size,
@@ -82,17 +92,37 @@ describe('floor slabs and zone cells', () => {
     })
     overlay = zoneOverlay(workbench.getState())
     expect(overlay.planFloor).toBe(2)
-    expect(overlay.cut?.buildingId).toBe('B0039')
+    expect(overlay.focus).toEqual({
+      buildingId: 'B0039',
+      floors: [2],
+      level: 'zone',
+    })
+    // No floor is cut away or moved: every storey keeps its cells.
     expect(
-      Math.max(...overlay.cells.features.map((cell) => cell.properties.floor)),
-    ).toBe(2)
+      new Set(overlay.cells.features.map((cell) => cell.properties.floor)).size,
+    ).toBe(floors)
+    const stateOf = (floor: number, id?: string) =>
+      new Set(
+        overlay.cells.features
+          .filter(
+            (cell) =>
+              cell.properties.floor === floor &&
+              (id === undefined || cell.properties.id === id),
+          )
+          .map((cell) => cell.properties.state),
+      )
+    expect(stateOf(2, 'B0039:F2:Z1')).toEqual(new Set(['selected']))
+    expect(stateOf(2, 'B0039:F2:Z2')).toEqual(new Set(['muted']))
+    expect(stateOf(1)).toEqual(new Set(['hollow']))
+    expect(stateOf(3)).toEqual(new Set(['hollow']))
+    expect(overlay.hollow).toBe(true)
     expect(
       overlay.cells.features
         .filter((cell) => cell.properties.selected)
         .map((cell) => cell.properties.id),
     ).toEqual(['B0039:F2:Z1'])
 
-    // A selected floor highlights every zone on it.
+    // A selected floor is solid with its zones; the others are hollow.
     workbench.execute({
       type: 'selection.set',
       input: { entityType: 'floor', ids: ['B0039:F1'] },
@@ -103,6 +133,10 @@ describe('floor slabs and zone cells', () => {
     )
     expect(highlighted.length).toBeGreaterThan(1)
     expect(highlighted.every((cell) => cell.properties.floor === 1)).toBe(true)
+    expect(highlighted.every((cell) => cell.properties.state === 'floor')).toBe(
+      true,
+    )
+    expect(overlay.focus?.level).toBe('floor')
   })
 
   it('bounds the geometry to the first selected buildings', () => {
@@ -199,67 +233,63 @@ describe('3D zones of the three zoning cases (decision 0034)', () => {
     ids: ['B0439', 'B0427', 'B0426'],
   }
 
-  it('lifts each storey by its share of a floor when exploded', () => {
-    const floor = { number: 3, bottomM: 6.4, topM: 9.6 }
-    expect(storeySpan(floor, false)).toEqual({ base: 6.4, top: 9.28 })
-    // Two storeys below, each opening a gap of 0.8 of the floor height.
-    expect(storeySpan(floor, true)).toEqual({
-      base: Math.round((6.4 + 2 * 3.2 * EXPLODE_GAP_SHARE) * 100) / 100,
-      top: Math.round((9.28 + 2 * 3.2 * EXPLODE_GAP_SHARE) * 100) / 100,
+  it('keeps each storey at its own height, its top less the slab gap', () => {
+    expect(storeySpan({ number: 3, bottomM: 6.4, topM: 9.6 })).toEqual({
+      base: 6.4,
+      top: 9.28,
     })
-    expect(storeySpan({ number: 1, bottomM: 0, topM: 3.2 }, true)).toEqual({
+    expect(storeySpan({ number: 1, bottomM: 0, topM: 3.2 })).toEqual({
       base: 0,
       top: 2.88,
     })
   })
 
-  it('draws one cell per zone and storey, and their tops as drawn', () => {
-    const closed = zoneOverlay({ ...state, selection: cases })
-    const exploded = zoneOverlay(
-      { ...state, selection: cases },
-      { explode: true },
-    )
-    const count = (overlay: typeof closed, id: string) =>
+  it('draws one cell per zone and storey for the three cases', () => {
+    const overlay = zoneOverlay({ ...state, selection: cases })
+    const count = (id: string) =>
       overlay.cells.features.filter((cell) => cell.properties.buildingId === id)
         .length
-    for (const overlay of [closed, exploded]) {
-      expect(count(overlay, 'B0439')).toBe(25)
-      expect(count(overlay, 'B0427')).toBe(9)
-      expect(count(overlay, 'B0426')).toBe(15)
-    }
-    expect(closed.exploded).toBe(false)
-    expect(exploded.exploded).toBe(true)
-    expect(closed.topsM.B0427).toBe(28.48)
-    expect(exploded.topsM.B0427).toBeCloseTo(
-      28.48 + 8 * 3.2 * EXPLODE_GAP_SHARE,
-      2,
-    )
-    expect(exploded.legend.map((row) => row.kind)).toEqual([
+    expect(count('B0439')).toBe(25)
+    expect(count('B0427')).toBe(9)
+    expect(count('B0426')).toBe(15)
+    expect(
+      Math.max(
+        ...overlay.cells.features
+          .filter((cell) => cell.properties.buildingId === 'B0427')
+          .map((cell) => cell.properties.top),
+      ),
+    ).toBe(28.48)
+    expect(overlay.legend.map((row) => row.kind)).toEqual([
       'drawn',
       'floor',
       'core',
       'perimeter',
     ])
-    // A cut storey's top is drawn exploded too.
-    const cut = zoneOverlay(
-      {
-        ...state,
-        selection: { entityType: 'floor', ids: ['B0427:F3'] },
-      },
-      { explode: true },
-    )
-    expect(cut.cut).toEqual({
-      buildingId: 'B0427',
-      topM: storeySpan({ number: 3, bottomM: 6.4, topM: 9.6 }, true).top,
+    // A floor of one building: the others keep their zones.
+    const floor = zoneOverlay({
+      ...state,
+      selection: { entityType: 'floor', ids: ['B0427:F3'] },
     })
-    expect(cut.topsM.B0427).toBe(cut.cut?.topM)
+    expect(floor.buildingIds).toEqual(['B0427'])
+    expect(floor.cells.features.map((cell) => cell.properties.state)).toEqual(
+      Array.from({ length: 9 }, (_, index) =>
+        index === 2 ? 'floor' : 'hollow',
+      ),
+    )
+    // A whole-building zone selects no single floor, so nothing is hollow.
+    const single = zoneOverlay({
+      ...state,
+      selection: { entityType: 'zone', ids: ['B0464:Z1'] },
+    })
+    expect(single.hollow).toBe(false)
+    expect(single.focus).toBeNull()
   })
 
-  it('outlines every cell at its base and top with an upright per corner', () => {
-    const overlay = zoneOverlay(
-      { ...state, selection: { entityType: 'zone', ids: ['B0439:F2:Z2'] } },
-      { explode: true },
-    )
+  it('outlines every cell at its base and top with an upright per corner, by style', () => {
+    const overlay = zoneOverlay({
+      ...state,
+      selection: { entityType: 'zone', ids: ['B0439:F2:Z2'] },
+    })
     const edges = zoneEdges(overlay.cells.features)
     expect(edges.map((group) => group.buildingId)).toEqual(['B0439'])
     const corners = overlay.cells.features.reduce(
@@ -267,16 +297,26 @@ describe('3D zones of the three zoning cases (decision 0034)', () => {
       0,
     )
     const [group] = edges
+    const length = (style: 'zone' | 'focus' | 'selected' | 'hollow') =>
+      group?.edges[style].length ?? 0
     // Three segments per corner, six numbers per segment.
     expect(
-      ((group?.edges.length ?? 0) + (group?.selected.length ?? 0)) / 6,
+      (length('zone') +
+        length('focus') +
+        length('selected') +
+        length('hollow')) /
+        6,
     ).toBe(corners * 3)
-    // The selected zone's edges are kept apart for the selection colour.
-    expect((group?.selected.length ?? 0) / 18).toBe(4)
+    // The selected zone (four corners) takes the selection colour; the
+    // floor's other zones are emphasised; floors 1, 3, and 4 are hollow.
+    expect(length('selected') / 18).toBe(4)
+    expect(length('zone')).toBe(0)
+    expect(length('focus') / 18).toBe(6 * 4)
+    expect(length('hollow') / 18).toBe((5 + 7 + 6) * 4)
     // Six vertices of seven numbers per segment for the WebGL layer.
     const origin = [0.3, 0.37, 0] as [number, number, number]
-    expect(edgeVertices(group?.selected ?? [], origin)).toHaveLength(
-      ((group?.selected.length ?? 0) / 6) * 6 * 7,
+    expect(edgeVertices(group?.edges.selected ?? [], origin)).toHaveLength(
+      (length('selected') / 6) * 6 * 7,
     )
   })
 
@@ -289,40 +329,35 @@ describe('3D zones of the three zoning cases (decision 0034)', () => {
     expect(parseColor('rgb(0, 255, 0)')).toEqual([0, 1, 0, 1])
   })
 
-  it('explodes floors as a building layer setting saved with the stack', () => {
+  it('opens a layer stack saved with the removed explodeFloors setting (decision 0035)', () => {
+    const saved = defaultLayers().map((layer) => ({
+      ...layer,
+      explodeFloors: layer.kind === 'buildings',
+    }))
+    const read = parseStoredLayers(saved)
+    expect(read).toEqual(defaultLayers())
+    expect(read.some((layer) => 'explodeFloors' in layer)).toBe(false)
+    // So the reopened project shows no unsaved change to its stack.
+    expect(layersDiffer(defaultLayers(), saved)).toBe(false)
+    expect(layerSummary(read.find((layer) => layer.id === 'buildings')!)).toBe(
+      'Floors · extruded · 90%',
+    )
+    // The view operation no longer takes it.
     const workbench = createWorkbench({ initialState: state, now: NOW })
     const view = createViewStore(workbench)
-    expect(zonesLayer(view.getState().map.layers)?.explodeFloors).toBe(false)
     expect(
       view.execute({
         type: 'map.setLayerStyle',
-        input: { layerId: 'buildings', explodeFloors: true },
+        input: {
+          layerId: 'buildings',
+          explodeFloors: true,
+        } as unknown as { layerId: string },
       }).outcome,
-    ).toEqual({
-      status: 'applied',
-      summary:
-        'Map layer "Buildings": floors of zoned buildings exploded in 3D.',
+    ).toMatchObject({
+      status: 'rejected',
+      issues: [{ message: 'Nothing to change.' }],
     })
-    expect(
-      view.execute({
-        type: 'map.setLayerStyle',
-        input: { layerId: 'grid-points', explodeFloors: true },
-      }).outcome,
-    ).toMatchObject({ status: 'rejected', issues: [{ path: 'explodeFloors' }] })
-    // Stacks saved before the setting read as not exploded.
-    const stored = view.getState().map.layers.map((layer) => {
-      const { explodeFloors: _dropped, ...rest } = layer
-      void _dropped
-      return rest
-    })
-    expect(
-      parseStoredLayers(stored).every((layer) => !layer.explodeFloors),
-    ).toBe(true)
-    expect(
-      layerSummary(
-        view.getState().map.layers.find((layer) => layer.id === 'buildings')!,
-      ),
-    ).toContain('zoned floors exploded')
+    expect(zonesLayer(view.getState().map.layers)?.id).toBe('buildings')
   })
 
   it('shows zones in 3D through the selection, the 3D view, and a zoom', () => {

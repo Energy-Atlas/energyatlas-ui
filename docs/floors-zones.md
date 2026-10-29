@@ -9,9 +9,11 @@ Date: 2026-10-28. Stage 6 of 6, the last, of [decision 0032](decisions/0032-next
 places: the zoning setting is now the project default, and a building can override it in its Properties (including
 drawn zones, a fifth zone kind); preprocessing zones each building its own way and publishes the overrides it
 applied; drawn zones fall back to one zone per floor with their own codes and warnings; the complete fixture zones
-three neighbours their own way (510 zones instead of 464); in 3D the map draws zone edges and can explode the
-storeys of zoned buildings (decision 12 below no longer holds); a building's Properties offer Show zones in 3D; and
-the Table page's views name each building's zoning. Everything else below still holds.
+three neighbours their own way (510 zones instead of 464); in 3D the map draws zone edges (decision 12 below no longer holds); a building's Properties offer Show zones in 3D; and
+the Table page's views name each building's zoning. Everything else below still holds, except as [decision 0035](decisions/0035-hollow-floors-and-nested-selection.md)
+changes it ([status](per-building-zoning.md#since-decision-0035)): storeys above a selected floor or zone are no longer
+cut away; the selected floor is drawn solid among the building's other floors drawn hollow, and the map selects a
+building, then a floor, then a zone, one level per click, with Escape, Page Up, and Page Down on the focused map.
 
 ## The owner's decision
 
