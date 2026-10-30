@@ -7,9 +7,11 @@ import {
   type Page,
 } from './test.ts'
 
-// Saved layouts (decisions 0032 and 0033): kept with the project only and
-// managed in the Layouts panel, whose table holds each layout's details and
-// actions; View > Layouts > Save layout… asks for a name in a prompt.
+// Saved layouts (decisions 0032, 0033, and 0036): kept with the project only
+// and managed in the Layouts panel, whose table holds each layout's name, its
+// actions, and Default; the chosen layout's other details sit under the
+// table. View > Layouts > Save layout… asks for a name in a prompt, Rename
+// asks in a prompt too, and Delete asks in the confirmation dialog.
 
 async function seriousViolations(page: Page) {
   const results = await new AxeBuilder({ page }).analyze()
@@ -48,6 +50,11 @@ async function saveFromPanel(page: Page, name: string) {
   await panel.getByRole('button', { name: 'Save layout' }).click()
   await expect(layoutRow(page, name)).toBeVisible()
   return panel
+}
+
+/** The chosen layout's details under the table. */
+function details(page: Page, name: string) {
+  return layoutsPanel(page).getByLabel(`Details of the layout ${name}`)
 }
 
 function layoutRow(page: Page, name: string) {
@@ -100,8 +107,14 @@ test('saves a layout in the panel, applies it after changes, resets to it, and d
     'Saved the layout "Side by side". Save the project to keep it.',
   )
   await expect(panel).toContainText('Applied: Side by side')
-  await expect(layoutRow(page, 'Side by side')).toContainText('Applied')
-  await expect(layoutRow(page, 'Side by side')).toContainText('A person')
+  // The table holds Name, its actions, and Default; the rest is the details.
+  await expect(
+    panel.getByRole('grid', { name: 'Layouts' }).getByRole('columnheader'),
+  ).toHaveText([/^Name/, /^Actions/, /^Default/])
+  await expect(details(page, 'Side by side')).toContainText('StateApplied')
+  await expect(details(page, 'Side by side')).toContainText('Saved byA person')
+  await expect(details(page, 'Side by side')).toContainText('Created')
+  await expect(details(page, 'Side by side')).toContainText('Updated')
   expect(await seriousViolations(page)).toEqual([])
 
   // A taken name is refused at the field.
@@ -135,12 +148,18 @@ test('saves a layout in the panel, applies it after changes, resets to it, and d
   )
   await expect(search(page)).toHaveValue('office')
 
-  // Delete from the row, confirmed in the panel.
+  // Delete from the row, confirmed in the dialog: Enter deletes.
   panel = await openLayouts(page)
   await rowAction(page, 'Side by side', 'Delete')
-  // The safe choice has focus, so Enter twice keeps the layout.
-  await expect(panel.getByRole('button', { name: 'Keep it' })).toBeFocused()
-  await panel.getByRole('button', { name: 'Delete layout' }).click()
+  const confirm = page.getByRole('alertdialog', {
+    name: 'Delete "Side by side"?',
+  })
+  await expect(
+    confirm.getByRole('button', { name: 'Delete layout' }),
+  ).toBeFocused()
+  expect(await seriousViolations(page)).toEqual([])
+  await page.keyboard.press('Enter')
+  await expect(confirm).toBeHidden()
   await expect(panel).toContainText('No layouts yet.')
   await expect(notice(page)).toContainText('Deleted the layout "Side by side".')
 })
@@ -153,7 +172,9 @@ test('renames, duplicates, and updates layouts from their rows', async ({
   const panel = await saveFromPanel(page, 'Draft')
 
   await rowAction(page, 'Draft', 'Rename')
-  const rename = panel.getByRole('textbox', { name: /New name for/ })
+  const rename = page
+    .getByRole('dialog', { name: 'Rename layout' })
+    .getByRole('textbox', { name: /New name for/ })
   await expect(rename).toBeFocused()
   await rename.fill('Review')
   await page.keyboard.press('Enter')
@@ -178,7 +199,7 @@ test('renames, duplicates, and updates layouts from their rows', async ({
   await expect(notice(page)).toContainText(
     'Updated the layout "Review copy" with the current panels and views.',
   )
-  await expect(layoutRow(page, 'Review copy')).toContainText('Applied')
+  await expect(details(page, 'Review copy')).toContainText('StateApplied')
 })
 
 test('marks a layout chosen in the tree until another is applied, and keeps focus on the row after rename and delete', async ({
@@ -212,40 +233,44 @@ test('marks a layout chosen in the tree until another is applied, and keeps focu
     layoutRow(page, name).getByRole('button', {
       name: `More actions for the layout ${name}`,
     })
+  const prompt = page.getByRole('dialog', { name: 'Rename layout' })
   await rowAction(page, 'Beta', 'Rename')
-  const rename = panel.getByRole('textbox', { name: /New name for/ })
+  const rename = prompt.getByRole('textbox', { name: /New name for/ })
   await expect(rename).toBeFocused()
   await page.keyboard.press('Escape')
   await expect(rename).toHaveCount(0)
   await expect(menu('Beta')).toBeFocused()
   // Cancel and a saved rename do the same.
   await rowAction(page, 'Beta', 'Rename')
-  await panel.getByRole('button', { name: 'Cancel' }).click()
+  await prompt.getByRole('button', { name: 'Cancel' }).click()
   await expect(menu('Beta')).toBeFocused()
   await rowAction(page, 'Beta', 'Rename')
   await rename.fill('Gamma')
   await page.keyboard.press('Enter')
   await expect(menu('Gamma')).toBeFocused()
 
-  // Keep it and Escape keep the layout and return to its menu.
+  // Cancel and Escape keep the layout and return to its menu.
+  const confirm = page.getByRole('alertdialog', { name: 'Delete "Gamma"?' })
   await rowAction(page, 'Gamma', 'Delete')
-  await expect(panel.getByRole('button', { name: 'Keep it' })).toBeFocused()
-  await page.keyboard.press('Enter')
+  await confirm.getByRole('button', { name: 'Cancel' }).click()
+  await expect(confirm).toBeHidden()
   await expect(menu('Gamma')).toBeFocused()
   await rowAction(page, 'Gamma', 'Delete')
-  await expect(panel.getByRole('button', { name: 'Keep it' })).toBeFocused()
+  await expect(
+    confirm.getByRole('button', { name: 'Delete layout' }),
+  ).toBeFocused()
   await page.keyboard.press('Escape')
-  await expect(panel.getByRole('button', { name: 'Keep it' })).toHaveCount(0)
+  await expect(confirm).toBeHidden()
   await expect(menu('Gamma')).toBeFocused()
-  // The message sits above its buttons in the narrow panel.
+  await expect(layoutRow(page, 'Gamma')).toHaveCount(1)
+  // The confirmation never pushes the table down: it is a dialog.
+  const grid = panel.getByRole('grid', { name: 'Layouts' })
+  const before = await grid.boundingBox()
   await rowAction(page, 'Gamma', 'Delete')
-  const message = panel.getByText('The layout leaves this project')
-  const keep = panel.getByRole('button', { name: 'Keep it' })
-  const messageBox = await message.boundingBox()
-  const keepBox = await keep.boundingBox()
-  expect(keepBox!.y).toBeGreaterThan(messageBox!.y + messageBox!.height - 1)
+  await expect(confirm).toBeVisible()
+  expect((await grid.boundingBox())!.y).toBe(before!.y)
   // Once deleted, focus stays in the table.
-  await panel.getByRole('button', { name: 'Delete layout' }).click()
+  await confirm.getByRole('button', { name: 'Delete layout' }).click()
   await expect(layoutRow(page, 'Gamma')).toHaveCount(0)
   await expect
     .poll(() =>
@@ -257,27 +282,26 @@ test('marks a layout chosen in the tree until another is applied, and keeps focu
     .toBe('Layouts')
 })
 
-test('sorts the Updated column by time, not by its text', async ({ page }) => {
+test("shows a chosen layout's details under the table, with times", async ({
+  page,
+}) => {
   test.setTimeout(60_000)
-  // Two layouts saved an hour apart, the later one at an earlier clock text.
   await page.clock.install({ time: new Date('2026-10-29T09:30:00') })
   await page.goto('/?fixture=complete')
   await saveFromPanel(page, 'Morning')
   await page.clock.setSystemTime(new Date('2026-10-29T10:05:00'))
   await saveFromPanel(page, 'Later')
+  // The applied layout is chosen; clicking a row chooses another.
+  await expect(details(page, 'Later')).toContainText('StateApplied')
+  await layoutRow(page, 'Morning').getByRole('rowheader').click()
+  await expect(details(page, 'Morning')).toContainText('StateNot applied')
+  await expect(details(page, 'Morning')).toContainText('DefaultNo')
+  await expect(details(page, 'Morning')).toContainText(/Created.*9:30/)
+  // Times left the table, so the side panel never scrolls sideways for them.
   const grid = layoutsPanel(page).getByRole('grid', { name: 'Layouts' })
-  const header = grid.getByRole('columnheader', { name: /^Updated/ })
-  await header.scrollIntoViewIfNeeded()
-  await header.click()
-  const names = () =>
-    grid
-      .getByRole('rowheader')
-      .evaluateAll((cells) =>
-        cells.map((cell) => cell.textContent?.replace(' (current)', '').trim()),
-      )
-  await expect.poll(names).toEqual(['Morning', 'Later'])
-  await header.click()
-  await expect.poll(names).toEqual(['Later', 'Morning'])
+  await expect(
+    grid.getByRole('columnheader', { name: /^Updated/ }),
+  ).toHaveCount(0)
 })
 
 test('saves from the View menu prompt and keeps layouts and the default with the project', async ({
@@ -349,6 +373,9 @@ test('saves from the View menu prompt and keeps layouts and the default with the
   await page.keyboard.press('Enter')
   await expect(panel).toBeVisible()
   await expect(layoutRow(page, 'Team view').getByRole('checkbox')).toBeChecked()
-  await expect(layoutRow(page, 'Team view')).toContainText('Applied')
+  await expect(details(page, 'Team view')).toContainText('StateApplied')
+  await expect(details(page, 'Team view')).toContainText(
+    'DefaultOpens with the project',
+  )
   expect(await seriousViolations(page)).toEqual([])
 })
