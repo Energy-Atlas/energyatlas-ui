@@ -20,6 +20,8 @@ Updated 2026-10-28 for floors and zones, next stage 6 of decision 0032, built on
 
 Updated 2026-10-29 for per-building zoning, drawn zones, and 3D zones ([decision 0034](decisions/0034-per-building-zoning-and-3d-zones.md)), built on `claude/next-stages` and not merged ([plan and status](per-building-zoning.md)).
 
+Updated 2026-10-29 for the owner's review of the map, floors, and zones ([decision 0036](decisions/0036-owner-review-of-next-stages.md)): zones are the backend's geometry, displayed only; no floor slabs or per-zone results; picking in 3D; the map camera as view state. Built on `claude/0036-map-zones` and not merged ([status](per-building-zoning.md#since-decision-0036)).
+
 This guide is for a developer or agent taking over without the original conversation. It describes the code as built, how to extend it without breaking the accepted rules, how it is tested, and what is still missing. Product intent and accepted choices live in the [decision records](decisions/README.md); evidence lives in the [first-slice implementation status](first-slice-proposal.md#implementation-status) and the [design alignment record](design-alignment.md#implementation-status).
 
 ## Reading order
@@ -99,7 +101,7 @@ View state that is not project state changes through the layout controller, the 
 | `assets.ts` | Asset tree skeleton, `GROUP` ids, `upsertAsset`, `assetPath`. |
 | `capabilities.ts` | Working/simulated/planned registry that every honest label reads. |
 | `initialState.ts` | Empty project. |
-| `zoning/` | Floors and zones (decision 0032, stage 6): `geometry.ts` (planar ring cleaning, simplicity, the mitred perimeter inset and its refusals, perimeter cells, edge grouping) and `zoning.ts` (the zoning setting, `zoneBuilding` and its cache, `buildingZoning` and `buildingFloors` from the published zoning, fallback codes and coded warnings, `demandShares`, floor and zone ids). |
+| `zoning/` | Floors and zones (decision 0032, stage 6; decision 0036): `zoning.ts` (zone geometry as the backend delivers it, `zoneBuilding` and its cache, `buildingZoning` and `buildingFloors` from the published run, colour slots by shared walls, floor and zone ids) and `fixtureGeometry.ts` (the fixture's precomputed zone geometry, `src/domain/fixtures/zone-geometry.json`, made by `scripts/generate-zone-geometry.mjs`). |
 | `fixtures/` | `back-bay-buildings.geo.json`, the OpenStreetMap footprint extract (one feature per line, excluded from Prettier), and its ODbL notice. Regenerate with `node scripts/fetch-osm-buildings.mjs` only when the extract must change; building ids follow the file order. |
 
 Key domain rules:
@@ -126,7 +128,7 @@ Key domain rules:
 | Appearance | `appearance/appearances.ts` (six appearances: chrome tokens, data palette, `resolveAppearance`), `appearance/contrast.ts`, `theme.ts` (stored preference, `applyAppearance`) |
 | Shell | `shell/WorkbenchShell.tsx`, `Ribbon.tsx` (menus, quick buttons, Run split button), `StatusBar.tsx` (last operation and the unread counter), `ToastHost.tsx` (the one toast region), `CommandPalette.tsx`, `HelpDialogs.tsx` |
 | Shared components | `components/ActionButton.tsx` (explains unavailable actions; `useRecordBlocked`), `StateBadge.tsx` (semantic stage states), `CapabilityBadge.tsx` (`CapabilityBadge` and `StatusTag`), `CapabilityTable.tsx`, `EmptyState.tsx`, `forms.module.css`; panel components of [decision 0027](decisions/0027-unified-panel-components.md): `PanelHeader.tsx`, `Toolbar.tsx` + `toolbarFit.ts`, `MenuButton.tsx`, `SegmentedFilter.tsx`, `InlineAlert.tsx`, `PropertyList.tsx`, `Section.tsx`, `SelectableList.tsx` (lists to pick from or act on), `RuleList.tsx` and `ConditionBuilder.tsx` (the shared rule editor of decision 0032), `MappingReview.tsx` (the mapping review shared by Schema matching and Data intake), `LogView.tsx` (log output: level filter, follow latest, copy, download), `DataTable.tsx` + `dataTable.module.css`, `GridTable.tsx` (the same table drawn by AG Grid), `tableTools.tsx` (the table bar and column widgets both renderers share), `useWorkbenchTable.ts` and `WorkbenchTable.tsx` (the view-state binding), `menus.module.css` (one menu look), `primitives.module.css`; `format.ts` (numbers, energy, counts, times); `csv.ts` (CSV fields, comment lines, downloads); `tables/` (table settings, the row model and CSV, `table.change` checks, the registry of tables on screen); the gallery `gallery/ComponentGallery.tsx` at `/?gallery` (with `gallery/MappingSpecimen.tsx`) |
-| Floors and zones | `properties/FloorsAndZones.tsx` (a building's floors and zones in Properties), `properties/ZoningForm.tsx` (the zoning setting in Geospatial preprocessing's Properties), `pages/FloorZoneTables.tsx` (the Table page's Floors and Zones views) with `pages/tableSelection.ts` (grid selection shared by every Table view), `pages/zoneFeatures.ts` and `pages/ZoneLayers.tsx` (slabs and zones on the map), `pages/results/ZoneBreakdown.tsx` (decision 0032, stage 6) |
+| Floors and zones | `properties/FloorsAndZones.tsx` (a building's floors and zones in Properties, and `ZoneGeometryNote`, where zones come from, in Geospatial preprocessing's Properties), `pages/FloorZoneTables.tsx` (the Table page's Floors and Zones views) with `pages/tableSelection.ts` (grid selection shared by every Table view), `pages/zoneFeatures.ts` (zone cells and edges), `pages/ZoneLayers.tsx` and `pages/ZoneEdgeLayer.tsx` (zones on the map), `pages/mapSelection.ts` and `pages/mapPicking.ts` (nested selection and 3D picking) (decisions 0032, 0035, 0036) |
 | Panels | `panels/AssetsPanel.tsx` + `assetTree.ts`, `panels/WorkflowPanel.tsx`, `panels/InspectionPanel.tsx` + `inspection.ts` (read-only Inspection view model), `panels/MapProperties.tsx` (the map's own properties, shown while the map is the worked surface and nothing is selected: the layer stack in `panels/MapLayers.tsx`, then the basemap, the 3D view, terrain, Sun position, and Light and haze; decisions 0030 and 0031) and `panels/ViewSlider.tsx` (a slider over one view setting, logged on release), `panels/MessagesPanel.tsx` (the message history), `panels/ReasoningPanel.tsx` (agent transcript, approvals, composer) + `agent/modes.ts` (send and permission modes) + `agent/suggestions.ts` (suggested next steps) |
 | Pages | `pages/*Page.tsx`; pure helpers `mapMetrics.ts`, `dashboardData.ts`, `dashboardCharts.ts`; `basemapStyle.ts` (recolors the OpenFreeMap style from appearance tokens, attribution) and `useBasemap.ts` (loading, failure, retry); `silhouette.ts` (projects a building's ground, roof, and walls with a camera matrix) and `SelectionSilhouette.tsx` (the 3D selection outline: a custom layer supplies the matrix every frame, and the silhouette's boundary is drawn on an overlay canvas); `terrain.ts` (the Mapterhorn source, hillshade paint from appearance tokens, attribution, legend wording) and `useTerrain.ts` (applies terrain once its source exists, with loading, failure, and retry); `sunPosition.ts` (`subsolarPoint`, the globe's one solar state from the season and the UTC time, and `sunFromSubsolar`, any place's own sun derived from it, on NOAA's equations), `lighting.ts` (the controls mapped onto MapLibre's light and sky, mixing colour from the appearance's `data.sky` tokens) and `useSceneLighting.ts` (applies both, and reapplies after a style swap) |
 | Visualization | `viz/EChart.tsx` (modular ECharts wrapper and `useChartFont`), `grid/agGrid.ts` (AG Grid theme from CSS tokens) |
@@ -318,35 +320,49 @@ viewer only through `forViewer` in `src/app/actions.ts`, which keeps the ids in 
 
 ### Floors and zones
 
-Since stage 6 of decision 0032 ([floors and zones](floors-zones.md)) `state.zoning` holds the zoning setting (RC's
-`Single`, `Floors`, `PerimeterCore` as `single`, `floors`, `perimeterCore`, with a perimeter depth) and the
-zoning the last successful Geospatial preprocessing run published. `zoning.set` bumps the stage's `editRevision`, so
-input signatures outdate it and invalidate later work. Floors and zones are never stored: read them with
-`buildingZoning(state, id)` (zones by the published zoning, or null) and `buildingFloors(state, id)` (the storeys the
-last run recorded in `published.storeys`, of height over storeys, whatever the zoning) from `src/domain/zoning/zoning.ts`; both are cached per building object.
-Floor ids are `<building>:F<n>` and zone ids `<building>:Z1` or `<building>:F<n>:Z<k>` (core first), and the
-selection holds them as `'floor'` and `'zone'`; check any selectable id with `selectableExists`
-(`src/domain/selection.ts`), and get the buildings a selection is about with `selectedBuildingIds`. The map's floor
-slabs and zone cells come from `src/app/pages/zoneFeatures.ts` (zones for at most `MAX_ZONED_BUILDINGS` selected
-buildings) and are drawn by `StackLayer` (`floorSlabs`, a building layer setting) and `ZoneLayers.tsx`. Per-zone
-numbers are `demandShares`, a floor-area split of a building result; keep them labelled with the
-`results.zoneBreakdown` capability. Saves and packages from before zoning get RC's default and no published zoning
-through `projectSchema.ts`.
+Since [decision 0036](decisions/0036-owner-review-of-next-stages.md) ([status](per-building-zoning.md#since-decision-0036))
+zoning is done by the backend and the browser only displays zone geometry. `state.zoning` holds `geometry` (zone
+outlines by building id, as the backend would deliver them: in the demo, precomputed in the fixture for B0439, B0427,
+and B0426 by `scripts/generate-zone-geometry.mjs` into `src/domain/fixtures/zone-geometry.json`) and `published` (the
+run of Geospatial preprocessing that floors and zones follow, with the storeys each building had then). There is no
+zoning command, no zoning setting, no perimeter depth, no generation, and no fallback code; a building without zone
+geometry is one zone, as in RC. Floors and zones are never stored: read them with `buildingZoning(state, id)` (zones
+once a run has published, or null) and `buildingFloors(state, id)` (the storeys the last run recorded in
+`published.storeys`, of height over storeys) from `src/domain/zoning/zoning.ts`; both are cached per building object.
+Geometry whose plans do not cover a building's floors is not shown (`unused` says why) and the building is one zone.
+Floor ids are `<building>:F<n>` and zone ids `<building>:Z1` or `<building>:F<n>:Z<k>` (in the geometry's order), and
+the selection holds them as `'floor'` and `'zone'`; check any selectable id with `selectableExists`
+(`src/domain/selection.ts`), and get the buildings a selection is about with `selectedBuildingIds`. Saved projects and
+packages that carry the removed settings (`mode`, `perimeterDepthM`, `overrides`, `drawn`, and the published setting)
+still open: `projectSchema.ts` drops them. New zone geometry must tile each floor exactly (shared corners, no
+T-junctions, no gaps or overlaps, footprint corners copied unchanged); `zoning.test.ts` checks the fixture's.
 
-Since [decision 0034](decisions/0034-per-building-zoning-and-3d-zones.md) ([status](per-building-zoning.md)) the
-setting is the project default: `state.zoning.overrides` gives a building its own mode (`single`, `floors`,
-`perimeterCore`, or `drawn`), changed only by `zoning.setBuilding`; resolve a building's setting with
-`resolveBuildingZoning(zoning, id)` (the current one) or `publishedZoningOf(state, id)` (what the last run applied,
-recorded in `published.overrides`), never by reading `zoning.mode` alone. Drawn outlines are `state.zoning.drawn`,
-checked by `drawnPlanProblem` (`src/domain/zoning/drawn.ts`) with `drawn_*` fallback codes; the demo plan is
-`src/domain/zoning/drawnFixture.ts`. In 3D, `ZoneEdgeLayer.tsx` draws zone edges as a custom WebGL layer with its
-own vertex array (enabling attributes on MapLibre's bound array breaks MapLibre's next draw). Since decision 0035
-the map's clicks and keys go through the pure rules of `src/app/pages/mapSelection.ts` (`clickTarget`, `upTarget`,
-`stepTarget`, `describeTarget`); `zoneOverlay` gives each cell a `state` (`zone`, `floor`, `selected`, `muted`,
-`hollow`), drawn as `zones:extrusion`, then the edges, then `zones:hollow`: translucent extrusions write depth before
-colour, so the hollow shell must come last for the selected floor to show through it. "Show zones in 3D" is
-`showZonesIn3d` (`src/app/pages/showZones3d.ts`), shared by Properties and the palette. Keep MapLibre layers that
-replace one another keyed: react-maplibre keeps the id and type a `Layer` mounted with.
+The map's zone cells come from `zoneOverlay` in `src/app/pages/zoneFeatures.ts` (zones for at most
+`MAX_ZONED_BUILDINGS` selected buildings), each storey spanning its floor exactly so the cells make up the building's
+extrusion; there are no floor slabs. Each cell has a `state` (`zone`, `floor`, `selected`, `hollow`): a selected zone
+and its floor's other zones keep their colours, and the selected zone is marked by its edges in the selection colour.
+`zoneEdges` builds every edge once (horizontal edges split at every corner on them at that level, uprights per storey),
+as `envelope` (the outline at the ground and roof, and the footprint's corners) or `boundary` (where two zones meet),
+drawn by `ZoneEdgeLayer.tsx` in the appearance's `zoneEdges` tokens. The edge layer pulls each vertex towards the
+camera along its line of sight by 1.5 pixels' worth of distance (`pullShare`) instead of a depth bias, so edges behind
+a volume stay hidden; it has its own vertex array (enabling attributes on MapLibre's bound array breaks MapLibre's next
+draw). Layers draw as `zones:extrusion`, then the edges, then `zones:hollow`: translucent extrusions write depth before
+colour, so the hollow shell must come last for the selected floor to show through it. Keep MapLibre layers that replace
+one another keyed: react-maplibre keeps the id and type a `Layer` mounted with.
+
+Map clicks and keys go through the pure rules of `src/app/pages/mapSelection.ts` (`clickTarget`, `upTarget`,
+`stepTarget`, `describeTarget`, decision 0035), which take hits nearest first. In 3D the map does not trust
+MapLibre's `queryRenderedFeatures` for extrusions: it returned them farthest first and could leave out the face in
+front, so `featuresAt` in `MapPage.tsx` casts the pointer's ray (`pointerRay` in `src/app/pages/mapPicking.ts`, from
+MapLibre's public camera getters) against every drawn zone cell and extruded building and sorts by
+`rayPrismDistance`; flat features keep MapLibre's hits. The hover label is queried again where the pointer rests once
+the map has drawn a new selection, floor, or plan, and follows Shift pressed or released without a move.
+
+The map camera (centre, zoom, pitch, bearing) is view state, `view.map.camera` (`src/app/view/mapCamera.ts`). The map
+records every move with the internal `map.syncCamera` (not logged); `map.setCamera` moves it by bumping
+`cameraRequest`, as applying a layout and opening a project do. Layouts carry the camera, the project saves it with its
+other views (`camera` in the saved view), and moving the map is neither an unsaved change nor a change to the applied
+layout.
 
 ### Add or change an agent session
 
@@ -456,8 +472,8 @@ End-to-end specs:
 
 - `e2e/project-lifecycle.spec.ts`: start, named creation/validation, multi-project save/open/recent, equal names, draft and job guards, failed Save, malformed storage, held-request recovery, all six appearances at three sizes, axe, keyboard focus, and reproducible screenshots in `tmp/`.
 - `e2e/tables.spec.ts`: on the Results page, hover-revealed tools, a checklist filter with its chip and count, sort, MWh format, hidden column, the CSV of the view, the arrangement saved with the project and restored on reopening (`saveAndReopen` in `e2e/test.ts`), Reset, an explained bad range, grid keyboard use with axe, widgets shown from any cell of a column, the three-step header sort, value search, center alignment, and a frozen header row; on the Table page's AG Grid, the same tools by pointer and keyboard (`aria-sort`, Tab into header widgets), the search and its CSV line, the no-match message, a pinned first column, and the arrangement saved and reopened with the project. AG Grid cells are found by `[row-index] [col-id]`; a frozen first column lives under `.ag-grid-pinned-left-cells`.
-- `e2e/floors-zones.spec.ts`: floors and zones (decision 0032, stage 6): the zoning form and its explained Save, the stage and later stages Outdated, the warning before the rerun, the rerun, the Properties tables, Show on Map with the zone legend, a zone chosen in Properties and the Table's Zones view sharing it (two by keyboard), slabs on by default in 3D, an inset fallback with its code, the Results split, one zone per building, a refusal on its field, a building without a height, and the viewer showing them without the zoning control, with axe.
-- `e2e/per-building-zoning.spec.ts`: per-building zoning and 3D zones (decision 0034): a building override saved in Properties with its explained unchanged Save, the warning before the rerun, the rerun's zones in Properties and the Zones view, the Buildings view's Zoning columns, Show zones in 3D for each of the three fixture buildings (and from the palette), nested selection by clicks on the flat map with the hover label, Page Up and Page Down, and Escape, and in 3D a floor and then a zone clicked with hollow floors in the legend (decision 0035), a drawn-zones fallback before and after the rerun, a server refusal on its field, and the viewer's read-only zoning with Show zones in 3D, with axe.
+- `e2e/floors-zones.spec.ts`: floors and zones (decision 0032, stage 6; decision 0036): Geospatial preprocessing says where zones come from and offers no zoning setting, the Properties tables of a building with zone geometry and no zoning control, Show on Map with the zone legend, a zone chosen in Properties and the Table's Zones view sharing it (two by keyboard), no floor slab setting in 3D, no per-zone results, one zone for a building without zone geometry, a building without a height, and the viewer showing floors and zones and where they come from, with axe.
+- `e2e/map-zones.spec.ts` (was `per-building-zoning.spec.ts`): zones on the map (decisions 0034 to 0036): each kind of fixture zone geometry in 3D with building edges and lines between zones, and Show zones in 3D gone from Properties and the palette; nested selection by clicks on the flat map with the hover label, Page Up and Page Down, and Escape; in 3D a click on the roof selecting the top floor, hollow floors, and clicks at different spots selecting different zones (M2); the hover label following Page Up, Page Down, and Shift without a pointer move, Shift-click adding a zone, and keys that change nothing saying why; and a whole-building zone in 3D, with axe.
 - `e2e/viewer.spec.ts`: the viewer page and handover package (decision 0032, stage 5): a project layout handed over as the default, the Hand over dialog, the package list and Enter to open, the View only shell without Edit, Run, Save, or modeller pages, the Table without editing, the Dashboard without Apply, a personal layout and Reset to handed-over layout, the agent's view-only answer and results session, a downloaded package opened from a file, corrupt, newer, and foreign files refused, loading, empty, and no-results states, a full storage keeping the download, with axe. `e2e/production.spec.ts` opens the viewer under the Pages base path.
 - `e2e/layouts.spec.ts`: saved layouts (decision 0032): empty states, a personal layout saved, applied by keyboard after changing the arrangement and the table search, reset from the palette, kept across a reload, and deleted; a project layout and default kept through Save and reopen with no unsaved changes, and shown as a View asset; unreadable personal storage and its recovery; axe throughout.
 - `e2e/gallery.spec.ts`: the component gallery in all six appearances with axe, the appearance switch, toolbar overflow into More with the primary action kept, and keyboard use of toolbars, filters, checkable menus, and sections.
@@ -537,15 +553,15 @@ Behavior promised by the plan or decisions but not built yet:
 - **Keyboard docking:** the command palette splits the active tab and moves it to the next tab group; there is no keyboard way to pick a specific target group or side.
 - **View state:** layout, appearance, and view operations (context mode, map metric and overlay, map zoom, map 2D or 3D, terrain and its exaggeration, table view and filter, dashboard compare toggles, added charts) are logged. Dashboard what-if previews stay unlogged drafts, and view state resets on reload.
 - **Chart specs:** charts the agent adds use validated specifications (decision 0011); the Dashboard's built-in charts still build ECharts options directly in `dashboardCharts.ts`.
-- **Floors and zones** ([status](floors-zones.md), [per-building zoning](per-building-zoning.md)): zones are display only (no zone types or per-zone archetype parts), per-zone results are a floor-area split, the perimeter is split along corner bisectors rather than RC's Voronoi cells, only a footprint's outer ring is zoned, and zones are drawn for 20 selected buildings at most. Drawn outlines cannot be edited or imported yet, 3D edges and hollow floors are checked by screenshot review only, and from straight above the floors over a selected floor cover it.
+- **Floors and zones** ([status](floors-zones.md), [per-building zoning](per-building-zoning.md#since-decision-0036)): zones are the backend's geometry and display only; in the demo three buildings carry precomputed, synthetic zone geometry and every other building is one zone. Per-zone results are not shown. Zones are drawn for 20 selected buildings at most, 3D edges and hollow floors are checked by screenshot review only, and from straight above the floors over a selected floor cover it.
 - **Assignment rules** ([status](assignment-rules.md)): RC's custom formula rules and numeric priorities are not modeled (list order is the priority), library parts arrive only with library archetypes, parts and archetypes cannot be deleted, and the map cannot colour buildings by rule or part (Select matched buildings instead).
 - **Schema matching** ([status](schema-matching.md)): source attributes are synthetic footprint tags; no unit conversion or transforms (as in RC); no map of the chosen attribute; one optional group; value maps and rule sets only in Schema matching, not Data intake; custom target values show only in Properties.
 - **Scenario rules** ([status](scenario-rules.md)): four measure categories instead of RC's seven, rules per scenario rather than shared measure packages, a demo hash instead of RC's SHA-256 (the same seed picks other buildings than RC), a noisy realized adoption share at district size, no per-building version assignments or phasing, and no map colouring by rule or adoption.
 - **Viewer and handover** ([status](viewer-handover.md)): packages carry current published results only (no result versions); handing over is a browser catalog and a file, with no sharing or access control; the viewer has no Roadmap or Issues page; the agent's model-change detection is a keyword heuristic.
 - **Fixture variants:** Help > Demo conditions loads New, Partway, Failed stage, and Complete fixtures (decision 0023). Fixture provenance uses historical `fixture-…` operation IDs; the operations that built the fixture are not imported into the current UI log.
-- **Layout:** at 1280 px with both side panels open, the Settings tab moves into FlexLayout's overflow menu. Layout changes are logged but not undoable. Saved layouts do not keep the map camera, which is not view state, and two tabs changing the same personal layout at once keep the later change ([saved layouts](saved-layouts.md#known-issues-and-limits)).
+- **Layout:** at 1280 px with both side panels open, the Settings tab moves into FlexLayout's overflow menu. Layout changes are logged but not undoable. Saved layouts keep the map camera (decision 0036); moving the map does not count as a change to the applied layout. Two tabs changing the same personal layout at once keep the later change ([saved layouts](saved-layouts.md#known-issues-and-limits)).
 - **Accessibility:** the map canvas is not screen-reader accessible (the Table page is the equivalent); automated axe runs cover 1280x800 only.
-- **3D buildings** ([decision 0013](decisions/0013-3d-building-extrusion.md)): heights are synthetic (floors × 3.2 m) and appear only after Geospatial preprocessing; extruded building layers draw one slab per storey unless their Draw floors as slabs setting is off (decision 0032, stage 6); the 2D/3D choice resets on reload with the rest of the view state; grid lines and points stay on the ground and can be hidden behind extrusions; the silhouette outline is drawn above the map, so it shows through taller buildings in front, and adjacent selected buildings share one outline; extrusion rendering is checked by screenshot review only.
+- **3D buildings** ([decision 0013](decisions/0013-3d-building-extrusion.md)): heights are synthetic (floors × 3.2 m) and appear only after Geospatial preprocessing; floor slabs were removed by decision 0036; the 2D/3D choice resets on reload with the rest of the view state; grid lines and points stay on the ground and can be hidden behind extrusions; the silhouette outline is drawn above the map, so it shows through taller buildings in front, and adjacent selected buildings share one outline; extrusion rendering is checked by screenshot review only.
 - **Terrain** ([decision 0015](decisions/0015-terrain.md)): display only, never project data. Mapterhorn states no usage terms or service level and serves Back Bay to zoom 16. Back Bay is nearly flat, so relief needs exaggeration and a tilted camera to be visible; tests use a flat stand-in tile, so real relief is checked by screenshot review only.
 - **Basemap:** the public OpenFreeMap instance has no SLA, and one failed tile drops the whole basemap until Retry basemap. Basemap labels use OpenFreeMap's Noto Sans glyphs, not Geist. Tests exercise a stand-in style, so the recolored real style is checked by screenshot review only.
 - **Hosting:** only the Vite dev server and `npm run preview` are verified; loading the bundle inside the reference ASP.NET or Eto host is not, and that host would also need network access for the basemap.

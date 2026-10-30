@@ -5,6 +5,11 @@ the [floors and zones in 3D discussion](floors-zones-3d-discussion.md) (A, R1, S
 `claude/next-stages`; not merged into `master`, not pushed. It extends [floors and zones](floors-zones.md) (stage 6 of
 decision 0032).
 
+**Superseded in large part by [decision 0036](decisions/0036-owner-review-of-next-stages.md)**: zoning is the
+backend's, the browser only displays zone geometry, and per-building zoning, drawn-zone checks, Show zones in 3D,
+floor slabs, and per-zone results are removed; nested selection and hollow floors stay. See
+[Since decision 0036](#since-decision-0036); the sections before it record what was built and reviewed earlier.
+
 ## The owner's decision
 
 - **Per-building zoning (A).** The project keeps its default zoning mode (Geospatial preprocessing's zoning
@@ -434,3 +439,148 @@ Built in `0b8e061`. Before it, on the final code:
   Table's Zones and Buildings views were looked at; they led to the zone layers being keyed (the flat plan had
   survived the switch to 3D), the edge layer's own vertex array, one zoning choice per line, wording for buildings
   without drawn zones, and a wider 3D zoom.
+
+## Since decision 0036
+
+Date: 2026-10-29. [Decision 0036](decisions/0036-owner-review-of-next-stages.md), the owner's review of the next
+stages, items M1 to M8 and the camera of L1. Built on `claude/0036-map-zones` (from `claude/next-stages` at
+`061cb41`); not merged, not pushed. It supersedes most of this record above: per-building zoning, drawn-zone checks,
+the project zoning setting, floor slabs, and per-zone results are gone. Nested selection and hollow floors
+(decision 0035) stay.
+
+### What changed
+
+| Item | Change | Where |
+| --- | --- | --- |
+| M1 | **Show zones in 3D retired**: the Properties button, the `view.showZones3d` palette action, and `showZones3d.ts`. The agent's Zoning cases in 3D session reaches the same view through `selection.set`, `layout.openPage`, `map.set3d`, and `map.focusSelection`. | `src/app/actions.ts`, `src/app/properties/FloorsAndZones.tsx`, `src/app/agent/sessions.ts` |
+| M2 | **A selected zone keeps its colour and so do its neighbours**; its edges in the selection colour mark it (3 px). The muted cell state and the `hollow.muted` token are gone. The bug that a click on a floor always picked the same zone is fixed (root cause below). | `zoneOverlay` (`src/app/pages/zoneFeatures.ts`), `ZoneLayers.tsx`, `appearances.ts` |
+| M3 | **A click in 3D picks what is in front.** The map casts the pointer's ray against every drawn zone cell and extruded building itself and orders hits by distance. | `src/app/pages/mapPicking.ts`, `featuresAt` in `MapPage.tsx` |
+| M4, M6 | **Zoning is the backend's**: no zoning setting form, perimeter depth, `zoning.set`, generation (`geometry.ts`), drawn-zone checks (`drawn.ts`), fallback codes, or outdating. Zones come from `state.zoning.geometry`; a building without zone geometry is one zone. | `src/domain/zoning/zoning.ts`, `src/domain/commands.ts`, `src/domain/simulation.ts` |
+| M5 | **No per-building zoning control**: `BuildingZoningForm.tsx`, `zoning.setBuilding`, and `state.zoning.overrides` are gone; zones are read-only everywhere. | as above |
+| M4 | **Fixture zone geometry** for B0439 (the drawn mixed-use plan, 25 zones), B0427 (each floor a zone, 9), and B0426 (perimeter and core at 4.5 m, 15), generated offline and committed; every zone of a floor tiles the footprint exactly. | `scripts/generate-zone-geometry.mjs`, `src/domain/fixtures/zone-geometry.json`, `src/domain/zoning/fixtureGeometry.ts` |
+| M4 | **3D drawing**: storeys span their floors exactly (the slab gap is gone), so the zones make up the extrusion; every edge is drawn once, as the building's envelope or, in a colour of its own, a boundary between zones; edges behind a volume stay hidden. | `zoneEdges` (`zoneFeatures.ts`), `ZoneEdgeLayer.tsx`, the `zoneEdges` tokens |
+| M7 | **No floor slabs**: the Buildings layer's Draw floors as slabs setting, its drawing, the `floor-slabs` source, and `floorSlabs` in the layer stack and `map.setLayerStyle`. | `mapLayers.ts`, `StackLayer.tsx`, `MapLayers.tsx`, `viewOperations.ts` |
+| M8 | **No per-zone results**: the Results page's "by zone (synthetic split)" section and the Properties tables' Baseline share column, with `demandShares` and the `results.zoneBreakdown` capability. | `ResultsPage.tsx`, `FloorsAndZones.tsx` |
+| L1 | **The map camera is view state**: centre, zoom, pitch, and bearing, kept in step with the map, moved by `map.setCamera`, restored when a layout is applied or a project opens, and saved with the project. | `src/app/view/mapCamera.ts`, `map.setCamera` and `map.syncCamera` in `viewOperations.ts`, `savedLayout.ts`, `MapPage.tsx` |
+| Defect | **The hover label follows keys and Shift**: after Page Up, Page Down, Escape, or a click the map queries the hits again where the pointer rests once it has drawn the change; Shift pressed or released changes the label without a move. | `MapPage.tsx` |
+
+Geospatial preprocessing's Properties now say where zones come from ("Zoning is done by the backend…", with the
+buildings that have zone geometry); the viewer shows the same as a fact. The Table page's Buildings, Floors, and Zones
+views keep their Zoning column (now what the building got: one zone, each floor a zone, perimeter and core zones, or
+zones of its floor plans) and rename Zoning from to **Zones from** (Zone geometry or No zone geometry).
+
+### The M2 root cause
+
+The selection rules (`clickTarget` in `mapSelection.ts`) take the map's hits nearest first, and the map passed on
+MapLibre's `queryRenderedFeatures` as it came. In MapLibre 6.9.1 that order is not nearest first for fill-extrusion
+features: measured on B0439 with a ray cast from MapLibre's own camera, the four storeys under the pointer came back
+ground floor first (distances 0.986, 0.969, 0.953, 0.941 along the ray), and at some points the face in front was left
+out altogether (a click on the roof's penthouse returned only the core cells of each storey, met by the ray inside the
+building). So a click on a building selected its ground floor, a click on a selected floor picked the cell where the
+ray left the floor or a cell behind it, which for much of a floor was the same cell, and a building behind another
+could take the click (M3). The map now ignores MapLibre's extrusion hits in 3D and casts the ray itself: the camera from
+MapLibre's public getters (centre, centre elevation, zoom, pitch, bearing, field of view, canvas height; checked to
+match MapLibre's internal camera to about 1e-10), the ground point under the pointer from `unproject`, and every drawn
+zone cell and extruded building as a prism. Flat, MapLibre's hits are used as before.
+
+### Fixture zone geometry
+
+`scripts/generate-zone-geometry.mjs` reads `back-bay-buildings.geo.json` and writes `zone-geometry.json` (formatted
+by Prettier). B0439's plan is the hand-authored plan of decision 0034 in fractions of its four-cornered outline,
+mapped bilinearly (straight lines stay straight); every corner of a zone that lies on a neighbour's wall is inserted
+into that wall too, so no wall has a T-junction. B0426's core is its outline inset by 4.5 m (each core corner where
+the offsets of the edges beside a footprint corner meet), and each perimeter zone runs between a footprint edge and
+the core edge inside it, so neighbours share their corners exactly; core corners are rounded once to 1e-9° and
+footprint corners are copied unchanged. B0427 is its footprint on every floor. `zoning.test.ts` checks that every wall
+of every zone either lies on the footprint outline or is the reverse of exactly one neighbour's wall, that windings
+match the footprint, that areas add up to the footprint's, and that footprint corners are the footprint's own numbers.
+
+Fixture totals are unchanged: the three buildings have the same zone counts as their decision 0034 overrides gave
+them, so the Partway, Failed, and Complete fixtures still publish 510 zones; the Thermal zones asset reads "510 zones,
+3 buildings zoned by their zone geometry, the rest one zone each". The New fixture stores the geometry and zones
+nothing until Geospatial preprocessing runs; projects created on the start screen have no zone geometry.
+
+### Edges in 3D
+
+`zoneEdges` builds the edges of each building's zone cells once. At every storey level, each wall's top or bottom edge
+is split at every zone corner on it at that level (so plans above and below that split a wall differently give one
+line, drawn in pieces), and kept when it is the building's outline at the ground or the roof (envelope) or when it
+parts two zones (boundary: between neighbours on a floor, or between a zone and the zone above it). An upright is kept
+per storey at the footprint's corners (envelope) and where two zones meet elsewhere (boundary). A whole-building zone
+therefore shows only its envelope, and each-floor-a-zone shows one line round the facade at every floor. The two
+causes of the doubled lines the owner saw were each shared wall being drawn by both of its zones and each floor being
+drawn twice, the top of one storey and the base of the next a slab gap (0.35 m) apart; both are gone.
+
+Envelope edges take the appearance's `zoneEdges.envelope` (its primary ink) and boundaries `zoneEdges.boundary` (its
+surface colour, at least 3:1 against every zone colour in every appearance; appearance test). A selected zone's
+edges take the selection colour, a selected floor's are emphasised, and hollow floors' are faint. The short tails of
+occluded lines came from the old clip-space depth bias (2.5e-4 of normalized depth, several metres at street zoom):
+each vertex is now pulled towards the camera along its own line of sight by 1.5 pixels' worth of distance, which
+leaves it where it is on screen and lets the depth test hide anything more than that behind a volume.
+
+### The camera (L1)
+
+`view.map.camera` holds `{center, zoom, pitch, bearing}` (`src/app/view/mapCamera.ts`, rounded so float noise is no
+change). The map records every move it makes with the internal `map.syncCamera` (left out of the agent's tools and of
+the operation log); `map.setCamera` (an agent tool) moves the map by bumping `cameraRequest`, as applying a layout and
+opening a project with a saved camera do. A layout saved with a camera restores it when applied (flat layouts keep
+centre and zoom, not tilt); layouts saved before keep the map where it is. The project saves the camera with its other
+views (`camera` in the saved view and in packages); a project opening with a camera near its footprints opens there,
+otherwise it is framed as before.
+
+### States
+
+- **Empty**: a building without zone geometry is one zone and says so ("with no zone geometry from the backend"); no
+  building has floors or zones before Geospatial preprocessing; a project without a camera is framed on its
+  footprints.
+- **Success**: clicks and keys report the selection in the status bar and Messages; a layout applied moves the map.
+- **Warning**: zone geometry that does not cover a building's floors (after its floor count is edited and the stage
+  rerun) is not shown, Properties says why, and the building is one zone until the backend zones it again;
+  Geospatial preprocessing outdated.
+- **Error**: `map.setCamera` refuses a zoom or centre out of range on its field; a saved camera that cannot be read is
+  ignored.
+- **Keyboard**: Escape, Page Up, and Page Down on the focused map (decision 0035); the Properties tables; the hover
+  label follows Shift.
+
+### Real, mocked, deferred
+
+- **Real**: displaying zone geometry (floors, zones, tables, map, viewer); the tiling of the fixture geometry and its
+  check; the edge classification, the occlusion handling, and the tokens; ray picking in 3D; nested selection and
+  hollow floors; the camera as view state, in layouts, and saved with the project; saved projects with the removed
+  fields opening without them.
+- **Mocked**: the zone geometry itself, precomputed offline for three buildings and labelled synthetic (the `Zone
+  geometry` capability, simulated), standing in for the backend's zoning.
+- **Deferred**: receiving zone geometry from the backend (RC or the EnergyAtlas backend), per-zone results, zone
+  geometry for every building, zones for more than 20 selected buildings, and Show zones in 3D for another purpose.
+
+### Decisions taken for review
+
+1. **The project zoning setting and `zoning.set` are removed too**, not only the per-building control: decision 0036
+   says "no zoning setting", and with zones as the backend's there is nothing left for them to set.
+2. **The Properties tables' Baseline share column is removed with the Results split** (M8), since it was the same
+   floor-area split.
+3. **Saved `drawn` outlines are dropped, not converted** into zone geometry: they came only from this unmerged branch,
+   and the fixture geometry replaces them; such a project shows its buildings as one zone each.
+4. **Geometry that does not cover a building's floors is not shown** (one zone, with a note): a display guard rather
+   than a validation, for a floor count edited after the backend zoned the building.
+5. **Colour slots are assigned by shared walls** (two consecutive shared corners), cores in the de-emphasis colour,
+   whole floors alternating, as before.
+6. **The selected zone keeps its colour** and is marked by 3 px edges in the selection colour and the 3D selection
+   outline of its building, as the decision says; the legend reads "Selected floor or zone, outlined".
+7. **Boundary lines take the surface colour** of each appearance (white in the light appearances, black in Dark),
+   envelope edges its primary ink.
+8. **Picking in 3D ignores MapLibre's extrusion hits** and casts the ray against every drawn prism (464 buildings and
+   at most 20 zoned ones; well under a millisecond), since MapLibre both misorders and omits them.
+9. **The camera is saved but is not an unsaved change**, and moving the map does not count as a change to the applied
+   layout: panning should not prompt a save or a layout update. Updating or saving a layout keeps the camera.
+10. **`map.setCamera` is an agent tool** (a view operation like the others); `map.syncCamera` is internal.
+
+### Known issues
+
+- MapLibre's own `queryRenderedFeatures` order for extrusions is still used flat (2D), where it is correct.
+- The ray picking uses MapLibre's public camera getters; if a later MapLibre changes how it places the camera (its
+  distance of half the canvas height over the tangent of half the field of view), picking would drift; the unit
+  tests pin the formula and the screenshot review checked it against MapLibre's internal camera.
+- Edges lying on a face seen nearly edge-on can lose half their width where the face slopes towards the camera.
+- On steep terrain, edges and picks are lifted by the terrain at one point per building.
+- A camera applied before the map has loaded (the Map tab never opened) moves the map once it loads.

@@ -3,6 +3,15 @@
 Date: 2026-10-28. Stage 6 of 6, the last, of [decision 0032](decisions/0032-next-stages-directions.md), built on
 `claude/next-stages`; not merged into `master`, not pushed.
 
+## Since decision 0036
+
+[Decision 0036](decisions/0036-owner-review-of-next-stages.md) (2026-10-29, [status](per-building-zoning.md#since-decision-0036))
+makes zoning the backend's: the zoning setting and its form, the perimeter depth, `zoning.set`, perimeter-and-core
+generation with its fallback codes, floor slabs, and the Results page's per-zone split (and the Properties tables'
+Baseline share) are removed. Zones are zone geometry, precomputed in the fixture for B0439, B0427, and B0426 and
+displayed only; every other building is one zone. Floors, the Floors and Zones tables, the selection of floors and
+zones, and the viewer stay as below. Where this record and that status differ, the status holds.
+
 ## Since decision 0034
 
 [Per-building zoning and 3D zones](per-building-zoning.md) (decision 0034, 2026-10-29) changes this stage in these

@@ -95,7 +95,7 @@ layout (arrowing onto the row opens nothing).
   storage explained; agent tools through the same service.
 - **Mocked**: the project catalog is the browser-local mock server's (decision 0023), so "saved with the project" means
   the browser catalog; there is no shared or server-side store, as in RC.
-- **Deferred**: the map camera (centre, zoom, pitch, bearing) is not view state, so layouts do not keep it; the stage 5
+- **Deferred** (the camera since done by [decision 0036](decisions/0036-owner-review-of-next-stages.md), [status](per-building-zoning.md#the-camera-l1)): the map camera (centre, zoom, pitch, bearing) is not view state, so layouts do not keep it; the stage 5
   viewer and handover package (the service is ready: `projectWritable: false` keeps project layouts read-only and still
   copies them to personal); undo for layout operations (layout and
   view changes are not undoable anywhere); scripted agent sessions that use the new tools (they are offered to a future
