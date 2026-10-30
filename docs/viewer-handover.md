@@ -3,6 +3,112 @@
 Date: 2026-10-28. Stage 5 of 6 of [decision 0032](decisions/0032-next-stages-directions.md), built on
 `claude/next-stages`; not merged into `master`, not pushed.
 
+## Views, Save as, and the viewer shell (2026-10-29): decision 0036
+
+[Decision 0036](decisions/0036-owner-review-of-next-stages.md) renames the handover package to a **view** in the
+interface and reworks the viewer. Built on `claude/0036-views-dialogs`, not merged, not pushed. Sections below this
+one describe stage 5 as first built; where they disagree, this section wins.
+
+### File > Save as… (replaced File > Hand over…)
+
+`src/app/handover/SaveAsDialog.tsx`, opened by File > Save as… (`file.saveAs`, Ctrl+Shift+S, the palette) through
+`services.handover.openDialog()`. A radio group chooses:
+
+- **Project**: a fully editable, runnable copy. `services.lifecycle.saveAs(name)` validates the name, refuses while a
+  request is pending, and sends `project.saveAs` (`client.saveProjectAs`), which keeps the copy as a new project in
+  this browser's catalog with a new id and returns it as a **project file** (`src/server/projectFile.ts`, format
+  `energyatlas-ui.project` version 1, `<name>-<date>.project.json`). The copy holds the project **as it is now,
+  unsaved changes and the current views included** (it is a new project, so nothing is overwritten); unsent table
+  drafts are not copied, and running jobs are interrupted in the copy as on reopening. The open project stays open;
+  the dialog then offers Download project file and Open the copy (`lifecycle.request({ type: 'open' })`, so leaving
+  the original asks first). **Open project file…** (File menu and the start screen; `ProjectFileInput`,
+  `lifecycle.request({ type: 'openFile' })`, server request `project.openFile`) opens a project file, keeping it in
+  this browser; a file of a project this browser already keeps opens as a copy beside it, and a view file, a newer
+  format, or a damaged file is refused with a reason.
+- **View**: the former handover. It still packages **the copy saved in this browser**, and says so ("Unsaved changes
+  stay out"), keeping the owner's answer to decision 2 below. Choice: a view is published, frozen state for others;
+  packaging unsaved work would hand over results nobody saved, while the Project choice already covers "save what I
+  have now". Save first (Ctrl+S) to include changes. After saving: the view's summary, Download view file
+  (`<name>-<date>.view.json`), Open in the viewer, and the views kept in this browser (`ViewsInBrowser`) with Remove
+  from this browser… confirmed in the shared dialog (`RemoveViewDialog`).
+- **Deferred**: parametric or batch views (several views per project) are named as planned in the dialog, with no
+  controls; views that reference a model on a user's server ("copy or reference") are a later discussion.
+
+Compatibility: storage keeps `eaui.handovers.v1` and the `energyatlas-ui.handover` format version 1, so views saved
+before still list and open; files named `.handover.json` open as before (the viewer reads content, not the name).
+Code names (`services.handover`, `HandoverPackage`, `handover.*` requests, the `project.handover` agent tool) keep
+their names; only interface text says "view".
+
+### The viewer start page
+
+`src/viewer/ViewerStart.tsx` now uses the project start screen's layout (`StartScreen` and `StartSection` in
+`src/app/project/StartScreen.tsx`, which `ProjectStart` uses too): the menu bar, the heading **Views**, a line saying
+what a view is, **Open view file…**, the open error under the buttons as on the Projects screen, then two sections
+side by side: **Views in this browser** (a `SelectableList`; Enter opens) and the chosen view's provenance with Open
+view and Remove from this browser… (confirmed in the dialog; focus returns to the button, or to the heading once the
+last view is gone). It opens views only. A refresh (another tab, window focus) keeps the lists on screen; only the
+first read shows "Loading views…".
+
+### The viewer shell is the editor's shell
+
+- **No title in the top bar**; the **View only** tag (same design, `ViewOnlyBadge`) sits in the status bar next to the
+  view's name, and the save-state slot reads "View saved <date>".
+- **All five menus and the toolbar** come from the shared registry through `forViewer` (`src/app/actions.ts`): every
+  editor action stays, and what a view cannot do is unavailable with its reason (Edit: nothing can be changed or
+  undone; Run: a view runs nothing; Save, Save as, New, Open project: views are saved and projects opened in the
+  modeller; pages and panels the viewer lacks; Save layout; the Account page). Pressing one reports the reason, as
+  everywhere. The viewer's own File items lead the menu: Open view file… (Ctrl+O, which `file.openProject` gives up in
+  the viewer), Views… (back to the start page), About this view…; View > Layouts has Reset to the view's layout.
+- **Status bar**: Issues and Jobs stay with their counts, unavailable ("The viewer has no Jobs page: a view runs
+  nothing"); the current stage and the simulated workers show as in the editor.
+- **Account button** shown as in the editor; its Account page item is unavailable, Log out reports the planned
+  sign-in as in the editor.
+- The viewer keeps its pages (Map, Table, Dashboard, Results) and panels. The server's refusal of every model change
+  is unchanged (`viewOnlySession()`), and the scripted agent's refusal answer stays.
+
+### Messages, not banners
+
+- The view's warnings (no published results, results outdated relative to the model, failed result stages) were a
+  band under the ribbon that pushed the workspace down. They are now **warning messages** posted when a view opens
+  (`openPackage` in `src/viewer/viewerStore.ts`): a toast that stays until dismissed, and the Messages panel.
+  About this view still lists them.
+- The Dashboard's "Scenario results are outdated" band (editor and viewer) became an **Outdated** state badge beside
+  the Dashboard title (the full sentence is its tooltip and screen-reader text), with Run <stage> in the header's
+  actions in the editor; in the viewer the view's warning message says it.
+- Elsewhere: Schema matching's rule set notice (Saved, Loaded, a file not read) pushed its section down; outcomes are
+  now the operation's own message, plus a warning message for skipped mappings and an error message for an unreadable
+  file. Asset without a page: an **info** note (toast and Messages), not a red failure.
+- Kept: start screens (Projects and Views) show why the last open failed under their buttons, as decision 0024's
+  screen does; they have no status bar or Messages panel. The map's "Basemap unavailable" line at the bottom of the
+  Map page is the map builder's and was left as is.
+
+### The viewer's agent
+
+The Reasoning panel shows the editor's controls, the permission mode menu included. In a view every mode allows
+everything: `autoDecision` in `scriptedAgent.ts` returns the chosen mode for a view session (Plan included), and each
+mode's description adds "In a view nothing waits: the agent changes views only." The viewer's sessions still never
+change the model; the server refuses model changes and the agent gives the view-only answer.
+
+### Real, mocked, deferred (decision 0036)
+
+- **Real**: the Save as dialog, the project copy and its file round trip through the lifecycle and the mock server,
+  view files, the start page, the editor shell with unavailable items, warnings as messages, the confirmation dialog.
+- **Mocked**: projects and views live in this browser's storage and files, served by the in-page mock server
+  (decision 0023); no sharing or access control.
+- **Deferred**: parametric and batch views; views that reference a server-hosted model; the map camera in layouts
+  (map builder). Two strings in the viewer's zones session (`src/app/agent/sessions.ts`) still say "package"; they
+  were left for the zones builder, who is changing that session, to avoid a merge conflict.
+
+### Verification (decision 0036, 2026-10-29)
+
+`npm run typecheck`, `npm run lint`, `npm run format:check`, `git diff --check`: clean. `npm test`: 593 passed in 55
+files (new: `src/server/projectFile.test.ts` for the project copy, the viewer's refusal, the file round trip and the
+copy on reopening, and refused files; `src/app/viewerActions.test.ts` for the viewer's actions). Playwright on a dev
+server at port 5182 with 3 workers: 145 passed (new `e2e/save-as.spec.ts`; `e2e/viewer.spec.ts` rewritten; layouts,
+gallery, schema matching, and the two zones specs updated), with axe on the confirmation dialog, Save as, and the
+viewer's start page. `npm run test:e2e:preview`: 4 passed. An earlier full run failed two zones tests whose
+`View only` locator also matched the status line ("It is view only."); the locator was made exact and both passed.
+
 ## The owner's decision
 
 A separate viewer page (direction B of the [next stages discussion](next-stages-discussion.md#3-a-viewer-page-for-handover))

@@ -15,6 +15,30 @@ layouts by id, and agent tools no longer take a scope. Review fixes from 2026-10
 [below](#review-fixes-after-decision-0033-2026-10-29). Text below that mentions personal layouts, the dialog,
 Copy to personal, or unreadable personal storage describes the stage as first built.
 
+## Owner's review (2026-10-29): decision 0036
+
+[Decision 0036](decisions/0036-owner-review-of-next-stages.md) slims the Layouts table and makes every confirmation a
+dialog. Built on `claude/0036-views-dialogs`, not merged, not pushed.
+
+- **The table keeps Name, its actions (Apply and the row menu), and Default.** State, Saved by, Created, and Updated
+  left the table. They show in a **details section under the table** for the chosen layout (`LayoutDetails` in
+  `src/app/layouts/LayoutsPanel.tsx`, a `PropertyList` labelled "Details of the layout …"), not in Properties:
+  Properties shares the right border with the Layouts panel, so showing a layout there would hide the panel the
+  person is working in. A row is chosen by clicking it (the table's `selection`) or from the asset tree; otherwise the
+  applied layout is shown. The viewer shows Default too, as a read-only checkbox ("The view opens with the layout …").
+- **Delete asks in the shared confirmation dialog** (`ConfirmDialog`): Enter deletes (the confirming button has focus),
+  Esc and Cancel keep the layout, and focus returns to the row's actions menu, or to the table once the row is gone.
+- **Rename asks in a prompt** (a `DialogFrame` titled Rename layout, the same form) instead of a form above the table,
+  so neither Rename nor Delete pushes the table down. Escape and Cancel return focus to the row's menu.
+- **Deferred:** the map camera in layouts (L1) is being added by the map builder to map view state; layouts pick it up
+  from view state, so nothing here stores it.
+- **Wording:** in the viewer the panel says the layouts are "kept with the view", and the reset is "Reset to the view's
+  layout" (formerly Reset to handed-over layout).
+
+Tests: `e2e/layouts.spec.ts` checks the three column headers, the details (State, Saved by, Created, Updated, Default),
+choosing a row, Enter to delete in the dialog, Escape and Cancel returning focus to the row's menu, and that opening the
+confirmation does not move the table; the former Updated-column sort test became a details test.
+
 ## The owner's decision
 
 Saved layouts for the modeller and, later, the viewer: project layouts and personal layouts (direction C of the
