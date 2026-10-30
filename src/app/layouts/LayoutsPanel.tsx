@@ -22,6 +22,7 @@ import formStyles from '../components/forms.module.css'
 import { InlineAlert } from '../components/InlineAlert.tsx'
 import { MenuButton } from '../components/MenuButton.tsx'
 import { PropertyList } from '../components/PropertyList.tsx'
+import { describeCamera, parseStoredCamera } from '../view/mapCamera.ts'
 import { HeaderCount, PanelHeader } from '../components/PanelHeader.tsx'
 import { WorkbenchTable } from '../components/WorkbenchTable.tsx'
 import { cx } from '../cx.ts'
@@ -526,6 +527,8 @@ function LayoutDetails({
       ? 'Applied, changed since'
       : 'Applied'
     : 'Not applied'
+  const map = layout.view.map as { camera?: unknown } | undefined
+  const savedCamera = parseStoredCamera(map?.camera)
   return (
     <section className={styles.details} aria-labelledby={headingId}>
       <h3 id={headingId} className={styles.detailsHeading}>
@@ -543,6 +546,13 @@ function LayoutDetails({
                   ? 'Opens with the project'
                   : 'Opens with the view'
                 : 'No',
+          },
+          // The map camera a layout restores (decision 0036).
+          {
+            label: 'Map camera',
+            value: savedCamera
+              ? describeCamera(savedCamera)
+              : 'Not kept: the map stays where it is',
           },
           { label: 'Saved by', value: SOURCE_LABELS[layout.createdBy] },
           { label: 'Created', value: formatDateTime(layout.createdAt) },
