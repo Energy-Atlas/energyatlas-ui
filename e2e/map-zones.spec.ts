@@ -369,3 +369,60 @@ test('a selected whole-building zone is highlighted on every storey in 3D, and c
   await page.keyboard.press('Escape')
   await expect(notice).toContainText('Selected 1 building(s).')
 })
+
+test('a layout keeps the map camera and applying it moves the map back (decision 0036, L1)', async ({
+  page,
+}) => {
+  test.setTimeout(90_000)
+  await page.goto('/?fixture=complete')
+  await expect(page.getByRole('main', { name: 'Workspace' })).toBeVisible()
+  await tab(page, 'Map').click()
+  const layouts = page.getByRole('region', { name: 'Layouts', exact: true })
+  const openLayouts = async () => {
+    if (await layouts.isVisible()) return
+    await page.getByRole('main', { name: 'Workspace' }).focus()
+    await page.keyboard.press('Control+Alt+l')
+    await expect(layouts).toBeVisible()
+  }
+  const save = async (name: string) => {
+    await openLayouts()
+    await layouts.getByRole('textbox', { name: 'Layout name' }).fill(name)
+    await layouts.getByRole('button', { name: 'Save layout' }).click()
+    await expect(
+      layouts.getByRole('grid', { name: 'Layouts' }).getByRole('row', {
+        name: new RegExp(name),
+      }),
+    ).toBeVisible()
+  }
+  const cameraOf = async (name: string) => {
+    await layouts
+      .getByRole('grid', { name: 'Layouts' })
+      .getByRole('row', { name: new RegExp(name) })
+      .getByRole('gridcell')
+      .first()
+      .click()
+    const row = layouts
+      .getByLabel(`Details of the layout ${name}`)
+      .getByRole('definition')
+      .filter({ hasText: /zoom/ })
+    await expect(row).toBeVisible()
+    return (await row.textContent()) ?? ''
+  }
+  await save('Framed')
+  const framed = await cameraOf('Framed')
+  expect(framed).toMatch(/^centre 42\.\d+, -71\.\d+, zoom \d+\.\d, pitch 0°/)
+  // Zoom the map in from its own control: the camera follows the map.
+  await page.getByRole('button', { name: 'Zoom in' }).click()
+  await page.getByRole('button', { name: 'Zoom in' }).click()
+  await expect
+    .poll(async () => {
+      await save('Closer')
+      return cameraOf('Closer')
+    })
+    .not.toBe(framed)
+  // Applying the first layout moves the map back to its camera.
+  await layouts.getByRole('button', { name: 'Apply the layout Framed' }).click()
+  await save('Back')
+  expect(await cameraOf('Back')).toBe(framed)
+  expect(await seriousViolations(page)).toEqual([])
+})

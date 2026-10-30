@@ -648,6 +648,8 @@ export function MapPage() {
       )
     }
     map.on('moveend', keep)
+    // The first framing may have ended before this listener existed.
+    keep()
     return () => {
       map.off('moveend', keep)
     }
