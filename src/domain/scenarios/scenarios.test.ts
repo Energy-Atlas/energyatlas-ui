@@ -709,7 +709,7 @@ describe('review fixes', () => {
       ),
     )
     // Run ids carry the word: never "run run-40".
-    expect(baselineChangeNote(moved, scenario.id)).not.toMatch(/run run-/)
+    expect(baselineChangeNote(moved, scenario.id)).not.toMatch(/run run-/)
     const row = compareScenarios(
       moved,
       deriveStageStates(moved.workflow, moved.tasks),
