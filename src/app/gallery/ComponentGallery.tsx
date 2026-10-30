@@ -17,6 +17,7 @@ import {
 } from '../appearance/appearances.ts'
 import { StatusTag } from '../components/CapabilityBadge.tsx'
 import componentStyles from '../components/components.module.css'
+import { ConfirmDialog } from '../components/ConfirmDialog.tsx'
 import { DataTable } from '../components/DataTable.tsx'
 import { InlineAlert } from '../components/InlineAlert.tsx'
 import { LogView, type LogEntry } from '../components/LogView.tsx'
@@ -273,6 +274,9 @@ const BUILDING_COLUMNS: DataColumn<GalleryBuilding>[] = [
  */
 export default function ComponentGallery() {
   const [listChoice, setListChoice] = useState('a')
+  const [confirming, setConfirming] = useState<
+    'plain' | 'secondary' | 'unavailable' | 'fails' | 'busy' | null
+  >(null)
   const [stack, setStack] = useState<ReorderableItem[]>([
     { id: 'points', title: 'Grid points', meta: 'Grid points', checked: true },
     {
@@ -958,6 +962,92 @@ export default function ComponentGallery() {
             <StatusTag status="simulated" />
             <StatusTag status="planned" />
           </div>
+        </section>
+
+        <section className={styles.cell}>
+          <h2>Confirmation dialog</h2>
+          <p className={componentStyles.muted}>
+            Every confirmation is this modal dialog (decision 0036): Enter
+            presses the confirming button, Esc cancels.
+          </p>
+          <div className={styles.row}>
+            {(
+              [
+                ['plain', 'Delete…'],
+                ['secondary', 'Leave project…'],
+                ['unavailable', 'Remove (unavailable)…'],
+                ['fails', 'Remove (fails)…'],
+                ['busy', 'Leave (waiting)…'],
+              ] as const
+            ).map(([id, label]) => (
+              <button
+                key={id}
+                type="button"
+                className={componentStyles.button}
+                onClick={() => setConfirming(id)}
+              >
+                {label}
+              </button>
+            ))}
+          </div>
+          <ConfirmDialog
+            isOpen={confirming !== null}
+            onOpenChange={(open) => {
+              if (!open) {
+                setConfirming(null)
+                note('Confirmation closed.')
+              }
+            }}
+            title={
+              confirming === 'secondary' || confirming === 'busy'
+                ? 'Leave this project?'
+                : 'Delete "Side by side"?'
+            }
+            isBusy={confirming === 'busy'}
+            busyText="Waiting for the server…"
+            cancelLabel={
+              confirming === 'secondary' || confirming === 'busy'
+                ? 'Stay'
+                : 'Cancel'
+            }
+            secondary={
+              confirming === 'secondary' || confirming === 'busy'
+                ? {
+                    label: 'Discard and leave',
+                    onPress: () => note('Discard and leave pressed.'),
+                  }
+                : undefined
+            }
+            confirm={
+              confirming === 'secondary' || confirming === 'busy'
+                ? {
+                    label: 'Save and leave',
+                    onPress: () => note('Save and leave pressed.'),
+                  }
+                : {
+                    label: confirming === 'plain' ? 'Delete layout' : 'Remove',
+                    disabledReason:
+                      confirming === 'unavailable'
+                        ? 'A run holds the edit lock. Wait for it to finish.'
+                        : null,
+                    onPress: () => {
+                      if (confirming === 'fails') {
+                        return 'The server refused: the package is no longer in this browser.'
+                      }
+                      note('Confirmed.')
+                    },
+                  }
+            }
+            onBlocked={(label, reason) =>
+              note(`${label} is unavailable: ${reason}`)
+            }
+          >
+            <p>
+              {confirming === 'secondary' || confirming === 'busy'
+                ? 'Unsaved changes will be lost unless you save.'
+                : 'The layout leaves this project when you save it. This cannot be undone.'}
+            </p>
+          </ConfirmDialog>
         </section>
 
         <section className={styles.cell}>

@@ -36,6 +36,7 @@ import {
 } from '../../components/ActionButton.tsx'
 import { CapabilityBadge } from '../../components/CapabilityBadge.tsx'
 import componentStyles from '../../components/components.module.css'
+import { ConfirmDialog } from '../../components/ConfirmDialog.tsx'
 import { EmptyState } from '../../components/EmptyState.tsx'
 import formStyles from '../../components/forms.module.css'
 import { cx } from '../../cx.ts'
@@ -66,6 +67,26 @@ const SCHEMA_COMMANDS = [
 type Notice = { tone: 'success' | 'warning' | 'danger'; text: string }
 
 /**
+ * Reports a rule set operation as a message (decision 0036), never as a
+ * notice that pushes the section down. Applied and refused commands already
+ * report themselves; this adds what they do not say: skipped mappings, and a
+ * file that could not be read before any command was sent.
+ */
+function useRuleSetNotice() {
+  const { messages, workbench } = useServices()
+  return (notice: Notice | null) => {
+    if (!notice || notice.tone === 'success') return
+    messages.post({
+      tone: notice.tone,
+      source: 'project',
+      projectId: workbench.getState().project.id,
+      text: notice.text,
+      toast: true,
+    })
+  }
+}
+
+/**
  * Schema matching (decision 0032, stage 4): review how the captured
  * footprints' attributes map to the model's target fields, save and load
  * rule sets, and run the stage to apply the mapping as a job. Every change
@@ -85,7 +106,13 @@ export function SchemaMatchingPage() {
   const matching = state.schemaMatching
   const published = matching.published
   const [issues, setIssues] = useState<ValidationIssue[]>([])
-  const [notice, setNotice] = useState<Notice | null>(null)
+  const setNotice = useRuleSetNotice()
+  // Deleting a rule set or removing a custom target asks first (decision 0036).
+  const [confirming, setConfirming] = useState<
+    | { kind: 'ruleSet'; id: string; name: string }
+    | { kind: 'target'; name: string }
+    | null
+  >(null)
   const [ruleSetName, setRuleSetName] = useState('')
   const [nameError, setNameError] = useState<string | null>(null)
   const [chosenSet, setChosenSet] = useState<string>(BUILT_IN_RULE_SET_ID)
@@ -327,11 +354,7 @@ export function SchemaMatchingPage() {
                   },
                   { name: 'custom.name', source: 'custom.source' },
                 ),
-              onRemove: (name) =>
-                void send({
-                  type: 'schema.removeCustomTarget',
-                  input: { name },
-                }),
+              onRemove: (name) => setConfirming({ kind: 'target', name }),
             }}
             disabledReason={editBlocker}
             onBlocked={recordBlocked}
@@ -344,11 +367,6 @@ export function SchemaMatchingPage() {
               tier, transform) with the value maps. Rule sets are kept with the
               project; download one to use it in another project.
             </p>
-            {notice ? (
-              <InlineAlert tone={notice.tone} live="polite">
-                {notice.text}
-              </InlineAlert>
-            ) : null}
             <div className={styles.saveRow}>
               <TextField
                 className={cx(formStyles.field, styles.nameField)}
@@ -450,12 +468,7 @@ export function SchemaMatchingPage() {
                                         : 'success',
                                     text: result.outcome.summary,
                                   }
-                                : {
-                                    tone: 'danger',
-                                    text: result.outcome.issues
-                                      .map((issue) => issue.message)
-                                      .join(' '),
-                                  },
+                                : null,
                             ),
                           ),
                     },
@@ -490,19 +503,11 @@ export function SchemaMatchingPage() {
                           : 'The built-in rule set cannot be deleted.'),
                       onPress: () => {
                         const id = selectedSet?.id
-                        if (!id) return
-                        void client
-                          .execute({
-                            type: 'schema.deleteRuleSet',
-                            input: { ruleSetId: id },
-                          })
-                          .then((result) => {
-                            if (result.outcome.status !== 'applied') return
-                            setChosenSet(BUILT_IN_RULE_SET_ID)
-                            setNotice({
-                              tone: 'success',
-                              text: result.outcome.summary,
-                            })
+                        if (id)
+                          setConfirming({
+                            kind: 'ruleSet',
+                            id,
+                            name: selectedName,
                           })
                       },
                     },
@@ -568,12 +573,7 @@ export function SchemaMatchingPage() {
                                     : 'success',
                                   text: result.outcome.summary,
                                 }
-                              : {
-                                  tone: 'danger',
-                                  text: result.outcome.issues
-                                    .map((issue) => issue.message)
-                                    .join(' '),
-                                },
+                              : null,
                           ),
                         )
                     })
@@ -584,6 +584,53 @@ export function SchemaMatchingPage() {
           </section>
         </>
       )}
+      <ConfirmDialog
+        isOpen={confirming !== null}
+        onOpenChange={(open) => {
+          if (!open) setConfirming(null)
+        }}
+        title={
+          confirming?.kind === 'ruleSet'
+            ? `Delete the rule set "${confirming.name}"?`
+            : `Remove the custom target "${confirming?.name ?? ''}"?`
+        }
+        confirm={{
+          label:
+            confirming?.kind === 'ruleSet'
+              ? 'Delete rule set'
+              : 'Remove target',
+          disabledReason: editBlocker,
+          onPress: async () => {
+            if (!confirming) return
+            if (confirming.kind === 'target') {
+              await send({
+                type: 'schema.removeCustomTarget',
+                input: { name: confirming.name },
+              })
+              return
+            }
+            const result = await client.execute({
+              type: 'schema.deleteRuleSet',
+              input: { ruleSetId: confirming.id },
+            })
+            if (result.outcome.status === 'applied') {
+              setChosenSet(BUILT_IN_RULE_SET_ID)
+            }
+          },
+        }}
+        onBlocked={recordBlocked}
+        returnFocus={() =>
+          document.querySelector<HTMLElement>(
+            '[role="listbox"][aria-label="Saved rule sets"]',
+          )
+        }
+      >
+        <p>
+          {confirming?.kind === 'ruleSet'
+            ? 'The rule set leaves this project; the current mapping does not change. Downloaded copies are not affected. This cannot be undone.'
+            : 'The target and its mapping leave this project. This cannot be undone.'}
+        </p>
+      </ConfirmDialog>
     </section>
   )
 }

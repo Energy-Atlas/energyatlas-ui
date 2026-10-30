@@ -151,3 +151,64 @@ test('toolbars, filters, menus, and sections work from the keyboard', async ({
   await expect(section).toHaveAttribute('aria-expanded', 'true')
   await expect(page.getByRole('cell', { name: 'Jan' })).toBeVisible()
 })
+
+test('the confirmation dialog confirms on Enter, cancels on Escape, and returns focus', async ({
+  page,
+}) => {
+  await openGallery(page)
+  const last = page.getByTestId('gallery-last')
+  const opener = page.getByRole('button', { name: 'Delete…', exact: true })
+  await opener.click()
+  const dialog = page.getByRole('alertdialog', {
+    name: 'Delete "Side by side"?',
+  })
+  await expect(
+    dialog.getByRole('button', { name: 'Delete layout' }),
+  ).toBeFocused()
+  expect(await seriousViolations(page)).toEqual([])
+  await page.keyboard.press('Enter')
+  await expect(dialog).toBeHidden()
+  await expect(last).toContainText('Confirmation closed.')
+  await expect(opener).toBeFocused()
+
+  // Escape cancels and returns focus to the opener as well.
+  await opener.click()
+  await expect(dialog).toBeVisible()
+  await page.keyboard.press('Escape')
+  await expect(dialog).toBeHidden()
+  await expect(opener).toBeFocused()
+
+  // An unavailable choice says why and stays open; a failure is shown inside.
+  await page
+    .getByRole('button', { name: 'Remove (unavailable)…', exact: true })
+    .click()
+  await expect(dialog).toContainText('A run holds the edit lock.')
+  await page.keyboard.press('Enter')
+  await expect(last).toContainText('Remove is unavailable')
+  await expect(dialog).toBeVisible()
+  await page.keyboard.press('Escape')
+  await page
+    .getByRole('button', { name: 'Remove (fails)…', exact: true })
+    .click()
+  await page.keyboard.press('Enter')
+  await expect(dialog).toContainText('The server refused')
+  await expect(dialog).toBeVisible()
+  await page.keyboard.press('Escape')
+
+  // A second choice, and a busy state that waits.
+  await page
+    .getByRole('button', { name: 'Leave project…', exact: true })
+    .click()
+  const leave = page.getByRole('alertdialog', { name: 'Leave this project?' })
+  await expect(
+    leave.getByRole('button', { name: 'Save and leave' }),
+  ).toBeFocused()
+  await leave.getByRole('button', { name: 'Discard and leave' }).click()
+  await expect(leave).toBeHidden()
+  await page
+    .getByRole('button', { name: 'Leave (waiting)…', exact: true })
+    .click()
+  await expect(leave.getByRole('status')).toHaveText('Waiting for the server…')
+  await page.keyboard.press('Escape')
+  await expect(leave).toBeVisible()
+})

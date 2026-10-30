@@ -14,8 +14,8 @@ import {
   useWorkbenchSnapshot,
   useUnsavedChanges,
 } from '../WorkbenchContext.tsx'
-import { ActionButton } from '../components/ActionButton.tsx'
 import componentStyles from '../components/components.module.css'
+import { ConfirmDialog } from '../components/ConfirmDialog.tsx'
 import formStyles from '../components/forms.module.css'
 import { InlineAlert } from '../components/InlineAlert.tsx'
 import { cx } from '../cx.ts'
@@ -56,16 +56,55 @@ function ProjectDialogsContent({
   const saveOnly = snapshot.guard?.type === 'save'
   const busy = snapshot.busy || pending
 
+  // Leaving with unsaved work or active jobs asks in the shared confirmation
+  // (decision 0036): Enter saves, Esc stays.
+  const failed = (
+    result: Awaited<ReturnType<typeof lifecycle.confirm>>,
+  ): string | null =>
+    result && result.outcome.status === 'rejected'
+      ? result.outcome.issues.map((issue) => issue.message).join(' ') ||
+        'The change was refused.'
+      : null
   if (snapshot.guard)
     return (
-      <DialogFrame
+      <ConfirmDialog
         title={saveOnly ? 'Save pending edits?' : 'Leave this project?'}
-        role="alertdialog"
-        isBusy={busy}
         isOpen
         onOpenChange={(open) => {
           if (!open) lifecycle.stay()
         }}
+        isBusy={busy}
+        busyText="Waiting for the server…"
+        cancelLabel={saveOnly ? 'Cancel' : 'Stay'}
+        secondary={{
+          label: saveOnly ? 'Save applied changes only' : 'Discard and leave',
+          onPress: async () =>
+            failed(
+              await lifecycle.confirm(saveOnly ? 'appliedOnly' : 'discard'),
+            ),
+        }}
+        confirm={{
+          label: drafts
+            ? saveOnly
+              ? 'Apply and save'
+              : 'Apply, save and leave'
+            : 'Save and leave',
+          disabledReason:
+            saveOnly && jobs.length
+              ? 'A run holds the edit lock. Cancel it in Jobs before applying drafts, or save applied changes only.'
+              : null,
+          onPress: async () => failed(await lifecycle.confirm('save')),
+        }}
+        extra={
+          busy ? (
+            <Button
+              className={componentStyles.button}
+              onPress={onOpenConditions}
+            >
+              Change demo conditions
+            </Button>
+          ) : null
+        }
       >
         <p>
           {saveOnly
@@ -85,61 +124,7 @@ function ProjectDialogsContent({
             discard.
           </p>
         ) : null}
-        {error ? <InlineAlert tone="danger">{error}</InlineAlert> : null}
-        {busy ? (
-          <>
-            <p role="status">Waiting for the server…</p>
-            <Button
-              className={componentStyles.button}
-              onPress={onOpenConditions}
-            >
-              Change demo conditions
-            </Button>
-          </>
-        ) : null}
-        <div className={styles.actions}>
-          <Button
-            className={componentStyles.button}
-            isDisabled={busy}
-            onPress={() => lifecycle.stay()}
-          >
-            {saveOnly ? 'Cancel' : 'Stay'}
-          </Button>
-          <Button
-            className={componentStyles.button}
-            isDisabled={busy}
-            onPress={() =>
-              void lifecycle.confirm(saveOnly ? 'appliedOnly' : 'discard')
-            }
-          >
-            {saveOnly ? 'Save applied changes only' : 'Discard and leave'}
-          </Button>
-          <ActionButton
-            label={
-              drafts
-                ? saveOnly
-                  ? 'Apply and save'
-                  : 'Apply, save and leave'
-                : 'Save and leave'
-            }
-            variant="primary"
-            disabledReason={
-              busy
-                ? 'Waiting for the server.'
-                : saveOnly && jobs.length
-                  ? 'A run holds the edit lock. Cancel it in Jobs before applying drafts, or save applied changes only.'
-                  : null
-            }
-            onPress={() => void lifecycle.confirm('save')}
-          >
-            {drafts
-              ? saveOnly
-                ? 'Apply and save'
-                : 'Apply, save and leave'
-              : 'Save and leave'}
-          </ActionButton>
-        </div>
-      </DialogFrame>
+      </ConfirmDialog>
     )
 
   if (transitioning && snapshot.dialog === null)
