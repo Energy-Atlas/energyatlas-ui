@@ -92,6 +92,7 @@ import {
   type ZoneOverlay,
 } from './zoneFeatures.ts'
 import { ZoneEdgeLayer } from './ZoneEdgeLayer.tsx'
+import { pointerRay, prismOf, sortByDistance } from './mapPicking.ts'
 import {
   ZONE_LAYER_IDS,
   ZONE_SOURCE,
@@ -317,6 +318,71 @@ export function MapPage() {
       }
     }
     return layer ? { kind: 'grid', id } : null
+  }
+  // MapLibre returns extrusion hits farthest first (decision 0036, M2 and
+  // M3), so in 3D the map orders them itself by where the pointer's ray
+  // first meets each hit's prism.
+  const cellsById = useMemo(
+    () =>
+      new Map(
+        overlay.cells.features.map((cell) => [
+          `${cell.properties.id}|${cell.properties.floorId}`,
+          cell,
+        ]),
+      ),
+    [overlay],
+  )
+  const nearestFirst = (
+    features: MapGeoJSONFeature[],
+    point: { x: number; y: number },
+  ): MapGeoJSONFeature[] => {
+    const map = mapRef.current?.getMap()
+    if (!map || !(view3d && extrudedShown)) return features
+    const center = map.getCenter()
+    const ground = map.unproject([point.x, point.y])
+    const ray = pointerRay(
+      {
+        center: [center.lng, center.lat],
+        centerElevationM: map.getCenterElevation(),
+        zoom: map.getZoom(),
+        pitchDeg: map.getPitch(),
+        bearingDeg: map.getBearing(),
+        fovDeg: map.getVerticalFieldOfView(),
+        heightPx: map.getCanvas().clientHeight,
+      },
+      [ground.lng, ground.lat],
+      map.queryTerrainElevation(ground) ?? 0,
+    )
+    const liftOf = (ring: LngLat[]) => {
+      const first = ring[0]
+      return first ? (map.queryTerrainElevation(first) ?? 0) : 0
+    }
+    return sortByDistance(features, ray, (feature) => {
+      const id: unknown = feature.properties.id
+      if (typeof id !== 'string') return null
+      if (zonePickIds.includes(feature.layer.id)) {
+        const cell = cellsById.get(`${id}|${feature.properties.floorId}`)
+        if (!cell) return null
+        const ring = cell.geometry.coordinates[0] ?? []
+        return prismOf(
+          ring,
+          cell.properties.base,
+          cell.properties.top,
+          liftOf(ring),
+        )
+      }
+      const resolved = byPickId.get(feature.layer.id)
+      const building = state.buildings[id]
+      if (!resolved?.extruded || !building) return null
+      const base: unknown = feature.properties.base
+      const top: unknown = feature.properties.top
+      return prismOf(
+        building.footprint,
+        typeof base === 'number' ? base : 0,
+        typeof top === 'number' ? top : (building.heightM ?? 0),
+        liftOf(building.footprint),
+      )
+    })
   }
   const hitsOf = (features: MapGeoJSONFeature[] | undefined): MapHit[] =>
     (features ?? []).flatMap((feature) => {
@@ -703,7 +769,7 @@ export function MapPage() {
           }}
           onMouseMove={(event) => {
             // The label names what a click would select at this level.
-            const features = event.features ?? []
+            const features = nearestFirst(event.features ?? [], event.point)
             setPointer(
               features.length > 0
                 ? {
@@ -721,7 +787,7 @@ export function MapPage() {
             // zone. An empty spot selects the map itself: Properties then
             // shows the map's own properties (decision 0030).
             const project = { selection, buildings, zoning }
-            const hits = hitsOf(event.features)
+            const hits = hitsOf(nearestFirst(event.features ?? [], event.point))
             const options = {
               additive: event.originalEvent.shiftKey,
               planFloor,
