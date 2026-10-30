@@ -29,10 +29,10 @@ import {
 import type { DataPalette } from '../appearance/appearances.ts'
 import { ActionButton } from '../components/ActionButton.tsx'
 import { CapabilityBadge, StatusTag } from '../components/CapabilityBadge.tsx'
+import { StateBadge } from '../components/StateBadge.tsx'
 import componentStyles from '../components/components.module.css'
 import { EmptyState } from '../components/EmptyState.tsx'
 import formStyles from '../components/forms.module.css'
-import { InlineAlert } from '../components/InlineAlert.tsx'
 import { Section } from '../components/Section.tsx'
 import { WorkbenchTable } from '../components/WorkbenchTable.tsx'
 import { PanelHeader } from '../components/PanelHeader.tsx'
@@ -319,12 +319,64 @@ export function DashboardPage() {
     [data, visible, palette, font],
   )
 
+  const definitionsState = stageStates[STAGE_IDS.scenarioDefinitions]
+  const modelingState = stageStates[STAGE_IDS.scenarioModeling]
+  const staleStageId = !data.baseline
+    ? null
+    : definitionsState === 'stale'
+      ? STAGE_IDS.scenarioDefinitions
+      : modelingState === 'stale'
+        ? STAGE_IDS.scenarioModeling
+        : null
+  const staleStage = staleStageId ? workflow.stages[staleStageId] : undefined
+  // Outdated scenario results are the header's state, with Run beside it, not
+  // a band that pushes the dashboard down (decision 0036).
+  const staleText = staleStage
+    ? viewOnly
+      ? `Scenario results are outdated: scenario inputs changed after the last run of "${staleStage.name}", before this view was saved.`
+      : `Scenario results are outdated: scenario inputs changed after the last run. Rerun "${staleStage.name}" and the stages after it.`
+    : null
+
   const header = (
     <PanelHeader
       className={styles.header}
       title="Dashboard"
       headingId={headingId}
-      meta={<CapabilityBadge id="dashboard.comparison" />}
+      meta={
+        <>
+          <CapabilityBadge id="dashboard.comparison" />
+          {staleText ? (
+            <span className={styles.staleState} title={staleText}>
+              <StateBadge state="stale" />
+              <span className="visually-hidden">{staleText}</span>
+            </span>
+          ) : null}
+        </>
+      }
+      actions={
+        // The viewer runs nothing (decision 0032, stage 5).
+        staleStage && staleStageId && !viewOnly ? (
+          <ActionButton
+            label={`Run ${staleStage.name}`}
+            disabledReason={
+              waitingReason(
+                pending,
+                'workflow.runStage',
+                'the run was requested',
+                forStage(staleStageId),
+              ) ?? stageSubmitBlocker(state, staleStageId)
+            }
+            onPress={() =>
+              void client.execute({
+                type: 'workflow.runStage',
+                input: { stageId: staleStageId },
+              })
+            }
+          >
+            Run {staleStage.name}
+          </ActionButton>
+        ) : null
+      }
     />
   )
 
@@ -342,15 +394,6 @@ export function DashboardPage() {
     )
   }
 
-  const definitionsState = stageStates[STAGE_IDS.scenarioDefinitions]
-  const modelingState = stageStates[STAGE_IDS.scenarioModeling]
-  const staleStageId =
-    definitionsState === 'stale'
-      ? STAGE_IDS.scenarioDefinitions
-      : modelingState === 'stale'
-        ? STAGE_IDS.scenarioModeling
-        : null
-  const staleStage = staleStageId ? workflow.stages[staleStageId] : undefined
   const transformers = Object.values(state.gridElements).filter(
     (element) => element.kind === 'transformer',
   )
@@ -360,57 +403,12 @@ export function DashboardPage() {
     <section className={styles.page} aria-labelledby={headingId}>
       {header}
 
-      {staleStage && staleStageId ? (
-        <InlineAlert
-          tone="warning"
-          className={styles.staleNotice}
-          actions={
-            // The viewer runs nothing (decision 0032, stage 5).
-            viewOnly ? null : (
-              <ActionButton
-                label={`Run ${staleStage.name}`}
-                disabledReason={
-                  waitingReason(
-                    pending,
-                    'workflow.runStage',
-                    'the run was requested',
-                    forStage(staleStageId),
-                  ) ?? stageSubmitBlocker(state, staleStageId)
-                }
-                onPress={() =>
-                  void client.execute({
-                    type: 'workflow.runStage',
-                    input: { stageId: staleStageId },
-                  })
-                }
-              >
-                Run {staleStage.name}
-              </ActionButton>
-            )
-          }
-        >
-          {viewOnly ? (
-            <>
-              Scenario results are outdated: scenario inputs changed after the
-              last run of &ldquo;{staleStage.name}&rdquo;, before the project
-              was handed over.
-            </>
-          ) : (
-            <>
-              Scenario results are outdated: scenario inputs changed after the
-              last run. Rerun &ldquo;{staleStage.name}&rdquo; and the stages
-              after it.
-            </>
-          )}
-        </InlineAlert>
-      ) : null}
-
       <section className={styles.controls} aria-labelledby={controlsHeadingId}>
         <h3 id={controlsHeadingId}>Scenario controls</h3>
         {data.scenarios.length === 0 ? (
           viewOnly ? (
             <p className={componentStyles.muted}>
-              No scenarios were defined when this project was handed over.
+              No scenarios were defined when this view was saved.
             </p>
           ) : (
             <div className={styles.controlEmpty}>
