@@ -100,7 +100,7 @@ export type LayoutLibrary = {
   resetBlocker: () => string | null
 }
 
-const READ_ONLY = 'Handed-over layouts are read-only here; apply one to use it.'
+const READ_ONLY = "A view's layouts are read-only here; apply one to use it."
 
 /** The stored default when it names a readable layout, or null. */
 function defaultFrom(saved: SavedView | null, list: LayoutList): string | null {
@@ -319,7 +319,7 @@ export function createLayoutLibrary(options: {
 
     resetToHandedOver: (source = 'manual') => {
       const type = 'layouts.resetToHandover'
-      const title = 'Reset to handed-over layout'
+      const title = "Reset to the view's layout"
       const { defaultId } = store.getState()
       if (defaultId && find(defaultId)) {
         return applyLayout(defaultId, source, 'layouts.reset')
@@ -336,7 +336,7 @@ export function createLayoutLibrary(options: {
       store.setState({ applied: null })
       clearFocus()
       const summary =
-        'Reset the panels and views to the handed-over layout: the default arrangement with the table settings and map layers in the package.'
+        "Reset the panels and views to the view's layout: the default arrangement with the table settings and map layers in the view."
       return {
         status: 'applied',
         summary,

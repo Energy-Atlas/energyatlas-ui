@@ -95,7 +95,7 @@ export function issuesFromError(body: ApiErrorBody): ValidationIssue[] {
 }
 
 export const VIEW_ONLY_MESSAGE =
-  'This is a view-only handover: the viewer cannot change the model, run or cancel jobs, or save. Ask the modeller for a new handover to see changes.'
+  'This is a view: the viewer cannot change the model, run or cancel jobs, or save. Ask the modeller for a new view to see changes.'
 
 /**
  * A 403 for a viewer session (decision 0032, stage 5): every model change is

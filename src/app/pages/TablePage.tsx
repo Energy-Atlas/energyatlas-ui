@@ -513,8 +513,8 @@ function BuildingsTable() {
       </div>
       {viewOnly ? (
         <p className={styles.hint}>
-          Values as handed over. The viewer is view only, so cells cannot be
-          edited; sort, filter, and arrange columns freely.
+          Values as saved in the view. The viewer is view only, so cells cannot
+          be edited; sort, filter, and arrange columns freely.
         </p>
       ) : editError ? (
         <InlineAlert tone="danger">{editError}</InlineAlert>

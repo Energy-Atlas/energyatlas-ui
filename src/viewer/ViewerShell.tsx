@@ -12,8 +12,7 @@ import {
   Table2,
   type LucideIcon,
 } from 'lucide-react'
-import { useEffect, useState, type ReactNode } from 'react'
-import { Button } from 'react-aria-components'
+import { useEffect, type ReactNode } from 'react'
 import { useStore } from 'zustand'
 import {
   useClientSnapshot,
@@ -21,13 +20,8 @@ import {
   useServices,
 } from '../app/WorkbenchContext.tsx'
 import { useInvokeAction } from '../app/actions.ts'
-import { cx } from '../app/cx.ts'
 import componentStyles from '../app/components/components.module.css'
-import {
-  HandoverSummary,
-  ViewOnlyBadge,
-} from '../app/components/HandoverSummary.tsx'
-import { InlineAlert } from '../app/components/InlineAlert.tsx'
+import { HandoverSummary } from '../app/components/HandoverSummary.tsx'
 import '../app/global.css'
 import '../app/layout/flexlayout-theme.css'
 import { LayoutsPanel } from '../app/layouts/LayoutsPanel.tsx'
@@ -50,11 +44,11 @@ import { useShellDialogs } from '../app/shell/useShellDialogs.ts'
 import { useShortcuts } from '../app/useShortcuts.ts'
 import { useViewerActions } from './viewerActions.ts'
 import { viewerStore } from './viewerStore.ts'
-import styles from './viewer.module.css'
 
-// The viewer's own shell (decision 0032, stage 5): the workbench's ribbon,
-// docking, status bar, and dialogs, with only the pages and panels a
-// view-only page shows. Pages that change the model are not in it at all.
+// The viewer's own shell (decision 0032, stage 5; decision 0036): the
+// editor's ribbon, menus, toolbar, docking, status bar, and dialogs, with
+// everything a view cannot do unavailable and saying why. Its pages and
+// panels are those a view shows; pages that change the model are not in it.
 
 const TAB_ICONS: Record<string, LucideIcon> = {
   'panel.assets': FolderTree,
@@ -120,7 +114,7 @@ function createTabContent(node: TabNode): ReactNode {
   }
 }
 
-/** File > About this handover: the package's provenance and warnings. */
+/** File > About this view: the view's provenance and warnings. */
 function AboutHandoverDialog() {
   const isOpen = useStore(viewerStore, (state) => state.aboutOpen)
   const handover = useClientSnapshot((snapshot) => snapshot.meta.handover)
@@ -141,50 +135,8 @@ function AboutHandoverDialog() {
   )
 }
 
-/** The package's warnings under the ribbon until dismissed for this session. */
-function HandoverWarnings() {
-  const handover = useClientSnapshot((snapshot) => snapshot.meta.handover)
-  const [dismissed, setDismissed] = useState(false)
-  const shown = handover && !dismissed ? handover.warnings : []
-  // Always present, so the shell's grid rows stay in place when empty.
-  return (
-    <div className={styles.warnings}>
-      {shown.map((warning, index) => (
-        <InlineAlert
-          key={warning}
-          tone="warning"
-          actions={
-            index === 0 ? (
-              <>
-                <Button
-                  className={componentStyles.button}
-                  onPress={() => viewerStore.setState({ aboutOpen: true })}
-                >
-                  About this handover
-                </Button>
-                <Button
-                  className={componentStyles.button}
-                  aria-label="Dismiss the handover warnings"
-                  onPress={() => setDismissed(true)}
-                >
-                  Dismiss
-                </Button>
-              </>
-            ) : null
-          }
-        >
-          {warning}
-        </InlineAlert>
-      ))}
-    </div>
-  )
-}
-
 export function ViewerShell() {
   const { layout } = useServices()
-  const name = useClientSnapshot(
-    (snapshot) => snapshot.meta.handover?.name ?? '',
-  )
   const { open, dialogs, onOpenChange } = useShellDialogs()
   const actions = useViewerActions(dialogs)
   const invoke = useInvokeAction()
@@ -200,20 +152,11 @@ export function ViewerShell() {
   }, [layout])
 
   return (
-    <div className={cx(shellStyles.shell, styles.shell)}>
-      <Ribbon
-        actions={actions}
-        invoke={invoke}
-        badge={
-          <>
-            <ViewOnlyBadge />
-            <span className={styles.packageName} title={name}>
-              {name}
-            </span>
-          </>
-        }
-      />
-      <HandoverWarnings />
+    <div className={shellStyles.shell}>
+      {/* As in the editor: no title in the top bar; the view's name and its
+          View only tag sit in the status bar, and its warnings are messages
+          (decision 0036). */}
+      <Ribbon actions={actions} invoke={invoke} />
       <main className={shellStyles.main} aria-label="Workspace" tabIndex={-1}>
         <Layout
           model={layout.getModel()}

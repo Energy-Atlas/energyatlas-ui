@@ -101,7 +101,7 @@ describe('handover package', () => {
     // The source state is untouched.
     expect(Object.keys(state.pendingEdits)).toHaveLength(1)
     expect(packageFileName(pkg)).toBe(
-      'synthetic-district-demo-2026-10-28.handover.json',
+      'synthetic-district-demo-2026-10-28.view.json',
     )
   })
 
@@ -414,7 +414,7 @@ describe('handover through the mock server', () => {
     expect(result.outcome.status).toBe('rejected')
     if (result.outcome.status === 'rejected')
       expect(result.outcome.issues[0]?.message).toContain(
-        'Handover packages in this browser take about',
+        'Views in this browser take about',
       )
   })
 

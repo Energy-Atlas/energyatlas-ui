@@ -866,7 +866,7 @@ export default function ComponentGallery() {
         </section>
 
         <section className={styles.cell}>
-          <h2>Handover summary</h2>
+          <h2>View summary</h2>
           <p>
             <ViewOnlyBadge />
           </p>
@@ -891,14 +891,14 @@ export default function ComponentGallery() {
             warnings={[
               'Results are outdated relative to the model: "Baseline model setup" changed after its last run, so the results shown are from before those changes.',
             ]}
-            fileName="back-bay-2026-10-28.handover.json"
+            fileName="back-bay-2026-10-28.view.json"
           />
           <h3>No results</h3>
           <HandoverSummary
             createdAt="2026-10-28T12:00:00Z"
             provenance={{ ...HANDOVER_CURRENT, results: [], savedAt: null }}
             warnings={[
-              'This package has no published results: Baseline model setup had not published a baseline when it was handed over.',
+              'This view has no published results: Baseline model setup had not published a baseline when it was saved.',
             ]}
           />
         </section>
@@ -908,7 +908,7 @@ export default function ComponentGallery() {
           <DefinitionCard
             eyebrow="Archetype"
             title="Office, 1950 to 1979"
-            note="As handed over. Definitions are edited in the modeller."
+            note="As saved in the view. Definitions are edited in the modeller."
             facts={[
               { label: 'Construction', value: 'Masonry, uninsulated' },
               { label: 'Systems', value: 'Gas boiler' },
@@ -1032,7 +1032,7 @@ export default function ComponentGallery() {
                         : null,
                     onPress: () => {
                       if (confirming === 'fails') {
-                        return 'The server refused: the package is no longer in this browser.'
+                        return 'The server refused: the view is no longer in this browser.'
                       }
                       note('Confirmed.')
                     },

@@ -11,11 +11,11 @@ import {
 import { pickPackageFile, viewerStore } from './viewerStore.ts'
 
 /**
- * The viewer page's actions (decision 0032, stage 5): the shared registry
- * filtered to what a view-only page offers, plus opening packages, the
- * handover's provenance, and the reset to the handed-over layout. They drive
- * the ribbon menus, the command palette, and the shortcuts, as in the
- * modeller.
+ * The viewer page's actions (decision 0032, stage 5; decision 0036): the
+ * shared registry with everything a view cannot do shown unavailable with its
+ * reason, plus opening views, the view's provenance, and the reset to the
+ * view's layout. They drive the ribbon menus, the command palette, and the
+ * shortcuts, as in the modeller.
  */
 export function useViewerActions(dialogs: ShellDialogs): AppAction[] {
   const { client, layout, layouts } = useServices()
@@ -30,13 +30,13 @@ export function useViewerActions(dialogs: ShellDialogs): AppAction[] {
         (request) =>
           request.type === 'handover.open' || request.type === 'project.close',
       )
-        ? 'Wait for the package being opened.'
+        ? 'Wait for the view being opened.'
         : null
-    const noPackage = 'Open a handover package first.'
+    const noView = 'Open a view first.'
     const extras: AppAction[] = [
       {
         id: 'viewer.openFile',
-        label: 'Open package file…',
+        label: 'Open view file…',
         group: 'File',
         icon: FileUp,
         shortcut: 'Ctrl+O',
@@ -45,29 +45,29 @@ export function useViewerActions(dialogs: ShellDialogs): AppAction[] {
       },
       {
         id: 'viewer.packages',
-        label: 'Handover packages…',
+        label: 'Views…',
         group: 'File',
         icon: PackageOpen,
-        disabledReason: handover ? busy : 'This is the list of packages.',
+        disabledReason: handover ? busy : 'This is the list of views.',
         perform: () => {
           void client.closeProject()
         },
       },
       {
         id: 'viewer.about',
-        label: 'About this handover…',
+        label: 'About this view…',
         group: 'File',
         icon: Info,
-        disabledReason: handover ? null : noPackage,
+        disabledReason: handover ? null : noView,
         perform: () => viewerStore.setState({ aboutOpen: true }),
       },
       {
         id: 'viewer.resetToHandover',
-        label: 'Reset to handed-over layout',
+        label: "Reset to the view's layout",
         group: 'View',
         menuPath: ['Layouts'],
         icon: RotateCcw,
-        disabledReason: handover ? null : noPackage,
+        disabledReason: handover ? null : noView,
         perform: () => {
           layouts.resetToHandedOver()
         },
@@ -77,7 +77,7 @@ export function useViewerActions(dialogs: ShellDialogs): AppAction[] {
   }, [base, client, layout, layouts, handover, pending, opening])
 }
 
-/** What the package list offers from the viewer's menus; the rest need a package. */
+/** What the start page offers from the viewer's menus; the rest need a view. */
 const START_IDS = new Set([
   'viewer.openFile',
   'view.fullScreen',
@@ -85,19 +85,23 @@ const START_IDS = new Set([
   'help.shortcuts',
   'help.capabilities',
   'help.demoConditions',
+  'account.logOut',
 ])
 
 export function forViewerStart(actions: AppAction[]): AppAction[] {
   return actions.map((action) =>
-    START_IDS.has(action.id) || action.id.startsWith('view.appearance.')
+    START_IDS.has(action.id) ||
+    action.id.startsWith('view.appearance.') ||
+    // Already unavailable in every view, with its own reason.
+    action.disabledReason !== null
       ? action
       : {
           ...action,
           pressed: undefined,
           disabledReason:
             action.id === 'viewer.packages'
-              ? 'This is the list of packages.'
-              : 'Open a handover package first.',
+              ? 'This is the list of views.'
+              : 'Open a view first.',
         },
   )
 }

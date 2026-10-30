@@ -506,20 +506,20 @@ test('the viewer shows a building’s zoning read-only and its zones in 3D', asy
     .getByRole('toolbar', { name: 'Workbench commands' })
     .getByRole('button', { name: 'File', exact: true })
     .click()
-  await page.getByRole('menuitem', { name: 'Hand over…' }).click()
-  await page
-    .getByRole('dialog', { name: 'Hand over this project' })
-    .getByRole('button', { name: 'Hand over the project' })
-    .click()
-  await expect(page.getByRole('dialog', { name: 'Handed over' })).toBeVisible()
+  // File > Save as… > View (decision 0036).
+  await page.getByRole('menuitem', { name: /^Save as/ }).click()
+  const dialog = page.getByRole('dialog', { name: 'Save as' })
+  await dialog.getByText('View', { exact: true }).click()
+  await dialog.getByRole('button', { name: 'Save as a view' }).click()
+  await expect(dialog).toContainText("is in this browser's list of views")
 
   await page.goto('/viewer.html')
   const option = page
-    .getByRole('listbox', { name: 'Handover packages' })
+    .getByRole('listbox', { name: 'Views in this browser' })
     .getByRole('option', { name: /Synthetic district/ })
   await option.focus()
   await page.keyboard.press('Enter')
-  await expect(page.getByText('View only').first()).toBeVisible()
+  await expect(page.getByText('View only', { exact: true })).toBeVisible()
 
   await selectBuilding(page, 'B0439')
   const panel = properties(page)

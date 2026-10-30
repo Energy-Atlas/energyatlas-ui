@@ -10,11 +10,11 @@ import { ViewerStart } from './ViewerStart.tsx'
 import { openPackage, PACKAGE_FILE_INPUT_ID } from './viewerStore.ts'
 
 /**
- * The browser's file chooser for package files, shared by the package list
- * and the shell's File menu so Open package file works from both.
+ * The browser's file chooser for view files, shared by the start page and
+ * the shell's File menu so Open view file works from both.
  */
 function PackageFileInput() {
-  const { client } = useServices()
+  const { client, messages } = useServices()
   return (
     <input
       id={PACKAGE_FILE_INPUT_ID}
@@ -22,12 +22,12 @@ function PackageFileInput() {
       accept=".json,application/json"
       className="visually-hidden"
       tabIndex={-1}
-      aria-label="Handover package file"
+      aria-label="View file"
       onChange={(event) => {
         const file = event.currentTarget.files?.[0]
         // Choosing the same file again must fire again.
         event.currentTarget.value = ''
-        if (file) void openPackage(client, { file })
+        if (file) void openPackage({ client, messages }, { file })
       }}
     />
   )

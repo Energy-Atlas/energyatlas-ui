@@ -306,6 +306,13 @@
   padding: 0 0.375rem;
 }
 
+/* The viewer keeps the editor's status items (decision 0036); one that
+   cannot act looks it, as unavailable quick buttons do. */
+.statusButton[aria-disabled='true'] {
+  color: var(--color-text-muted);
+  cursor: not-allowed;
+}
+
 /* Any demo condition that differs from normal is disclosed here (decision
    0023), with the warning tone's edge so a rigged state is never mistaken
    for a real one. */

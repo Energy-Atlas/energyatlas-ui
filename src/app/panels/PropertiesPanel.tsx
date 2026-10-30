@@ -458,7 +458,7 @@ export function PropertiesPanel() {
           </p>
           <p className={styles.muted}>
             {viewOnly
-              ? 'Select buildings or grid elements on the Map or Table page, or an asset, to see its properties here as handed over.'
+              ? 'Select buildings or grid elements on the Map or Table page, or an asset, to see its properties here as saved in the view.'
               : 'Select buildings or grid elements on the Map or Table page, an asset, or an assignment rule, archetype, part, schedule, measure, scenario, or scenario rule to see its properties here. Definitions are edited here too.'}
           </p>
           <div className={styles.actions}>{pageActions}</div>

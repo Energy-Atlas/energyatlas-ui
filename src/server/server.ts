@@ -38,6 +38,11 @@ import {
 import { FIXTURES, buildFixture, type FixtureId } from './fixtures.ts'
 import { projectNameSchema } from './projectValidation.ts'
 import {
+  MAX_PROJECT_FILE_BYTES,
+  buildProjectFile,
+  readProjectFile,
+} from './projectFile.ts'
+import {
   projectSummaries,
   readProjectCatalog,
   restoreProject,
@@ -150,6 +155,23 @@ export type ServerRequest =
       source: CommandSource
       /** How the UI arranged the project's views, saved with it. */
       view?: SavedView
+    }
+  | {
+      /**
+       * File > Save as… > Project (decision 0036): keeps a copy of the open
+       * project, unsaved changes included, as a new project in this browser
+       * and returns it as a project file. The open project stays open.
+       */
+      type: 'project.saveAs'
+      name: string
+      source: CommandSource
+      view?: SavedView
+    }
+  | {
+      /** Opens a project file: adds it to this browser's projects and opens it. */
+      type: 'project.openFile'
+      source: CommandSource
+      file: { name: string; text: string }
     }
   | { type: 'project.replace'; fixture: FixtureId; source: CommandSource }
   | { type: 'project.list'; source: CommandSource }
@@ -346,6 +368,7 @@ export function createMockServer(options: {
         (operation) =>
           ![
             'project.save',
+            'project.saveAs',
             'project.list',
             'project.open',
             'project.close',
@@ -493,7 +516,7 @@ export function createMockServer(options: {
       ? {
           ok: false,
           ...serverError(
-            'Handover packages are opened on the viewer page, not in the modeller.',
+            'Views are opened on the viewer page, not in the modeller.',
             400,
           ),
         }
@@ -539,11 +562,11 @@ export function createMockServer(options: {
     // The dialog's list of packages in this browser follows.
     setPackages(write.ok ? { catalog: next, error: null } : read)
     const summary = write.ok
-      ? `Handed over "${pkg.name}" as a view-only package in this browser's handover catalog. Open it on the viewer page or download it as a file.`
-      : `Handed over "${pkg.name}", but the package was not kept in the handover catalog: ${write.message}`
+      ? `Saved "${pkg.name}" as a view in this browser's list of views. Open it on the viewer page or download it as a view file.`
+      : `Saved "${pkg.name}" as a view, but it was not kept in this browser's list of views: ${write.message}`
     engine.record({
       type: 'project.handover',
-      title: 'Hand over project',
+      title: 'Save as view',
       input: { packageId: pkg.id },
       source: request.source,
       summary,
@@ -566,7 +589,7 @@ export function createMockServer(options: {
           ...invalidRequest([
             {
               path: 'file',
-              message: `"${request.file.name}" is larger than ${MAX_PACKAGE_BYTES / 1024 / 1024} MB, too large for a handover package.`,
+              message: `"${request.file.name}" is larger than ${MAX_PACKAGE_BYTES / 1024 / 1024} MB, too large for a view file.`,
             },
           ]),
         }
@@ -596,7 +619,7 @@ export function createMockServer(options: {
           ok: false,
           ...serverError(
             read.error ??
-              'This package is no longer in the handover catalog. Refresh the list, or open the package from a file.',
+              'This view is no longer in this browser. Refresh the list, or open the view from a file.',
             404,
           ),
         }
@@ -604,7 +627,7 @@ export function createMockServer(options: {
       pkg = found
     }
     const warnings = packageWarnings(pkg)
-    const summary = `Opened the handover package "${pkg.name}", handed over ${new Date(pkg.createdAt).toLocaleString()}. It is view only.`
+    const summary = `Opened the view "${pkg.name}", saved ${new Date(pkg.createdAt).toLocaleString()}. It is view only.`
     const handover: OpenHandover = {
       id: pkg.id,
       name: pkg.name,
@@ -619,7 +642,7 @@ export function createMockServer(options: {
       structuredClone(pkg.model),
       {
         type: 'handover.open',
-        title: 'Open handover package',
+        title: 'Open view',
         input: request.file
           ? { file: request.file.name }
           : { packageId: pkg.id },
@@ -645,7 +668,7 @@ export function createMockServer(options: {
       return {
         ok: false,
         ...serverError(
-          read.error ?? 'This package is no longer in the handover catalog.',
+          read.error ?? 'This view is no longer in this browser.',
           read.error ? 503 : 404,
         ),
       }
@@ -661,10 +684,10 @@ export function createMockServer(options: {
     setPackages({ catalog: next, error: null })
     // A modeller session reports it as an update, so its dialog lists follow.
     emit([])
-    const summary = `Removed the handover package "${found.name}" from this browser. Downloaded copies are unchanged.`
+    const summary = `Removed the view "${found.name}" from this browser. Downloaded copies are unchanged.`
     engine.record({
       type: request.type,
-      title: 'Remove handover package',
+      title: 'Remove view',
       input: { packageId: request.packageId },
       source: request.source,
       summary,
@@ -700,10 +723,10 @@ export function createMockServer(options: {
             emit([])
             return { ok: false, ...serverError(read.error, 503) }
           }
-          const summary = `Found ${meta.packages.length} handover package(s) in this browser.`
+          const summary = `Found ${meta.packages.length} view(s) in this browser.`
           engine.record({
             type: request.type,
-            title: 'List handover packages',
+            title: 'List views',
             source: request.source,
             summary,
           })
@@ -762,6 +785,136 @@ export function createMockServer(options: {
             summary,
           })
           return { ok: true, summary, sequence, projectGeneration }
+        }
+        case 'project.saveAs': {
+          if (!meta.currentProject)
+            return {
+              ok: false,
+              ...serverError('Open or create a project first.', 409),
+            }
+          const parsed = projectNameSchema.safeParse(request.name)
+          if (!parsed.success)
+            return {
+              ok: false,
+              ...invalidRequest([
+                {
+                  path: 'name',
+                  message: 'Enter a project name from 1 to 100 characters.',
+                },
+              ]),
+            }
+          if (meta.catalogError)
+            return { ok: false, ...serverError(meta.catalogError, 503) }
+          const name = parsed.data
+          const current = engine.getState()
+          const id = `project:${crypto.randomUUID()}`
+          const savedAt = now().toISOString()
+          const view = request.view ?? meta.view ?? null
+          // The copy is saved as the original would be reopened: running jobs
+          // are interrupted in it, and selection and drafts are left out.
+          const state = restoreProject({
+            id,
+            name,
+            savedAt,
+            lastOpenedAt: null,
+            state: {
+              ...structuredClone(current),
+              project: { ...current.project, id, name },
+            },
+          })
+          const entry = {
+            id,
+            name,
+            state,
+            savedAt,
+            lastOpenedAt: null,
+            ...(view ? { view } : {}),
+          }
+          const next = { projects: [...catalog.projects, entry] }
+          const result = writeProjectCatalog(options.storage, next)
+          if (!result.ok) {
+            return { ok: false, ...serverError(result.message, 503) }
+          }
+          catalog = next
+          meta = { ...meta, projects: projectSummaries(catalog) }
+          const summary = `Saved a copy of "${current.project.name}" as the project "${name}" in this browser. "${current.project.name}" stays open; open the copy from Projects.`
+          engine.record({
+            type: 'project.saveAs',
+            title: 'Save as project',
+            input: { name, projectId: id },
+            source: request.source,
+            summary,
+          })
+          return ok(summary, {
+            project: { id, name, savedAt },
+            file: buildProjectFile(entry),
+          })
+        }
+        case 'project.openFile': {
+          const { file } = request
+          if (file.text.length > MAX_PROJECT_FILE_BYTES) {
+            return {
+              ok: false,
+              ...invalidRequest([
+                {
+                  path: 'file',
+                  message: `"${file.name}" is larger than ${MAX_PROJECT_FILE_BYTES / 1024 / 1024} MB, too large for a project file.`,
+                },
+              ]),
+            }
+          }
+          const read = readProjectFile(file.text)
+          if (!read.ok) {
+            return {
+              ok: false,
+              ...invalidRequest([
+                { path: 'file', message: `"${file.name}": ${read.message}` },
+              ]),
+            }
+          }
+          if (meta.catalogError)
+            return { ok: false, ...serverError(meta.catalogError, 503) }
+          const running = activeTaskId()
+          if (running) return { ok: false, ...runInProgress(running, 'stage') }
+          const { project } = read.file
+          // A file of a project this browser already keeps opens as a copy,
+          // so the kept one is never overwritten.
+          const known = catalog.projects.some(
+            (entry) => entry.id === project.id,
+          )
+          const id = known ? `project:${crypto.randomUUID()}` : project.id
+          const openedAt = now().toISOString()
+          const entry = {
+            id,
+            name: project.name,
+            state: {
+              ...project.state,
+              project: { ...project.state.project, id },
+            },
+            savedAt: read.file.savedAt,
+            lastOpenedAt: openedAt,
+            ...(project.view ? { view: project.view } : {}),
+          }
+          const next = { projects: [...catalog.projects, entry] }
+          const written = writeProjectCatalog(options.storage, next)
+          if (!written.ok) {
+            return { ok: false, ...serverError(written.message, 503) }
+          }
+          catalog = next
+          const summary = `Opened "${project.name}" from ${file.name}${known ? ' as a copy, as this browser already keeps that project' : ''}. It is kept in this browser's projects.`
+          replaceSession(
+            restoreProject(entry),
+            {
+              type: request.type,
+              title: 'Open project file',
+              input: { file: file.name },
+              source: request.source,
+              summary,
+            },
+            entry.savedAt,
+            entry.view ?? null,
+          )
+          return ok(summary)
         }
         case 'project.replace': {
           const running = activeTaskId()
@@ -889,7 +1042,7 @@ export function createMockServer(options: {
           const running = activeTaskId()
           if (running) return { ok: false, ...runInProgress(running, 'stage') }
           const summary = viewer
-            ? 'Closed the handover package. Packages remain in this browser.'
+            ? 'Closed the view. Views remain in this browser.'
             : 'Closed the project. Saved projects remain in this browser.'
           meta = { ...meta, handover: null }
           replaceSession(

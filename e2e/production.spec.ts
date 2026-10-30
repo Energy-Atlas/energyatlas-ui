@@ -94,7 +94,7 @@ test('runs, holds, and retries a partial job in the built bundle', async ({
 // The viewer page (decision 0032, stage 5) is a second HTML entry; under the
 // base path it must load its own bundle, list a package handed over in the
 // modeller, and open it view only.
-test('serves the viewer page under the base path and opens a handover', async ({
+test('serves the viewer page under the base path and opens a view', async ({
   page,
 }) => {
   test.setTimeout(60_000)
@@ -106,15 +106,18 @@ test('serves the viewer page under the base path and opens a handover', async ({
   })
   await page.goto(`${BASE_PATH}?fixture=complete`)
   await expect(page.getByRole('main', { name: 'Workspace' })).toBeVisible()
-  // A handover packages the saved copy (decision 0032).
+  // A view holds the saved copy (decision 0032); File > Save as… > View
+  // makes it (decision 0036).
   await page.keyboard.press('Control+s')
   await expect(page.getByTestId('save-status')).toContainText('Saved')
   await page
     .getByRole('toolbar', { name: 'Workbench commands' })
     .getByRole('button', { name: 'File', exact: true })
     .click()
-  await page.getByRole('menuitem', { name: 'Hand over…' }).click()
-  await page.getByRole('button', { name: 'Hand over the project' }).click()
+  await page.getByRole('menuitem', { name: /^Save as/ }).click()
+  const dialog = page.getByRole('dialog', { name: 'Save as' })
+  await dialog.getByText('View', { exact: true }).click()
+  await dialog.getByRole('button', { name: 'Save as a view' }).click()
   const link = page.getByRole('link', { name: 'Open in the viewer' })
   await expect(link).toHaveAttribute(
     'href',
@@ -128,7 +131,7 @@ test('serves the viewer page under the base path and opens a handover', async ({
 
   await page.goto((await link.getAttribute('href')) ?? '')
   await expect(page.getByRole('main', { name: 'Workspace' })).toBeVisible()
-  await expect(page.getByText('View only').first()).toBeVisible()
+  await expect(page.getByText('View only', { exact: true })).toBeVisible()
   await expect(page.locator('canvas.maplibregl-canvas')).toBeVisible({
     timeout: 30_000,
   })

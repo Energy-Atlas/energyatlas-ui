@@ -9,14 +9,15 @@ import { StateBadge } from './StateBadge.tsx'
 import styles from './handover.module.css'
 
 /**
- * The viewer's mark (decision 0032, stage 5): the shell shows it beside the
- * package name so nobody mistakes the page for the modeller.
+ * The viewer's mark (decision 0032, stage 5): the status bar shows it beside
+ * the view's name (decision 0036) so nobody mistakes the page for the
+ * modeller.
  */
 export function ViewOnlyBadge() {
   return (
     <span
       className={styles.badge}
-      title="A frozen handover package: the model cannot be changed here."
+      title="A view: a frozen copy of a project. The model cannot be changed here."
     >
       <Eye size={14} aria-hidden="true" />
       View only
@@ -67,9 +68,9 @@ const BY: Record<HandoverProvenance['handedOverBy'], string> = {
 }
 
 /**
- * What a handover package holds and where it came from (decision 0032,
- * stage 5): shown by the modeller after Hand over, by the viewer's package
- * list, and by the viewer's About this handover.
+ * What a view holds and where it came from (decision 0032, stage 5; called a
+ * view since decision 0036): shown by the modeller after Save as > View, by
+ * the viewer's start page, and by the viewer's About this view.
  */
 export function HandoverSummary({
   createdAt,
@@ -94,10 +95,10 @@ export function HandoverSummary({
         </InlineAlert>
       ))}
       <PropertyList
-        aria-label="Handover provenance"
+        aria-label="View provenance"
         items={[
           { label: 'Project', value: provenance.projectName },
-          { label: 'Handed over', value: formatDateTime(createdAt) },
+          { label: 'Saved as view', value: formatDateTime(createdAt) },
           { label: 'By', value: BY[provenance.handedOverBy] },
           {
             label: 'Saved by the modeller',
@@ -123,7 +124,7 @@ export function HandoverSummary({
         ]}
       />
       <Section
-        title="Stage states at handover"
+        title="Stage states when saved"
         count={provenance.stages.length}
         level={headingLevel === 3 ? 4 : 3}
       >

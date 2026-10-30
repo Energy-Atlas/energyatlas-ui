@@ -108,8 +108,8 @@ export function LayoutsPanel() {
         meta={<HeaderCount>{formatCount(count, 'layout')}</HeaderCount>}
         description={
           writable
-            ? 'Saved with this project when you save it, and handed over with it.'
-            : 'Handed over with the package. Apply one to arrange the panels and views.'
+            ? 'Saved with this project when you save it, and kept in its views.'
+            : 'Kept with the view. Apply one to arrange the panels and views.'
         }
       />
       <AppliedLine library={layouts} />
@@ -165,7 +165,7 @@ export function LayoutsPanel() {
         <p className={cx(componentStyles.empty, styles.emptyText)}>
           {writable
             ? 'No layouts yet. Name the current panels and views above and save them.'
-            : 'This package was handed over without saved layouts. Reset to handed-over layout returns to the arrangement it opened with.'}
+            : "This view was saved without layouts. Reset to the view's layout returns to the arrangement it opened with."}
         </p>
       ) : (
         <>
@@ -196,7 +196,7 @@ function AppliedLine({ library }: { library: LayoutLibrary }) {
       <p className={componentStyles.muted}>
         {library.writable
           ? 'No saved layout is applied in this project yet.'
-          : 'No handed-over layout is applied; the panels are arranged as the package opened.'}
+          : 'No layout of the view is applied; the panels are arranged as the view opened.'}
       </p>
     )
   }

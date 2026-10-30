@@ -66,7 +66,7 @@ export type HandoverPackage = {
 
 /** Why Hand over is refused before the project was ever saved. */
 export const NOT_SAVED_FOR_HANDOVER =
-  'Save the project first (File > Save, Ctrl+S): a handover packages the copy saved in this browser, not unsaved changes.'
+  'Save the project first (File > Save, Ctrl+S): a view holds the copy saved in this browser, not unsaved changes.'
 
 /**
  * Why a project cannot be handed over, or null. `saved` checks the copy saved
@@ -83,13 +83,13 @@ export function handoverBlocker(
   if (active.length > 0) {
     const jobs = active.length === 1 ? 'a job' : `${active.length} jobs`
     return copy === 'saved'
-      ? `The saved copy was saved while ${jobs} ran. A handover freezes published results only; save again once ${active.length === 1 ? 'it finishes' : 'they finish'}, then hand over.`
-      : `${active.length === 1 ? 'A job is' : `${active.length} jobs are`} still running. A handover freezes published results only; wait for ${active.length === 1 ? 'it' : 'them'} to finish or cancel ${active.length === 1 ? 'it' : 'them'} first.`
+      ? `The saved copy was saved while ${jobs} ran. A view freezes published results only; save again once ${active.length === 1 ? 'it finishes' : 'they finish'}, then save the view.`
+      : `${active.length === 1 ? 'A job is' : `${active.length} jobs are`} still running. A view freezes published results only; wait for ${active.length === 1 ? 'it' : 'them'} to finish or cancel ${active.length === 1 ? 'it' : 'them'} first.`
   }
   if (state.buildingIds.length === 0) {
     return copy === 'saved'
-      ? 'The saved copy has no buildings yet. Run Location setup / footprint capturing and save before handing it over.'
-      : 'The project has no buildings yet. Run Location setup / footprint capturing before handing it over.'
+      ? 'The saved copy has no buildings yet. Run Location setup / footprint capturing and save before saving it as a view.'
+      : 'The project has no buildings yet. Run Location setup / footprint capturing before saving it as a view.'
   }
   return null
 }
@@ -117,7 +117,7 @@ export function freezeModel(state: WorkbenchState): {
     if (group.status === 'open') {
       group.status = 'cancelled'
       group.statusReason =
-        'Left open in the modeller; a handover keeps published results only.'
+        'Left open in the modeller; a view keeps published results only.'
     }
   }
   model.pendingEdits = {}
@@ -206,7 +206,7 @@ export function packageWarnings(pkg: Pick<HandoverPackage, 'model'>): string[] {
   const warnings: string[] = []
   if (!model.results.baseline) {
     warnings.push(
-      'This package has no published results: Baseline model setup had not published a baseline when it was handed over.',
+      'This view has no published results: Baseline model setup had not published a baseline when it was saved.',
     )
   }
   const states = deriveStageStates(model.workflow, model.tasks)
@@ -310,7 +310,7 @@ const packageSchema = z.object({
   view: savedViewSchema,
 })
 
-const DAMAGED = 'This handover package is damaged or incomplete'
+const DAMAGED = 'This view is damaged or incomplete'
 
 /** A handover package from a parsed value, validated like a saved project. */
 export function readHandoverPackage(value: unknown): PackageRead {
@@ -323,7 +323,7 @@ export function readHandoverPackage(value: unknown): PackageRead {
       ok: false,
       code: 'foreign',
       message:
-        'This file is not an EnergyAtlas handover package. Choose a file saved with Hand over > Download package.',
+        'This file is not an EnergyAtlas view. Choose a view file saved with File > Save as… > View, then Download view file.',
     }
   }
   const version = (value as { version?: unknown }).version
@@ -331,7 +331,7 @@ export function readHandoverPackage(value: unknown): PackageRead {
     return {
       ok: false,
       code: 'newer',
-      message: `This package was made by a newer version of EnergyAtlas (package format ${version}); this viewer reads format ${HANDOVER_VERSION}. Open it with a newer viewer.`,
+      message: `This view was made by a newer version of EnergyAtlas (view format ${version}); this viewer reads format ${HANDOVER_VERSION}. Open it with a newer viewer.`,
     }
   }
   if (version !== HANDOVER_VERSION) {
@@ -348,7 +348,7 @@ export function readHandoverPackage(value: unknown): PackageRead {
     return {
       ok: false,
       code: 'invalid',
-      message: `${DAMAGED}${where}: ${issue?.message ?? 'it does not match the package format.'}`,
+      message: `${DAMAGED}${where}: ${issue?.message ?? 'it does not match the view format.'}`,
     }
   }
   const parsedPackage: HandoverPackage = parsed.data
@@ -379,7 +379,7 @@ export function readHandoverPackage(value: unknown): PackageRead {
     return {
       ok: false,
       code: 'invalid',
-      message: `${DAMAGED}: it contains working data a handover leaves out (drafts, held job outputs, or job logs).`,
+      message: `${DAMAGED}: it contains working data a view leaves out (drafts, held job outputs, or job logs).`,
     }
   }
   // Queued or running jobs and open runs would run and publish in a viewer.
@@ -392,7 +392,7 @@ export function readHandoverPackage(value: unknown): PackageRead {
     return {
       ok: false,
       code: 'invalid',
-      message: `${DAMAGED}: it contains queued or running jobs or open runs, which a handover never holds.`,
+      message: `${DAMAGED}: it contains queued or running jobs or open runs, which a view never holds.`,
     }
   }
   return { ok: true, package: pkg }
@@ -408,7 +408,7 @@ export function readHandoverText(text: string): PackageRead {
       ok: false,
       code: 'corrupt',
       message:
-        'This file could not be read as a handover package: it is not valid JSON. It may be truncated or not a package file.',
+        'This file could not be read as a view: it is not valid JSON. It may be truncated or not a view file.',
     }
   }
   return readHandoverPackage(value)
@@ -422,5 +422,6 @@ export function packageFileName(pkg: HandoverPackage): string {
       .replace(/[^a-z0-9]+/g, '-')
       .replace(/^-+|-+$/g, '')
       .slice(0, 40) || 'project'
-  return `${slug}-${pkg.createdAt.slice(0, 10)}.handover.json`
+  // Views saved before decision 0036 were named .handover.json; both open.
+  return `${slug}-${pkg.createdAt.slice(0, 10)}.view.json`
 }

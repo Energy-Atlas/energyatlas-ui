@@ -312,13 +312,19 @@ function usePromptField(value: string) {
   return ref
 }
 
-/** Picks the permission mode and explains each choice. */
+/**
+ * Picks the permission mode and explains each choice. In the viewer every
+ * mode allows everything (decision 0036): a view's agent changes views and
+ * layouts only, so nothing waits for approval, and each choice says so.
+ */
 function PermissionMenu({
   selected,
   onSelect,
+  viewOnly = false,
 }: {
   selected: PermissionMode
   onSelect: (mode: PermissionMode) => void
+  viewOnly?: boolean
 }) {
   return (
     <MenuTrigger>
@@ -355,7 +361,9 @@ function PermissionMenu({
                     slot="description"
                     className={menuStyles.menuDescription}
                   >
-                    {option.description}
+                    {viewOnly
+                      ? `${option.description} In a view nothing waits: the agent changes views only.`
+                      : option.description}
                   </Text>
                 </>
               )}
@@ -506,7 +514,7 @@ export function ReasoningPanel() {
         {transcript.length === 0 ? (
           <p className={styles.intro}>
             {viewOnly
-              ? 'Choose a suggested next step or type a question. On this view-only page the agent explains the handed-over results and changes views, through the same view operations and layout operations as the controls; it never changes the model.'
+              ? 'Choose a suggested next step or type a question. In a view the agent explains the results and changes views, through the same view operations and layout operations as the controls; it never changes the model, so every permission mode allows everything.'
               : 'Choose a suggested next step or type a request. Sessions replay tool calls through the same commands, view operations, and layout operations as the workbench controls, and what the agent may do without asking follows the permission mode below.'}
           </p>
         ) : (
@@ -610,14 +618,13 @@ export function ReasoningPanel() {
             >
               <Plus size={14} aria-hidden="true" />
             </ActionButton>
-            {/* Permission modes govern runs and model changes, which the
-                viewer's agent never makes (decision 0032, stage 5). */}
-            {viewOnly ? null : (
-              <PermissionMenu
-                selected={permissionMode}
-                onSelect={(mode) => agent.setPermissionMode(mode)}
-              />
-            )}
+            {/* The editor's controls in the viewer too (decision 0036); there
+                every mode allows everything, as a view changes nothing. */}
+            <PermissionMenu
+              selected={permissionMode}
+              onSelect={(mode) => agent.setPermissionMode(mode)}
+              viewOnly={viewOnly}
+            />
             <ModelMenu label="Scripted" />
             {status !== 'idle' ? (
               <ActionButton

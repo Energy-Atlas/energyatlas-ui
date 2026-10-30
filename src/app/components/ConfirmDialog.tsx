@@ -95,22 +95,28 @@ export function ConfirmDialog({
 
   // A fresh question each time it opens.
   const [wasOpen, setWasOpen] = useState(isOpen)
+  // The control that opened the dialog, which focus goes back to.
+  const [opener, setOpener] = useState<Element | null>(null)
   if (wasOpen !== isOpen) {
     setWasOpen(isOpen)
     if (isOpen) {
       setFailure(null)
       setRunning(null)
+      setOpener(typeof document === 'undefined' ? null : document.activeElement)
     }
   }
 
   const close = () => {
     onOpenChange(false)
-    if (!returnFocus) return
-    // React Aria returns focus to the opener; when that is gone, focus would
-    // drop to the page, so it goes where the caller says instead.
+    // React Aria returns focus to the opener. When the opener is gone, such
+    // as a menu item or a deleted row's menu, focus would drop to the page,
+    // so it goes where the caller says instead.
+    if (!returnFocus || opener?.isConnected) return
     window.requestAnimationFrame(() => {
       const active = document.activeElement
-      if (!active || active === document.body) returnFocus()?.focus()
+      if (!active || active === document.body || !active.isConnected) {
+        returnFocus()?.focus()
+      }
     })
   }
 
