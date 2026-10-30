@@ -74,19 +74,13 @@ export const capabilities = {
     label: 'Floors and zones',
     status: 'working',
     explanation:
-      "Floors are sliced uniformly from each building's height and storeys, and zones follow RC's three zoning modes with the demo's own perimeter inset, falling back to one zone per floor where the inset fails; a building can override the project's mode, including drawn zones; zones are display only.",
+      "Floors are sliced uniformly from each building's height and storeys; zones are the backend's zone geometry, displayed only and never computed or edited in the browser; a building without zone geometry is one zone, as in RC.",
   },
-  'zoning.drawnZones': {
-    label: 'Drawn zones',
+  'zoning.zoneGeometry': {
+    label: 'Zone geometry',
     status: 'simulated',
     explanation:
-      'Zone outlines per floor stored with the project and checked against the footprint; the demo plan is synthetic and hand-authored, editing outlines is planned, and import from IDF, gbXML, or IFC is deferred.',
-  },
-  'results.zoneBreakdown': {
-    label: 'Floor and zone results',
-    status: 'simulated',
-    explanation:
-      "A building's published demand split over its floors and zones by floor-area share; no zone is simulated on its own, and the building total is unchanged.",
+      "Zone geometry stands in for the backend's zoning: precomputed offline for three buildings of the fixture (a drawn mixed-use plan, each floor a zone, and perimeter and core), synthetic, tiling each floor exactly.",
   },
   'results.csv': {
     label: 'CSV export',

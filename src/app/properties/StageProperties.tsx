@@ -29,7 +29,7 @@ import componentStyles from '../components/components.module.css'
 import formStyles from '../components/forms.module.css'
 import { forStage, waitingReason } from '../service/usePendingReason.ts'
 import styles from './properties.module.css'
-import { ZoningForm } from './ZoningForm.tsx'
+import { ZoneGeometryNote } from './FloorsAndZones.tsx'
 
 /**
  * A workflow stage in Properties (decision 0028), as chosen on the Roadmap:
@@ -151,7 +151,7 @@ export function StageProperties({ stageId }: { stageId: string }) {
           Next
         </ActionButton>
       </div>
-      {stageId === STAGE_IDS.preprocessing ? <ZoningForm /> : null}
+      {stageId === STAGE_IDS.preprocessing ? <ZoneGeometryNote /> : null}
       <InsertStageForm afterStageId={stageId} key={stageId} />
     </section>
   )

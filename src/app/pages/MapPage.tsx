@@ -5,15 +5,12 @@ import {
   Source,
   type MapRef,
 } from '@vis.gl/react-maplibre'
-import type {
-  ExpressionSpecification,
-  MapGeoJSONFeature,
-  StyleSpecification,
-} from 'maplibre-gl'
+import type { ExpressionSpecification, StyleSpecification } from 'maplibre-gl'
 import 'maplibre-gl/dist/maplibre-gl.css'
 import {
   useEffect,
   useId,
+  useLayoutEffect,
   useMemo,
   useRef,
   useState,
@@ -21,6 +18,7 @@ import {
 } from 'react'
 import { DISTRICT_CENTER } from '../../domain/simulation.ts'
 import type { LngLat } from '../../domain/types.ts'
+import type { MapCamera } from '../view/mapCamera.ts'
 import { STAGE_IDS } from '../../domain/workflow.ts'
 import {
   useAppearance,
@@ -84,15 +82,15 @@ import {
   type ZoneKind,
 } from '../../domain/zoning/zoning.ts'
 import type { WorkbenchState } from '../../domain/types.ts'
-import {
-  floorNumberOf,
-  slabFeatures,
-  zoneEdges,
-  zoneOverlay,
-  type ZoneOverlay,
-} from './zoneFeatures.ts'
+import { zoneEdges, zoneOverlay, type ZoneOverlay } from './zoneFeatures.ts'
 import { ZoneEdgeLayer } from './ZoneEdgeLayer.tsx'
-import { pointerRay, prismOf, sortByDistance } from './mapPicking.ts'
+import {
+  pointerRay,
+  prismOf,
+  rayPrismDistance,
+  sortByDistance,
+  type Prism,
+} from './mapPicking.ts'
 import {
   ZONE_LAYER_IDS,
   ZONE_SOURCE,
@@ -106,8 +104,14 @@ const POINT_KINDS = new Set(['transformer', 'utilityPv', 'bus'])
 type Hover = { id: string; label: string; x: number; y: number }
 
 /** Where the pointer last was over the map, and what it was over. */
+/** A map feature, or a prism the map picked itself in 3D. */
+type Picked = {
+  layer: { id: string }
+  properties: Record<string, unknown>
+}
+
 type Pointer = {
-  features: MapGeoJSONFeature[]
+  features: Picked[]
   x: number
   y: number
   shift: boolean
@@ -142,13 +146,39 @@ function boundsOf(points: LngLat[]): [number, number, number, number] | null {
   return [west, south, east, north]
 }
 
+/** Whether a camera looks at a point inside the bounds, widened by half their size. */
+function cameraInside(
+  camera: MapCamera,
+  [west, south, east, north]: [number, number, number, number],
+): boolean {
+  const [lng, lat] = camera.center
+  const width = (east - west) / 2
+  const height = (north - south) / 2
+  return (
+    lng >= west - width &&
+    lng <= east + width &&
+    lat >= south - height &&
+    lat <= north + height
+  )
+}
+
+/** A stored camera as MapLibre's jump options; a flat map stays flat. */
+function cameraOptions(camera: MapCamera, view3d: boolean) {
+  return {
+    center: camera.center,
+    zoom: camera.zoom,
+    pitch: view3d ? camera.pitch : 0,
+    bearing: view3d ? camera.bearing : 0,
+  }
+}
+
 function formatValue(value: number | null, unit: string): string {
   return formatNumber(value, { maxDigits: 3, unit: unit || undefined })
 }
 
 export function MapPage() {
   const headingId = useId()
-  const { workbench, showInspection, basemapEnabled, claimWorked } =
+  const { workbench, view, showInspection, basemapEnabled, claimWorked } =
     useServices()
   const state = useWorkbenchSnapshot((snapshot) => snapshot.state)
   const appearance = useAppearance()
@@ -264,12 +294,7 @@ export function MapPage() {
     (resolved) => resolved.layer.kind === 'buildings',
   )
 
-  // Floor slabs for every building, and the selected buildings' zones
-  // (decision 0032, stage 6).
-  const slabs = useMemo(
-    () => slabFeatures({ buildingIds, buildings, zoning }, metrics),
-    [buildingIds, buildings, zoning, metrics],
-  )
+  // The selected buildings' zones (decision 0032, stage 6; decision 0036).
   const overlay = useMemo(
     () => zoneOverlay({ selection, buildings, zoning }),
     [selection, buildings, zoning],
@@ -281,10 +306,19 @@ export function MapPage() {
         ? 'extruded'
         : 'plan'
   const zonedIds = zoneDrawing === 'extruded' ? overlay.buildingIds : []
-  // Zone edges in 3D, drawn by a custom WebGL layer (decision 0034).
+  // Zone edges in 3D, each drawn once, by a custom WebGL layer (decisions
+  // 0034 and 0036).
   const edges = useMemo(
-    () => (zoneDrawing === 'extruded' ? zoneEdges(overlay.cells.features) : []),
-    [zoneDrawing, overlay],
+    () =>
+      zoneDrawing === 'extruded'
+        ? zoneEdges(
+            overlay.cells.features,
+            Object.fromEntries(
+              overlay.buildingIds.map((id) => [id, buildings[id]?.footprint]),
+            ),
+          )
+        : [],
+    [zoneDrawing, overlay, buildings],
   )
   // Hollow floors stay pickable, so a click can choose another floor
   // (decision 0035).
@@ -295,47 +329,39 @@ export function MapPage() {
         ? [ZONE_LAYER_IDS.fill]
         : []
   /** What a map feature is, as a hit for the nested selection rules. */
-  const hitOf = (feature: MapGeoJSONFeature): MapHit | null => {
+  const hitOf = (feature: Picked): MapHit | null => {
     const id: unknown = feature.properties.id
     if (typeof id !== 'string') return null
     if (zonePickIds.includes(feature.layer.id)) {
       const floor: unknown = feature.properties.floor
+      const buildingId: unknown = feature.properties.buildingId
       return {
         kind: 'building',
-        buildingId: String(feature.properties.buildingId ?? ''),
+        buildingId: typeof buildingId === 'string' ? buildingId : '',
         floor: typeof floor === 'number' ? floor : null,
         zoneId: id,
       }
     }
     const layer = byPickId.get(feature.layer.id)
     if (layer?.layer.kind === 'buildings') {
-      const floorId: unknown = feature.properties.floorId
-      return {
-        kind: 'building',
-        buildingId: id,
-        floor: typeof floorId === 'string' ? floorNumberOf(floorId) : null,
-        zoneId: null,
-      }
+      return { kind: 'building', buildingId: id, floor: null, zoneId: null }
     }
     return layer ? { kind: 'grid', id } : null
   }
-  // MapLibre returns extrusion hits farthest first (decision 0036, M2 and
-  // M3), so in 3D the map orders them itself by where the pointer's ray
-  // first meets each hit's prism.
-  const cellsById = useMemo(
-    () =>
-      new Map(
-        overlay.cells.features.map((cell) => [
-          `${cell.properties.id}|${cell.properties.floorId}`,
-          cell,
-        ]),
-      ),
-    [overlay],
+  // In 3D the map picks extruded buildings and zone cells itself (decision
+  // 0036, M2 and M3): MapLibre 6 returns fill-extrusion hits farthest first,
+  // and can leave out the face in front, so a click on a roof picked the
+  // ground floor and a building behind another could win the click. The
+  // pointer's ray is cast against every drawn prism and the hits are ordered
+  // by where the ray first meets each; flat features keep MapLibre's hits,
+  // as on the ground.
+  const extrudedLayer = shown.find(
+    (resolved) => resolved.layer.kind === 'buildings' && resolved.extruded,
   )
-  const nearestFirst = (
-    features: MapGeoJSONFeature[],
+  const featuresAt = (
+    features: Picked[],
     point: { x: number; y: number },
-  ): MapGeoJSONFeature[] => {
+  ): Picked[] => {
     const map = mapRef.current?.getMap()
     if (!map || !(view3d && extrudedShown)) return features
     const center = map.getCenter()
@@ -357,34 +383,67 @@ export function MapPage() {
       const first = ring[0]
       return first ? (map.queryTerrainElevation(first) ?? 0) : 0
     }
-    return sortByDistance(features, ray, (feature) => {
-      const id: unknown = feature.properties.id
-      if (typeof id !== 'string') return null
-      if (zonePickIds.includes(feature.layer.id)) {
-        const cell = cellsById.get(`${id}|${feature.properties.floorId}`)
-        if (!cell) return null
+    type Candidate = { item: Picked; prism: Prism | null }
+    const candidates: Candidate[] = []
+    if (zoneDrawing === 'extruded') {
+      for (const cell of overlay.cells.features) {
         const ring = cell.geometry.coordinates[0] ?? []
-        return prismOf(
-          ring,
-          cell.properties.base,
-          cell.properties.top,
-          liftOf(ring),
-        )
+        candidates.push({
+          item: {
+            layer: {
+              id:
+                cell.properties.state === 'hollow'
+                  ? ZONE_LAYER_IDS.hollow
+                  : ZONE_LAYER_IDS.extrusion,
+            },
+            properties: cell.properties,
+          },
+          prism: prismOf(
+            ring,
+            cell.properties.base,
+            cell.properties.top,
+            liftOf(ring),
+          ),
+        })
       }
-      const resolved = byPickId.get(feature.layer.id)
-      const building = state.buildings[id]
-      if (!resolved?.extruded || !building) return null
-      const base: unknown = feature.properties.base
-      const top: unknown = feature.properties.top
-      return prismOf(
-        building.footprint,
-        typeof base === 'number' ? base : 0,
-        typeof top === 'number' ? top : (building.heightM ?? 0),
-        liftOf(building.footprint),
-      )
-    })
+    }
+    if (extrudedLayer) {
+      const zoned = new Set(zonedIds)
+      for (const id of state.buildingIds) {
+        const building = state.buildings[id]
+        if (!building || zoned.has(id)) continue
+        candidates.push({
+          item: {
+            layer: { id: extrudedLayer.pickId },
+            properties: { id, name: building.name },
+          },
+          prism: prismOf(
+            building.footprint,
+            0,
+            building.heightM ?? 0,
+            liftOf(building.footprint),
+          ),
+        })
+      }
+    }
+    // Flat features (grid lines and points) lie on the ground.
+    const extruded = new Set([
+      ...zonePickIds,
+      ...shown.filter((each) => each.extruded).map((each) => each.pickId),
+    ])
+    for (const feature of features) {
+      if (!extruded.has(feature.layer.id)) {
+        candidates.push({ item: feature, prism: null })
+      }
+    }
+    const hits = candidates.filter(
+      ({ prism }) => prism === null || rayPrismDistance(ray, prism) !== null,
+    )
+    return sortByDistance(hits, ray, (candidate) => candidate.prism).map(
+      (candidate) => candidate.item,
+    )
   }
-  const hitsOf = (features: MapGeoJSONFeature[] | undefined): MapHit[] =>
+  const hitsOf = (features: Picked[] | undefined): MapHit[] =>
     (features ?? []).flatMap((feature) => {
       const hit = hitOf(feature)
       return hit ? [hit] : []
@@ -527,10 +586,17 @@ export function MapPage() {
     [state.buildingIds, state.buildings],
   )
 
-  // Fit once the map is ready and whenever the footprints change.
+  // Fit once the map is ready and whenever the footprints change, unless
+  // the view state holds a camera looking at them (decision 0036): a project
+  // saved with its camera opens where it was left.
   useEffect(() => {
     const map = mapRef.current?.getMap()
     if (!map || !loaded || !bounds) return
+    const camera = view.getState().map.camera
+    if (camera && cameraInside(camera, bounds)) {
+      map.jumpTo(cameraOptions(camera, view.getState().map.view3d))
+      return
+    }
     // Keep footprints clear of the legend in the top-right corner.
     map.fitBounds(bounds, {
       padding: { top: 24, bottom: 40, left: 64, right: 232 },
@@ -538,7 +604,7 @@ export function MapPage() {
       bearing: map.getBearing(),
       duration: 0,
     })
-  }, [loaded, bounds])
+  }, [loaded, bounds, view])
 
   // Tilt into 3D, or back to a flat north-up map, when map.set3d changes.
   useEffect(() => {
@@ -550,6 +616,42 @@ export function MapPage() {
       duration: 0,
     })
   }, [loaded, view3d])
+
+  // The camera (decision 0036, L1): the map moves to it when a layout is
+  // applied, a project opens, or map.setCamera asks; after the tilt above,
+  // so a layout's own pitch wins. Every move the map makes is kept in the
+  // view state, so the project saves it and layouts catch it.
+  const cameraRequest = mapView.cameraRequest
+  useEffect(() => {
+    const map = mapRef.current?.getMap()
+    const camera = view.getState().map.camera
+    if (!map || !loaded || cameraRequest === 0 || !camera) return
+    map.jumpTo(cameraOptions(camera, view.getState().map.view3d))
+  }, [loaded, cameraRequest, view])
+  useEffect(() => {
+    const map = mapRef.current?.getMap()
+    if (!map || !loaded) return
+    const keep = () => {
+      const center = map.getCenter()
+      view.execute(
+        {
+          type: 'map.syncCamera',
+          input: {
+            center: [center.lng, center.lat],
+            zoom: map.getZoom(),
+            pitch: map.getPitch(),
+            bearing: map.getBearing(),
+          },
+        },
+        'system',
+        { record: false },
+      )
+    }
+    map.on('moveend', keep)
+    return () => {
+      map.off('moveend', keep)
+    }
+  }, [loaded, view])
 
   // Zoom to the shared selection when a map.focusSelection operation asks for
   // it. The request often arrives with a layout change, so wait two frames for
@@ -686,6 +788,7 @@ export function MapPage() {
       { additive: at.shift, planFloor },
     )
     const layer = byPickId.get(feature?.layer.id ?? '')
+    const name: unknown = feature?.properties.name
     const label =
       target !== null &&
       target !== 'clear' &&
@@ -694,10 +797,67 @@ export function MapPage() {
       layer?.metric &&
       layer.values
         ? `${id}: ${formatValue(layer.values.values[id] ?? null, layer.metric.unit)}`
-        : named || String(feature?.properties?.name ?? id)
+        : named || (typeof name === 'string' ? name : id)
     return { id, label, x: at.x, y: at.y }
   }
   const hover = pointer ? hoverOf(pointer) : null
+
+  // The hover label follows what is under a pointer that has not moved
+  // (decision 0036): after Page Up, Page Down, Escape, or a click the map
+  // draws other cells there, so once it has drawn them the hits are queried
+  // again; and Shift pressed or released changes what a click would do.
+  const interactiveIds = [
+    ...zonePickIds,
+    ...shown.map((resolved) => resolved.pickId),
+  ]
+  const pointerRef = useRef(pointer)
+  const requery = useRef<() => void>(() => {})
+  // The latest pointer and query, for the map's idle event.
+  useLayoutEffect(() => {
+    pointerRef.current = pointer
+    requery.current = () => {
+      const map = mapRef.current?.getMap()
+      const at = pointerRef.current
+      if (!map || !at) return
+      const layers = interactiveIds.filter((id) => map.getLayer(id))
+      const features =
+        layers.length > 0
+          ? map.queryRenderedFeatures([at.x, at.y], { layers })
+          : []
+      setPointer({ ...at, features: featuresAt(features, at) })
+    }
+  })
+  useEffect(() => {
+    const map = mapRef.current?.getMap()
+    if (!map || !loaded || !pointerRef.current) return
+    const run = () => requery.current()
+    map.once('idle', run)
+    // A map with nothing new to draw stays idle: query now as well.
+    if (map.loaded()) run()
+    return () => {
+      map.off('idle', run)
+    }
+  }, [loaded, overlay, zoneDrawing, planFloor])
+  useEffect(() => {
+    const onShift = (event: globalThis.KeyboardEvent) => {
+      if (event.key !== 'Shift') return
+      setPointer((at) =>
+        at && at.shift !== event.shiftKey
+          ? { ...at, shift: event.shiftKey }
+          : at,
+      )
+    }
+    const onBlur = () =>
+      setPointer((at) => (at?.shift ? { ...at, shift: false } : at))
+    window.addEventListener('keydown', onShift)
+    window.addEventListener('keyup', onShift)
+    window.addEventListener('blur', onBlur)
+    return () => {
+      window.removeEventListener('keydown', onShift)
+      window.removeEventListener('keyup', onShift)
+      window.removeEventListener('blur', onBlur)
+    }
+  }, [])
 
   if (state.buildingIds.length === 0) {
     return (
@@ -750,10 +910,7 @@ export function MapPage() {
           boxZoom={false}
           // 2D stays flat and north-up; 3D allows tilting.
           maxPitch={view3d ? 70 : 0}
-          interactiveLayerIds={[
-            ...zonePickIds,
-            ...shown.map((resolved) => resolved.pickId),
-          ]}
+          interactiveLayerIds={interactiveIds}
           onLoad={() => setLoaded(true)}
           onError={(event) => {
             // Tile and TileJSON failures name their source. Fall back to the
@@ -769,17 +926,14 @@ export function MapPage() {
           }}
           onMouseMove={(event) => {
             // The label names what a click would select at this level.
-            const features = nearestFirst(event.features ?? [], event.point)
-            setPointer(
-              features.length > 0
-                ? {
-                    features,
-                    x: event.point.x,
-                    y: event.point.y,
-                    shift: event.originalEvent.shiftKey,
-                  }
-                : null,
-            )
+            // The position is kept without hits too, so the label can be
+            // queried again where the pointer rests.
+            setPointer({
+              features: featuresAt(event.features ?? [], event.point),
+              x: event.point.x,
+              y: event.point.y,
+              shift: event.originalEvent.shiftKey,
+            })
           }}
           onMouseLeave={() => setPointer(null)}
           onClick={(event) => {
@@ -787,7 +941,7 @@ export function MapPage() {
             // zone. An empty spot selects the map itself: Properties then
             // shows the map's own properties (decision 0030).
             const project = { selection, buildings, zoning }
-            const hits = hitsOf(nearestFirst(event.features ?? [], event.point))
+            const hits = hitsOf(featuresAt(event.features ?? [], event.point))
             const options = {
               additive: event.originalEvent.shiftKey,
               planFloor,
@@ -864,8 +1018,6 @@ export function MapPage() {
             attribution={FOOTPRINT_ATTRIBUTION}
             promoteId="id"
           />
-          {/* One slab per floor (decision 0032, stage 6). */}
-          <Source id="floor-slabs" type="geojson" data={slabs} />
           <Source id={ZONE_SOURCE} type="geojson" data={overlay.cells} />
           <Source
             id="grid-lines"
@@ -900,7 +1052,8 @@ export function MapPage() {
           loaded={loaded}
           enabled={zoneDrawing === 'extruded'}
           edges={edges}
-          color={ink.primary}
+          envelopeColor={palette.zoneEdges.envelope}
+          boundaryColor={palette.zoneEdges.boundary}
           selectedColor={palette.selection}
           hollowAlpha={palette.hollow.edgeAlpha}
         />
@@ -1085,10 +1238,7 @@ function LegendBlock({
         </p>
       )}
       {view3d && resolved.extruded ? (
-        <p className={styles.legendRow}>
-          Height: floors × 3.2 m (synthetic)
-          {resolved.slabs ? ', one slab per floor' : ''}
-        </p>
+        <p className={styles.legendRow}>Height: floors × 3.2 m (synthetic)</p>
       ) : null}
     </div>
   )
@@ -1099,7 +1249,7 @@ const ZONE_LEGEND_LABELS: Record<ZoneKind, string> = {
   floor: 'Whole floors',
   perimeter: 'Perimeter zones',
   core: 'Core',
-  drawn: 'Drawn zones (synthetic)',
+  drawn: 'Drawn zones',
 }
 
 /** The selected buildings' zones in the legend (decision 0032, stage 6). */
@@ -1128,8 +1278,32 @@ function ZoneLegend({
           {drawing === 'plan' ? `, floor ${overlay.planFloor}` : ''}
         </span>
       </p>
+      {overlay.geometry ? (
+        <p className={styles.legendRow}>
+          Zone geometry: precomputed in the fixture (synthetic), standing in for
+          the backend.
+        </p>
+      ) : null}
       {drawing === 'extruded' ? (
-        <p className={styles.legendRow}>Lines mark zone edges.</p>
+        <>
+          <p className={styles.legendRow}>
+            <span
+              className={styles.lineKey}
+              style={{ background: palette.zoneEdges.envelope }}
+            />{' '}
+            Building edges
+          </p>
+          <p className={styles.legendRow}>
+            <span
+              className={styles.swatch}
+              // A boundary line between two zone colours.
+              style={{
+                background: `linear-gradient(to right, ${palette.categorical[0]} 0 40%, ${palette.zoneEdges.boundary} 40% 60%, ${palette.categorical[1]} 60%)`,
+              }}
+            />{' '}
+            Lines between zones
+          </p>
+        </>
       ) : null}
       {overlay.focus ? (
         <p className={styles.legendRow}>
@@ -1181,9 +1355,14 @@ function ZoneLegend({
       <p className={styles.legendRow}>
         <span
           className={styles.swatch}
-          style={{ background: palette.selection }}
+          // A zone keeps its colour; the selection colour outlines it.
+          style={{
+            background: palette.categorical[0],
+            outline: `2px solid ${palette.selection}`,
+            outlineOffset: -2,
+          }}
         />{' '}
-        Selected floor or zone
+        Selected floor or zone, outlined
       </p>
       {overlay.omitted > 0 ? (
         <p className={styles.legendRow}>

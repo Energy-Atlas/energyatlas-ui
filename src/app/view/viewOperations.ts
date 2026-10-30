@@ -47,6 +47,14 @@ import {
   MIN_EXAGGERATION,
 } from '../pages/terrain.ts'
 import { applyViewSnapshot } from '../layouts/savedLayout.ts'
+import {
+  describeCamera,
+  mapCameraSchema,
+  normalizeCamera,
+  parseStoredCamera,
+  sameCamera,
+  type MapCamera,
+} from './mapCamera.ts'
 import { TABLE_VIEWS, type TableView } from './tableViews.ts'
 import { describeTableChange, tableChangeIssue } from '../tables/tableChange.ts'
 import { registeredTable, registeredTableIds } from '../tables/tableRegistry.ts'
@@ -119,6 +127,17 @@ export type ViewState = {
     terrainExaggeration: number
     /** Contextual lighting for the 3D scene, display only (decision 0018). */
     lighting: LightingState
+    /**
+     * Where the map looks from (decision 0036, L1), kept in step with the
+     * map; null until the map has framed the project. Saved with the
+     * project and carried by layouts.
+     */
+    camera: MapCamera | null
+    /**
+     * Increments when the map must move to `camera` (a layout applied, a
+     * project opened, map.setCamera); the map's own moves only record it.
+     */
+    cameraRequest: number
   }
   table: { view: TableView; quickFilter: string }
   dashboard: { hiddenScenarioIds: string[]; charts: ChartSpec[] }
@@ -163,6 +182,7 @@ export type ViewState = {
 export function createInitialViewState(
   tables: Record<string, TableSettings> = {},
   layers: MapLayer[] = defaultLayers(),
+  camera: MapCamera | null = null,
 ): ViewState {
   return {
     map: {
@@ -172,6 +192,8 @@ export function createInitialViewState(
       terrain: false,
       terrainExaggeration: MIN_EXAGGERATION,
       lighting: createInitialLighting(),
+      camera,
+      cameraRequest: 0,
     },
     table: { view: 'buildings', quickFilter: '' },
     dashboard: { hiddenScenarioIds: [], charts: [] },
@@ -252,15 +274,23 @@ export const viewOperationDefinitions = {
       tables: z.record(z.string(), z.unknown()).optional(),
       /** The map's layers saved with the project; unreadable ones give the defaults. */
       layers: z.unknown().optional(),
+      /** The map's camera saved with the project (decision 0036); unreadable is none. */
+      camera: z.unknown().optional(),
     }),
-    run(view, { tables, layers }) {
+    run(view, { tables, layers, camera }) {
+      // The request keeps counting, so a map still showing the previous
+      // project sees the new camera as a change.
+      const cameraRequest = view.map.cameraRequest
+      const saved = parseStoredCamera(camera)
       Object.assign(
         view,
         createInitialViewState(
           parseStoredTables(tables),
           parseStoredLayers(layers),
+          saved,
         ),
       )
+      view.map.cameraRequest = cameraRequest + (saved ? 1 : 0)
       return applied('Reset project-specific views for the new session.')
     },
   }),
@@ -380,7 +410,7 @@ export const viewOperationDefinitions = {
 
   'map.setLayerStyle': defineViewOperation({
     title: 'Style a map layer',
-    description: `Rename a Map layer or set its opacity (0 to 100). Building layers also take colorBy (${BUILDING_COLORS.join(', ')}; a metric without data is rejected), extrude (shown at their heights in the 3D view), and floorSlabs (an extruded building drawn as a stack of floor slabs, one per storey).`,
+    description: `Rename a Map layer or set its opacity (0 to 100). Building layers also take colorBy (${BUILDING_COLORS.join(', ')}; a metric without data is rejected), and extrude (shown at their heights in the 3D view).`,
     input: z.object({
       layerId: z.string(),
       name: z.string().trim().min(1, 'Enter a name.').optional(),
@@ -392,23 +422,16 @@ export const viewOperationDefinitions = {
         .optional(),
       colorBy: z.enum(BUILDING_COLORS).optional(),
       extrude: z.boolean().optional(),
-      floorSlabs: z.boolean().optional(),
     }),
     run(view, input, project) {
       const layer = view.map.layers.find((each) => each.id === input.layerId)
       if (!layer) return rejected(unknownLayer(input.layerId), 'layerId')
       const buildingOnly =
-        input.colorBy !== undefined ||
-        input.extrude !== undefined ||
-        input.floorSlabs !== undefined
+        input.colorBy !== undefined || input.extrude !== undefined
       if (buildingOnly && layer.kind !== 'buildings') {
         return rejected(
           `"${layer.name}" shows ${LAYER_KINDS[layer.kind].label.toLowerCase()}; only building layers are colored by a metric or extruded.`,
-          input.colorBy !== undefined
-            ? 'colorBy'
-            : input.extrude !== undefined
-              ? 'extrude'
-              : 'floorSlabs',
+          input.colorBy !== undefined ? 'colorBy' : 'extrude',
         )
       }
       if (input.colorBy !== undefined && input.colorBy !== 'single') {
@@ -431,14 +454,6 @@ export const viewOperationDefinitions = {
       if (input.extrude !== undefined) {
         layer.extrude = input.extrude
         changes.push(input.extrude ? 'extruded in 3D' : 'flat in 3D')
-      }
-      if (input.floorSlabs !== undefined) {
-        layer.floorSlabs = input.floorSlabs
-        changes.push(
-          input.floorSlabs
-            ? 'extruded buildings drawn floor by floor'
-            : 'extruded buildings drawn whole',
-        )
       }
       if (changes.length === 0) return rejected('Nothing to change.')
       return applied(`Map layer "${layer.name}": ${changes.join(', ')}.`)
@@ -472,6 +487,47 @@ export const viewOperationDefinitions = {
       return applied(
         `Zoomed the map to ${ids.length} selected ${noun}.${beyond}`,
       )
+    },
+  }),
+
+  'map.setCamera': defineViewOperation({
+    title: 'Move the map camera',
+    description:
+      'Move the Map to look at a centre [longitude, latitude] at a zoom (0 to 24), with a pitch (degrees from straight down, 0 to 85; kept at 0 while the map is flat) and a bearing (degrees clockwise from north). Layouts carry the camera, and the project saves it.',
+    input: z.object({
+      center: mapCameraSchema.shape.center,
+      zoom: mapCameraSchema.shape.zoom,
+      pitch: mapCameraSchema.shape.pitch.optional(),
+      bearing: mapCameraSchema.shape.bearing.optional(),
+    }),
+    run(view, input) {
+      const camera = normalizeCamera({
+        center: input.center,
+        zoom: input.zoom,
+        pitch: view.map.view3d
+          ? (input.pitch ?? view.map.camera?.pitch ?? 0)
+          : 0,
+        bearing: input.bearing ?? view.map.camera?.bearing ?? 0,
+      })
+      view.map.camera = camera
+      view.map.cameraRequest += 1
+      return applied(`The map looks at ${describeCamera(camera)}.`)
+    },
+  }),
+
+  'map.syncCamera': defineViewOperation({
+    title: 'Keep the map camera',
+    description:
+      'Record where the Map looks from after it moved; the Map runs it, so the camera is saved with the project and caught by layouts. Call map.setCamera to move the map.',
+    internal: true,
+    input: mapCameraSchema,
+    run(view, input) {
+      const camera = normalizeCamera(input)
+      if (sameCamera(camera, view.map.camera)) {
+        return rejected('The map camera is unchanged.')
+      }
+      view.map.camera = camera
+      return applied(`The map looks at ${describeCamera(camera)}.`)
     },
   }),
 

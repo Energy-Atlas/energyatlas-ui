@@ -212,15 +212,14 @@ describe("the viewer's agent tools", () => {
     await manual.settle(200)
     const transcript = agent.store.getState().transcript
     expect(transcript.some((item) => item.kind === 'approval')).toBe(false)
-    // A building zoned its own way shows more than one zone.
+    // A building with zone geometry shows more than one zone (decision 0036).
     expect(workbench.getState().selection).toEqual({
       entityType: 'building',
       ids: ['B0439'],
     })
     const text = JSON.stringify(transcript)
-    expect(text).toContain(
-      'zoned one zone per building when the project was handed over, except 3 buildings zoned their own way: B0426 (perimeter and core per floor), B0427 (each floor a zone), B0439 (drawn zones)',
-    )
+    expect(text).toContain('25 drawn zones of a mixed-use floor plan')
+    expect(text).toContain('Zoning is done by the backend')
     expect(text).not.toMatch(/\b1 (zones|floors)\b/)
     const { agent: empty, manual: emptyManual } = viewerSetup('new')
     empty.startPreset('viewerZones')

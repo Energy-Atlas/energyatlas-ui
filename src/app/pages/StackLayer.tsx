@@ -22,8 +22,6 @@ export type ResolvedLayer = {
   values: MetricValues | null
   /** Whether a building layer stands at its heights now (3D view on). */
   extruded: boolean
-  /** Whether an extruded building layer is drawn as floor slabs (decision 0032, stage 6). */
-  slabs: boolean
   /** Every MapLibre layer id it draws, bottom to top. */
   mapIds: string[]
   /** The MapLibre layer that picks its features. */
@@ -44,7 +42,6 @@ export function resolveLayers(
         metric: null,
         values: null,
         extruded: false,
-        slabs: false,
         mapIds: [id],
         pickId: id,
       }
@@ -56,7 +53,6 @@ export function resolveLayers(
         metric: null,
         values: null,
         extruded: false,
-        slabs: false,
         mapIds: [id],
         pickId: id,
       }
@@ -80,7 +76,6 @@ export function resolveLayers(
       metric,
       values: metricId ? metrics[metricId] : null,
       extruded,
-      slabs: extruded && layer.floorSlabs,
       mapIds,
       pickId: mapIds[0] ?? prefix,
     }
@@ -184,25 +179,9 @@ export function StackLayer({
   const color = fillColor(resolved, palette)
   if (extruded) {
     // Selection never changes a building's color; in 3D it is outlined by
-    // SelectionSilhouette. Slabs stack one per floor (decision 0032, stage 6).
-    // The source changes with slabs, so the layer is keyed by it.
+    // SelectionSilhouette. Buildings whose zones are drawn are left out.
     const filter = without(zonedIds)
-    return resolved.slabs ? (
-      <Layer
-        key={`${mapIds[0]}:slabs`}
-        id={mapIds[0]}
-        type="fill-extrusion"
-        source="floor-slabs"
-        layout={{ visibility }}
-        {...(filter ? { filter } : {})}
-        paint={{
-          'fill-extrusion-color': color,
-          'fill-extrusion-base': ['get', 'base'],
-          'fill-extrusion-height': ['get', 'top'],
-          'fill-extrusion-opacity': opacity,
-        }}
-      />
-    ) : (
+    return (
       <Layer
         key={mapIds[0]}
         id={mapIds[0]}

@@ -109,6 +109,20 @@ describe.each(APPEARANCE_LIST)('$label appearance', (appearance) => {
     ).toBeGreaterThanOrEqual(TEXT)
   })
 
+  // Decision 0036: zone boundaries in 3D read on every zone colour and apart
+  // from the envelope edges; the envelope reads on the map surface.
+  it('keeps zone boundary lines apart from the zones and the envelope', () => {
+    const { envelope, boundary } = data.zoneEdges
+    expect(boundary).not.toBe(envelope)
+    expect(contrastRatio(boundary, envelope)).toBeGreaterThanOrEqual(TEXT)
+    for (const color of [...data.categorical, data.deemphasis]) {
+      expect(contrastRatio(boundary, color)).toBeGreaterThanOrEqual(GRAPHIC)
+    }
+    expect(contrastRatio(envelope, data.ink.surface)).toBeGreaterThanOrEqual(
+      GRAPHIC,
+    )
+  })
+
   it('declares the color scheme its surfaces actually use', () => {
     const lightText =
       relativeLuminance(chrome.text) > relativeLuminance(chrome.bg)

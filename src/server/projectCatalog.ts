@@ -22,6 +22,8 @@ export type SavedView = {
   layers?: unknown[]
   layouts?: unknown[]
   defaultLayoutId?: string | null
+  /** The map camera (decision 0036). */
+  camera?: unknown
 }
 export type CatalogEntry = ProjectSummary & {
   state: WorkbenchState
@@ -33,10 +35,11 @@ export type CatalogEntry = ProjectSummary & {
 export function parseSavedView(value: unknown): SavedView | null {
   const parsed = savedViewSchema.safeParse(value)
   if (!parsed.success) return null
-  const { tables, layers, layouts, defaultLayoutId } = parsed.data
+  const { tables, layers, layouts, defaultLayoutId, camera } = parsed.data
   return {
     tables,
     ...(layers ? { layers } : {}),
+    ...(camera !== undefined ? { camera } : {}),
     ...(layouts ? { layouts } : {}),
     ...(defaultLayoutId !== undefined ? { defaultLayoutId } : {}),
   }

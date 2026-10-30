@@ -206,11 +206,15 @@ export function createLayoutLibrary(options: {
     }
   }
 
-  const fingerprint = () =>
-    JSON.stringify({
+  // Moving the map is not a change to the layout: its camera is left out
+  // (decision 0036), though saving or updating a layout keeps it.
+  const fingerprint = () => {
+    const snapshot = captureViewSnapshot(view.getState())
+    return JSON.stringify({
       arrangement: layout.getArrangement(),
-      view: captureViewSnapshot(view.getState()),
+      view: { ...snapshot, map: { ...snapshot.map, camera: undefined } },
     })
+  }
 
   const saveBlocker = (): string | null => {
     if (!writable) return READ_ONLY

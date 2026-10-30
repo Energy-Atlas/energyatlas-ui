@@ -34,7 +34,6 @@ import {
   type BuildingRow,
 } from './resultsView.ts'
 import styles from './results.module.css'
-import { ZoneBreakdown } from './ZoneBreakdown.tsx'
 
 const PAGE_SIZE = 25
 const NUMBER = new Intl.NumberFormat('en-US', { maximumFractionDigits: 0 })
@@ -459,13 +458,6 @@ export function ResultsPage() {
                 ]}
               />
             </Section>
-            {buildingId ? (
-              <ZoneBreakdown
-                result={entry.result}
-                label={entry.label}
-                buildingId={buildingId}
-              />
-            ) : null}
           </>
         ) : null}
       </section>

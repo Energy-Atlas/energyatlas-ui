@@ -21,17 +21,10 @@ import type {
 } from './types.ts'
 import { PART_KINDS } from './types.ts'
 import { STAGE_IDS } from './workflow.ts'
-import type { DrawnZoning } from './zoning/drawn.ts'
 import {
-  describeZoning,
-  fallbackWarnings,
-  initialZoning,
-  resolveBuildingZoning,
+  buildingZoning,
   zoneCountFor,
-  zoningFallbacks,
-  type BuildingZoningMode,
-  type BuildingZoningSetting,
-  type ZoningSetting,
+  type BuildingZoneGeometry,
 } from './zoning/zoning.ts'
 
 // Deterministic stand-ins for the engineering stages of decision 0005.
@@ -369,14 +362,13 @@ function enrichFootprints(
 
 /**
  * One building's geospatial preprocessing, as a held item output; null when
- * it lacks floors. Its zones follow its zoning (decision 0032, stage 6): the
- * project's setting or its own override, with its drawn zones (decision 0034).
+ * it lacks floors. Its zones are the backend's zone geometry when it has some,
+ * else one zone (decision 0036).
  */
 export function preprocessBuilding(
   building: Building,
   mapped: { heightM?: number; floorAreaM2?: number } = {},
-  zoning: BuildingZoningSetting = initialZoning(),
-  drawn: DrawnZoning | null = null,
+  geometry: BuildingZoneGeometry | null = null,
 ): HeldPreprocessingOutput | null {
   if (building.floors === null) return null
   const floors = building.floors
@@ -388,7 +380,7 @@ export function preprocessBuilding(
   return {
     heightM,
     floorAreaM2,
-    zoneCount: zoneCountFor({ ...building, heightM }, zoning, drawn) ?? 1,
+    zoneCount: zoneCountFor({ ...building, heightM }, geometry) ?? 1,
   }
 }
 
@@ -434,44 +426,22 @@ export function publishPreprocessing(
     building.zoneCount = output.zoneCount
     zones += output.zoneCount
   }
-  // The run's input signature includes the stage's edit revision, which the
-  // zoning setting and building overrides bump, so the setting now is the
-  // one the items used.
-  const zoning: ZoningSetting = {
-    mode: state.zoning.mode,
-    perimeterDepthM: state.zoning.perimeterDepthM,
-  }
-  const overrides: Record<string, BuildingZoningMode> = {}
-  for (const id of membership) {
-    const override = state.zoning.overrides[id]
-    if (override !== undefined) overrides[id] = override
-  }
   // Floors are sliced from the storeys this run used until it runs again.
   const storeys: Record<string, number> = {}
   for (const id of membership) {
     const floors = state.buildings[id]?.floors
     if (typeof floors === 'number') storeys[id] = floors
   }
-  state.zoning.published = {
-    ...zoning,
-    runId: context.runId,
-    storeys,
-    overrides,
-  }
-  const fallbacks = fallbackWarnings(
-    zoningFallbacks(
-      membership.flatMap((id) => {
-        const building = state.buildings[id]
-        return building ? [building] : []
-      }),
-      (building) => ({
-        setting: resolveBuildingZoning({ ...zoning, overrides }, building.id),
-        drawn: state.zoning.drawn[building.id] ?? null,
-      }),
-    ),
-  )
-  const own = Object.keys(overrides).length
-  const described = `${describeZoning(zoning).toLowerCase()}${own > 0 ? `; ${own} building${own === 1 ? '' : 's'} zoned ${own === 1 ? 'its' : 'their'} own way` : ''}`
+  state.zoning.published = { runId: context.runId, storeys }
+  // Zones come from the backend's geometry (decision 0036); in the demo,
+  // precomputed in the fixture for a few buildings.
+  const withGeometry = membership.filter(
+    (id) => buildingZoning(state, id)?.source === 'geometry',
+  ).length
+  const described =
+    withGeometry > 0
+      ? `${withGeometry} building${withGeometry === 1 ? '' : 's'} zoned by ${withGeometry === 1 ? 'its' : 'their'} zone geometry, the rest one zone each`
+      : 'one zone per building'
   const provenance = fromStage(STAGE_IDS.preprocessing, context)
   upsertAsset(state, {
     id: 'asset:buildings',
@@ -494,7 +464,7 @@ export function publishPreprocessing(
   return {
     ok: true,
     summary: `Derived heights, floor areas, and ${zones} thermal zones (${described}) for ${membership.length} buildings.`,
-    warnings: fallbacks.map((warning) => warning.message),
+    warnings: [],
   }
 }
 

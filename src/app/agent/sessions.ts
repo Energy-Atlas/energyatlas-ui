@@ -14,14 +14,9 @@ import {
 } from '../pages/dashboardData.ts'
 import { formatCount, formatEnergy } from '../format.ts'
 import {
-  BUILDING_ZONING_LABELS,
-  DEFAULT_PERIMETER_DEPTH_M,
-  ZONING_FALLBACK_CODES,
   buildingZoning,
-  describeAppliedZoning,
-  describeZoning,
+  describeBuildingZoning,
   type BuildingZoning,
-  type BuildingZoningMode,
 } from '../../domain/zoning/zoning.ts'
 import { zonesLayer } from '../pages/mapLayers.ts'
 import type { ViewState } from '../view/viewOperations.ts'
@@ -972,42 +967,28 @@ const calibrationSession: ScriptedSession = {
 }
 
 /**
- * The building whose zones show the zoning best: the largest footprint that
- * kept its zoning (no fallback), else the largest with zones at all.
+ * The building whose zones show zoning best: the largest footprint with the
+ * backend's zone geometry, else the largest with zones at all.
  */
 function showcaseZoning(state: WorkbenchState): BuildingZoning | null {
   let best: BuildingZoning | null = null
   let bestArea = -1
-  let bestKept = false
+  let bestGeometry = false
   for (const id of state.buildingIds) {
     const zoning = buildingZoning(state, id)
     const area = state.buildings[id]?.footprintAreaM2 ?? 0
     if (!zoning) continue
-    const kept = zoning.fallback === null
-    if ((kept && !bestKept) || (kept === bestKept && area > bestArea)) {
+    const geometry = zoning.source === 'geometry'
+    if (
+      (geometry && !bestGeometry) ||
+      (geometry === bestGeometry && area > bestArea)
+    ) {
       best = zoning
       bestArea = area
-      bestKept = kept
+      bestGeometry = geometry
     }
   }
   return best
-}
-
-/**
- * The buildings the last run zoned their own way (decision 0034), as a
- * clause after the project's zoning, or nothing when there are none.
- */
-function overridesClause(state: WorkbenchState): string {
-  const overrides = state.zoning.published?.overrides ?? {}
-  const ids = Object.keys(overrides)
-    .filter((id) => state.buildings[id])
-    .sort()
-  if (ids.length === 0) return ''
-  const named = ids.map((id) => {
-    const mode = overrides[id]
-    return mode ? `${id} (${BUILDING_ZONING_LABELS[mode].toLowerCase()})` : id
-  })
-  return `, except ${ids.length === 1 ? 'one building' : `${ids.length} buildings`} zoned ${ids.length === 1 ? 'its' : 'their'} own way: ${named.join(', ')}`
 }
 
 /** What a building's floors and zones are, for the agent's answers. */
@@ -1022,77 +1003,38 @@ function describeBuildingZones(
   ).length
   const drawn = zoning.zones.filter((zone) => zone.kind === 'drawn').length
   const parts =
-    drawn > 0
-      ? `${formatCount(drawn, 'drawn zone')} (synthetic outlines stored with the project)`
-      : cores > 0
-        ? `${formatCount(cores, 'core')} and ${formatCount(perimeters, 'perimeter zone')}, ${perimeters / Math.max(1, cores)} a floor`
-        : formatCount(zoning.zones.length, 'zone')
-  return `**${name}** (${zoning.buildingId}) has ${formatCount(zoning.floors.length, 'floor')} of ${zoning.floorHeightM} m (its height over its storeys) and ${formatCount(zoning.zones.length, 'zone')}, ${describeAppliedZoning(zoning).toLowerCase()}: ${parts}.${zoning.fallback ? ` ${zoning.fallback.message}` : ''}`
+    zoning.source === 'single'
+      ? 'it has no zone geometry from the backend, so it is one zone, as in RC'
+      : drawn > 0
+        ? `${formatCount(drawn, 'drawn zone')} of a mixed-use floor plan`
+        : cores > 0
+          ? `${formatCount(cores, 'core')} and ${formatCount(perimeters, 'perimeter zone')}, ${perimeters / Math.max(1, cores)} a floor`
+          : formatCount(zoning.zones.length, 'zone')
+  return `**${name}** (${zoning.buildingId}) has ${formatCount(zoning.floors.length, 'floor')} of ${zoning.floorHeightM} m (its height over its storeys) and ${formatCount(zoning.zones.length, 'zone')}, ${describeBuildingZoning(zoning)}: ${parts}.`
 }
 
-/** Fallback warnings of the last Geospatial preprocessing run, in a sentence. */
-function fallbackSentence(state: WorkbenchState): string {
-  const warnings = state.issues.filter(
-    (issue) =>
-      issue.stageId === STAGE_IDS.preprocessing &&
-      ZONING_FALLBACK_CODES.some((code) =>
-        issue.message.startsWith(`${code}:`),
-      ),
-  )
-  return warnings.length === 0
-    ? 'No building fell back to one zone per floor.'
-    : `Some buildings fell back to one zone per floor, as the preprocessing warnings say: ${warnings.map((issue) => issue.message.split(' (')[0]).join('; ')}.`
-}
+const ZONE_GEOMETRY_NOTE =
+  'Zoning is done by the backend (decision 0036): zones arrive as geometry, in this demo precomputed in the fixture for a few buildings, and the map and Properties only display them. A building without zone geometry is one zone, as in RC.'
 
 const zoningSession: ScriptedSession = {
   id: 'zoning',
-  label: 'Zone by perimeter and core',
-  prompt:
-    'Zone the buildings by perimeter and core, then show me the floors and zones of the largest building.',
+  label: 'Floors and zones of a building',
+  prompt: 'Show me the floors and zones of the largest zoned building.',
   description:
-    "Proposes RC's perimeter-and-core zoning with a 4.5 m perimeter (it waits for approval), reruns Geospatial preprocessing (approval), then selects the largest zoned building and shows its floor slabs and zones on the 3D map.",
-  keywords: [
-    /\bzon(e|es|ed|ing)\b/,
-    /\bperimeter\b/,
-    /\bfloors? and zones?\b/,
-    /\bslabs?\b/,
-  ],
+    'Makes sure Geospatial preprocessing is current (it waits for approval to run it), then selects the largest building with zone geometry and shows its zones on the 3D map through view operations.',
+  keywords: [/\bzon(e|es|ed|ing)\b/, /\bperimeter\b/, /\bfloors? and zones?\b/],
   steps: [
     reason(
-      "Zoning is an input of Geospatial preprocessing: changing it outdates that stage and every later one until it runs again. Floors are each building's height over its storeys; zones are display only.",
+      "Floors are each building's height over its storeys, as the last Geospatial preprocessing run sliced them. " +
+        ZONE_GEOMETRY_NOTE,
     ),
-    ensure([STAGE_IDS.enrichment], 'Finding floor counts to zone'),
-    (context) => {
-      const zoning = context.state().zoning
-      if (zoning.mode === 'perimeterCore') {
-        return reason(
-          `The zoning is already ${describeZoning(zoning).toLowerCase()}.`,
-        )
-      }
-      return propose(
-        'Zone by perimeter and core',
-        `Set the zoning to ${describeZoning({ mode: 'perimeterCore', perimeterDepthM: DEFAULT_PERIMETER_DEPTH_M }).toLowerCase()} (RC's PerimeterCore). Geospatial preprocessing and every later stage become outdated until preprocessing runs again.`,
-        [
-          {
-            title: 'Set the zoning to perimeter and core, 4.5 m deep',
-            call: command({
-              type: 'zoning.set',
-              input: {
-                mode: 'perimeterCore',
-                perimeterDepthM: DEFAULT_PERIMETER_DEPTH_M,
-              },
-            }),
-          },
-        ],
-      )
-    },
     ensure([STAGE_IDS.preprocessing], 'Zoning the buildings', 'current'),
     (context) => {
       const state = context.state()
       const zoning = showcaseZoning(state)
       if (!zoning) {
         return say(
-          'No building has zones yet: Geospatial preprocessing has not zoned them by the setting.',
+          'No building has zones yet: Geospatial preprocessing has not run.',
         )
       }
       return [
@@ -1116,31 +1058,30 @@ const zoningSession: ScriptedSession = {
           viewCall({ type: 'map.focusSelection', input: {} }),
         ),
         say(
-          `${describeBuildingZones(state, zoning)} The map draws its zones, one colour per zone with the core in grey, and every other building as floor slabs. ${fallbackSentence(state)} Choose a floor or zone in Properties, or on the Table page's Floors and Zones views, to highlight it.`,
+          `${describeBuildingZones(state, zoning)} The map draws its zones, one colour per zone with the core in grey, lines on the building's edges and, in their own colour, between its zones. Choose a floor or zone on the map, in Properties, or on the Table page's Floors and Zones views.`,
         ),
         reference('Show its floors and zones', { type: 'inspection' }),
-        reference('Show the zoning Geospatial preprocessing applied', {
-          type: 'stage',
-          stageId: STAGE_IDS.preprocessing,
-        }),
       ]
     },
   ],
 }
 
-/** One building per mode the published overrides use, drawn zones first. */
+/** The buildings with zone geometry, one per kind: drawn plans, whole floors, then perimeter and core. */
 function zoningCases(state: WorkbenchState): string[] {
-  const order: BuildingZoningMode[] = [
-    'drawn',
-    'floors',
-    'perimeterCore',
-    'single',
-  ]
-  const overrides = state.zoning.published?.overrides ?? {}
-  return order.flatMap((mode) => {
-    const id = Object.keys(overrides)
-      .sort()
-      .find((each) => overrides[each] === mode && state.buildings[each])
+  const kindOf = (id: string) => {
+    const zoning = buildingZoning(state, id)
+    if (zoning?.source !== 'geometry') return null
+    const kinds = new Set(zoning.zones.map((zone) => zone.kind))
+    if (kinds.has('drawn')) return 0
+    if (kinds.has('floor')) return 1
+    if (kinds.has('perimeter')) return 2
+    return 3
+  }
+  const ids = Object.keys(state.zoning.geometry)
+    .filter((id) => state.buildings[id])
+    .sort()
+  return [0, 1, 2, 3].flatMap((rank) => {
+    const id = ids.find((each) => kindOf(each) === rank)
     return id ? [id] : []
   })
 }
@@ -1193,7 +1134,7 @@ function levelSteps(
         ]
       : []),
     say(
-      `Then one level at a time in **${name}**: the building with all its zones, floor ${floor.number} drawn solid with its other floors hollow around it, and ${zone ? `**${zone.name}** highlighted, the floor's other zones muted` : 'its zones'}. On the map a click goes the same way, building, then floor, then zone; Escape goes back up a level, and Page Up and Page Down move to the floor above or below.`,
+      `Then one level at a time in **${name}**: the building with all its zones, floor ${floor.number} drawn solid with its other floors hollow around it, and ${zone ? `**${zone.name}** outlined in the selection colour, the floor's other zones keeping their colours` : 'its zones'}. On the map a click goes the same way, building, then floor, then zone; Escape goes back up a level, and Page Up and Page Down move to the floor above or below.`,
     ),
   ]
 }
@@ -1202,55 +1143,25 @@ const zoningCasesSession: ScriptedSession = {
   id: 'zoningCases',
   label: 'Zoning cases in 3D',
   prompt:
-    'Show me the buildings zoned their own way in 3D, then one floor and one zone of the drawn building.',
+    'Show me the buildings with zone geometry in 3D, then one floor and one zone of the drawn building.',
   description:
-    "Each building can override the project's zoning (decision 0034). Proposes drawn zones for a building that has drawn outlines but does not use them (it waits for approval), reruns Geospatial preprocessing if needed (approval), selects one building per zoning case and shows their zones in 3D, then goes down the selection levels of decision 0035: the drawn building, its floor 2 (the other floors hollow), and a zone on it.",
+    'Makes sure Geospatial preprocessing is current (approval), selects one building per kind of zone geometry (a drawn floor plan, each floor a zone, and perimeter and core) and shows their zones in 3D, then goes down the selection levels of decision 0035: the drawn building, its floor 2 (the other floors hollow), and a zone on it.',
   keywords: [
     /\bdrawn zones?\b/,
     /\bzoning cases?\b/,
+    /\bzone geometry\b/,
     /\bper[- ]building zoning\b/,
-    /\bzoned (its|their) own way\b/,
     /\bhollow\b/,
   ],
   steps: [
-    reason(
-      "A building's zoning override is an input of Geospatial preprocessing, like the project's zoning: changing it outdates that stage and every later one until it runs again. Drawn zones are synthetic outlines stored with the project; zones are display only.",
-    ),
-    ensure([STAGE_IDS.enrichment], 'Finding floor counts to zone'),
-    (context) => {
-      const state = context.state()
-      const candidate = Object.keys(state.zoning.drawn)
-        .sort()
-        .find(
-          (id) => state.buildings[id] && state.zoning.overrides[id] !== 'drawn',
-        )
-      if (!candidate) {
-        return reason(
-          'Every building with drawn outlines is already zoned by them.',
-        )
-      }
-      const name = state.buildings[candidate]?.name ?? candidate
-      return propose(
-        `Zone ${candidate} by its drawn zones`,
-        `Set ${name} (${candidate}) to ${BUILDING_ZONING_LABELS.drawn.toLowerCase()}, overriding the project's ${describeZoning(state.zoning).toLowerCase()}. Geospatial preprocessing and every later stage become outdated until preprocessing runs again.`,
-        [
-          {
-            title: `Zone ${candidate} by its drawn zones`,
-            call: command({
-              type: 'zoning.setBuilding',
-              input: { buildingId: candidate, mode: 'drawn' },
-            }),
-          },
-        ],
-      )
-    },
+    reason(ZONE_GEOMETRY_NOTE),
     ensure([STAGE_IDS.preprocessing], 'Zoning the buildings', 'current'),
     (context) => {
       const state = context.state()
       const ids = zoningCases(state)
       if (ids.length === 0) {
         return say(
-          "No building is zoned its own way yet. Choose a building's zoning in its Properties, then run Geospatial preprocessing.",
+          'No building has zone geometry from the backend, so every building is one zone. Select a building to see its floors.',
         )
       }
       const layer = zonesLayer(context.view().map.layers)
@@ -1279,7 +1190,7 @@ const zoningCasesSession: ScriptedSession = {
           viewCall({ type: 'map.focusSelection', input: {} }),
         ),
         say(
-          `${zonings.map((zoning) => describeBuildingZones(state, zoning)).join(' ')} ${layer ? 'Lines on the zone edges let neighbouring zones read apart without colour.' : "No shown building layer extrudes, so the zones are drawn flat; turn on Extrude to height in the map's Properties."} ${fallbackSentence(state)}`,
+          `${zonings.map((zoning) => describeBuildingZones(state, zoning)).join(' ')} ${layer ? 'Lines between zones, in their own colour, let neighbouring zones read apart without colour.' : "No shown building layer extrudes, so the zones are drawn flat; turn on Extrude to height in the map's Properties."}`,
         ),
         ...levelSteps(state, ids[0]),
         reference('Show its floors and zones', { type: 'inspection' }),
@@ -1443,27 +1354,26 @@ const viewerZonesSession: ScriptedSession = {
   label: 'Floors and zones of a building',
   prompt: 'Show me the floors and zones of a building.',
   description:
-    'Reads the handed-over zoning, selects a building zoned its own way (else the largest zoned building), and shows its floor slabs and zones on the 3D map through view operations.',
-  keywords: [/\bzones?\b/, /\bfloors and zones\b/, /\bslabs?\b/],
+    'Selects a building with zone geometry (else the largest building) and shows its floors and zones on the 3D map through view operations.',
+  keywords: [/\bzones?\b/, /\bfloors and zones\b/],
   steps: [
     reason(
-      "The package holds the zoning the last Geospatial preprocessing run applied; floors and zones are derived from it and every building's height and storeys. Nothing in the package changes.",
+      'The package holds the zone geometry the backend delivered and the storeys the last Geospatial preprocessing run used; floors and zones are derived from them. Nothing in the package changes.',
     ),
     (context) => {
       const state = context.state()
-      // A building zoned its own way shows more than one zone per building.
-      const [overridden] = zoningCases(state)
-      const own = overridden ? buildingZoning(state, overridden) : null
+      // A building with zone geometry shows more than one zone.
+      const [zoned] = zoningCases(state)
+      const own = zoned ? buildingZoning(state, zoned) : null
       const zoning = own ?? showcaseZoning(state)
       if (!zoning) {
         return say(
-          'This package has no zones to show: Geospatial preprocessing had not zoned the buildings by a zoning setting when it was handed over. Ask the modeller for a new handover.',
+          'This package has no zones to show: Geospatial preprocessing had not run when it was handed over. Ask the modeller for a new handover.',
         )
       }
-      const published = state.zoning.published
       return [
         tool(
-          `Select ${zoning.buildingId}, ${own ? 'a building zoned its own way' : 'the largest zoned building'}`,
+          `Select ${zoning.buildingId}, ${own ? 'a building with zone geometry' : 'the largest zoned building'}`,
           command({
             type: 'selection.set',
             input: { entityType: 'building', ids: [zoning.buildingId] },
@@ -1482,10 +1392,10 @@ const viewerZonesSession: ScriptedSession = {
           viewCall({ type: 'map.focusSelection', input: {} }),
         ),
         say(
-          `The buildings were zoned ${published ? describeZoning(published).toLowerCase() : 'by a setting'} when the project was handed over${overridesClause(state)}. ${describeBuildingZones(state, zoning)} ${fallbackSentence(state)} Zones are display only, and per-zone results are a synthetic split of the building's demand by floor area.`,
+          `${describeBuildingZones(state, zoning)} ${ZONE_GEOMETRY_NOTE} Per-zone results are not shown for now.`,
         ),
         reference('Show its floors and zones', { type: 'inspection' }),
-        reference('Show the zoning Geospatial preprocessing applied', {
+        reference('Show where the zones come from', {
           type: 'stage',
           stageId: STAGE_IDS.preprocessing,
         }),

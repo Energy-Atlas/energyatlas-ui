@@ -1,11 +1,11 @@
 import { AxeBuilder } from '@axe-core/playwright'
 import { expect, properties, test, type Page } from './test.ts'
 
-// Floors and zones (decision 0032, stage 6): the zoning setting in Geospatial
-// preprocessing's Properties, the stage outdated and rerun, floor slabs and
-// zones on the map, the floors and zones tables in Properties, a selected
-// zone shared with the Table page and the map, the synthetic per-zone split
-// on Results, and the viewer showing them without the zoning control.
+// Floors and zones (decision 0032, stage 6; decision 0036): zones are the
+// backend's geometry, shown in Geospatial preprocessing's Properties as where
+// zones come from, the floors and zones tables in Properties, a selected
+// zone shared with the Table page and the map, no floor slabs and no
+// per-zone results, and the viewer showing them.
 
 async function seriousViolations(page: Page) {
   const results = await new AxeBuilder({ page }).analyze()
@@ -53,113 +53,68 @@ async function selectBuilding(page: Page, id: string) {
   await expect(properties(page).getByText(`Building ${id}`)).toBeVisible()
 }
 
-test('zoning outdates preprocessing; a rerun draws slabs and zones shared by Properties, Table, and Map', async ({
+test('zones are the backend’s geometry: Properties, Table, and Map share them, with no zoning control, slabs, or per-zone results', async ({
   page,
 }) => {
   test.setTimeout(120_000)
   await page.goto('/?fixture=complete')
   await expect(page.getByRole('main', { name: 'Workspace' })).toBeVisible()
 
-  // The zoning setting is an input of Geospatial preprocessing.
+  // Geospatial preprocessing says where zones come from and offers no setting.
   let panel = await openPreprocessing(page)
-  const zoning = panel.getByRole('region', { name: 'Zoning' })
-  await expect(zoning).toContainText(
-    'The last run zoned by: one zone per building.',
+  await expect(panel.getByTestId('zone-geometry-note')).toContainText(
+    'Zoning is done by the backend: the browser shows the zone geometry it delivers and never zones a building itself. 3 buildings have zone geometry (B0439, B0427, B0426); every other building is one zone, as in RC.',
   )
+  await expect(panel.getByRole('region', { name: 'Zoning' })).toHaveCount(0)
+  await expect(panel.getByRole('radio')).toHaveCount(0)
   await expect(
-    zoning.getByRole('radio', { name: /One zone per building \(Single\)/ }),
-  ).toBeChecked()
-  // Nothing changed: Save explains itself instead of doing nothing.
-  await zoning.getByRole('button', { name: 'Save zoning' }).focus()
-  await page.keyboard.press('Enter')
-  await expect(page.getByTestId('status-notice')).toContainText(
-    'The zoning has not been changed.',
-  )
-  const perimeterCore = zoning.getByRole('radio', {
-    name: /Perimeter and core per floor/,
-  })
-  await perimeterCore.focus()
-  await page.keyboard.press('Space')
-  await expect(perimeterCore).toBeChecked()
-  const depth = zoning.getByRole('textbox', { name: 'Perimeter depth (m)' })
-  await expect(depth).toHaveValue('4.5')
-  // An empty depth is an error, not a silent default.
-  await depth.fill('')
-  await depth.press('Tab')
-  await expect(zoning).toContainText('Enter a depth from 1 to 15 m.')
-  await depth.fill('4.5')
-  await depth.press('Tab')
-  await expect(zoning).toContainText('Saving makes this stage')
-  await zoning.getByRole('button', { name: 'Save zoning' }).click()
-  await expect(page.getByTestId('status-notice')).toContainText(
-    'Zoning set to perimeter and core per floor, 4.5 m deep',
-  )
-  await expect(panel.getByText('Outdated').first()).toBeVisible()
-  // Later stages are outdated too.
-  await expect(
-    page
-      .getByRole('region', { name: 'Workflow graph' })
-      .getByRole('button', { name: /Baseline model setup/ }),
-  ).toContainText('Outdated')
+    panel.getByRole('textbox', { name: /Perimeter depth/ }),
+  ).toHaveCount(0)
 
-  // Before the rerun, a building's zones still follow the last run.
-  await selectBuilding(page, 'B0464')
+  // Properties lists the floors and zones of a building with zone geometry,
+  // and offers no zoning control.
+  await selectBuilding(page, 'B0426')
   panel = properties(page)
   const floorsZones = panel.getByTestId('floors-and-zones')
   await expect(floorsZones).toContainText(
-    'The zoning setting is now perimeter and core per floor, 4.5 m deep',
+    "3 floors of 3.2 m (height over storeys); 15 zones, perimeter and core zones on each floor, from the backend's zone geometry. Zones are display only.",
   )
+  await expect(floorsZones).toContainText('Zone geometry: Synthetic zone')
   await expect(
-    panel.getByRole('grid', { name: 'Zones of Building 464' }),
-  ).toContainText('Whole building')
-
-  // Rerun Geospatial preprocessing.
-  panel = await openPreprocessing(page)
-  await panel
-    .getByRole('button', { name: 'Rerun Geospatial preprocessing' })
-    .click()
-  await expect(panel.getByText('Complete').first()).toBeVisible({
-    timeout: 30_000,
-  })
-  await expect(panel.getByRole('region', { name: 'Zoning' })).toContainText(
-    'The last run zoned by: perimeter and core per floor, 4.5 m deep.',
-  )
-
-  // Properties lists the floors and zones; the core comes first.
-  await selectBuilding(page, 'B0464')
-  panel = properties(page)
-  const floors = panel.getByRole('grid', { name: 'Floors of Building 464' })
-  await expect(floors.getByRole('row')).toHaveCount(6)
-  const zones = panel.getByRole('grid', { name: 'Zones of Building 464' })
+    panel.getByRole('region', { name: 'Zoning of this building' }),
+  ).toHaveCount(0)
+  await expect(
+    panel.getByRole('button', { name: /in 3D on the Map/ }),
+  ).toHaveCount(0)
+  const floors = panel.getByRole('grid', { name: 'Floors of Building 426' })
+  await expect(floors.getByRole('row')).toHaveCount(4)
+  const zones = panel.getByRole('grid', { name: 'Zones of Building 426' })
   await expect(zones.getByRole('row').nth(1)).toContainText('Floor 1 core')
-  await expect(zones).toContainText('Floor 1 perimeter 1')
-  await expect(panel.getByTestId('floors-and-zones')).toContainText(
-    '5 floors of 3.2 m',
-  )
-  await expect(panel).toContainText('Baseline share')
+  await expect(zones).toContainText('Floor 1 perimeter 1 (north)')
+  await expect(panel).not.toContainText('Baseline share')
 
-  // The map draws its zones and every other building as slabs.
+  // The map draws its zones.
   await panel
-    .getByRole('button', { name: 'Show Building 464 and its zones on the Map' })
+    .getByRole('button', { name: 'Show Building 426 and its zones on the Map' })
     .click()
   await expect(tab(page, 'Map')).toHaveAttribute('aria-selected', 'true')
   const legend = page.getByTestId('zone-legend')
-  await expect(legend).toContainText('Zones of B0464, floor 1')
+  await expect(legend).toContainText('Zones of B0426, floor 1')
+  await expect(legend).toContainText(
+    'Zone geometry: precomputed in the fixture',
+  )
   await expect(legend).toContainText('Perimeter zones')
   await expect(legend).toContainText('Core')
 
   // Choosing a zone in Properties selects it.
-  const zoneRow = zones.getByRole('row', {
-    name: 'Floor 2 perimeter 1 (south)',
-  })
-  await zoneRow.click()
+  await zones.getByRole('row', { name: 'Floor 2 perimeter 1 (north)' }).click()
   await expect(page.getByTestId('status-notice')).toContainText(
-    'Selected zone Floor 2 perimeter 1 (south) of Building 464.',
+    'Selected zone Floor 2 perimeter 1 (north) of Building 426.',
   )
   await expect(
-    panel.getByText(/^Zone B0464:F2:Z2 of building B0464/),
+    panel.getByText(/^Zone B0426:F2:Z2 of building B0426/),
   ).toBeVisible()
-  await expect(legend).toContainText('Zones of B0464, floor 2')
+  await expect(legend).toContainText('Zones of B0426, floor 2')
 
   // The Table page shares the selection.
   await panel
@@ -169,8 +124,11 @@ test('zoning outdates preprocessing; a rerun draws slabs and zones shared by Pro
   await expect(
     table.getByRole('tab', { name: 'Zones', exact: true }),
   ).toHaveAttribute('aria-selected', 'true')
+  await expect(table).toContainText(
+    '3 buildings zoned by their zone geometry, the rest one zone each',
+  )
   const selectedRow = table.locator('.ag-row-selected [col-id="id"]')
-  await expect(selectedRow).toHaveText('B0464:F2:Z2')
+  await expect(selectedRow).toHaveText('B0426:F2:Z2')
   // Adding the next zone by keyboard selects both, everywhere.
   await table.locator('.ag-row-selected [col-id="name"]').click()
   await page.keyboard.press('ArrowDown')
@@ -178,11 +136,8 @@ test('zoning outdates preprocessing; a rerun draws slabs and zones shared by Pro
   await expect(page.getByTestId('status-notice')).toContainText(
     'Selected 2 zone(s).',
   )
-  await expect(
-    panel.getByText('Zone 2 selected of building B0464'),
-  ).toBeVisible()
 
-  // In 3D, slabs are a building layer setting, on by default.
+  // In 3D, buildings are no longer drawn as floor slabs.
   await panel
     .getByRole('button', { name: 'Clear selection from Properties' })
     .click()
@@ -198,26 +153,19 @@ test('zoning outdates preprocessing; a rerun draws slabs and zones shared by Pro
     .getByRole('grid', { name: 'Map layers, top first' })
     .getByRole('row', { name: /Buildings/ })
     .click()
+  const settings = panel.getByRole('group', { name: /^Settings of/ })
   await expect(
-    panel
-      .getByRole('group', { name: /^Settings of/ })
-      .getByRole('checkbox', { name: 'Draw floors as slabs' }),
+    settings.getByRole('checkbox', { name: 'Extrude to height' }),
   ).toBeChecked()
-  await expect(page.getByRole('group', { name: 'Map legend' })).toContainText(
-    'one slab per floor',
-  )
+  await expect(
+    settings.getByRole('checkbox', { name: 'Draw floors as slabs' }),
+  ).toHaveCount(0)
+  await expect(
+    page.getByRole('group', { name: 'Map legend' }),
+  ).not.toContainText('slab')
   expect(await seriousViolations(page)).toEqual([])
 
-  // A building that cannot be inset falls back, and says why.
-  await selectBuilding(page, 'B0002')
-  await expect(properties(page).getByTestId('floors-and-zones')).toContainText(
-    'fell back to one zone per floor',
-  )
-  await expect(properties(page).getByTestId('floors-and-zones')).toContainText(
-    '(perimeter_inset_failed)',
-  )
-
-  // Results split the selected building's demand by zone, labelled synthetic.
+  // Results show no per-zone split.
   await page.getByRole('main').first().focus()
   await page.keyboard.press('Control+k')
   await page.keyboard.type('Results')
@@ -226,46 +174,31 @@ test('zoning outdates preprocessing; a rerun draws slabs and zones shared by Pro
   await results
     .getByRole('button', { name: 'Show results of B0464', exact: true })
     .click()
-  await results
-    .getByRole('button', {
-      name: /Show Building 464 by zone \(synthetic split\)/,
-    })
-    .click()
-  await expect(
-    results.getByRole('grid', { name: /of Building 464 by zone/ }),
-  ).toContainText('Floor 1 core')
+  await expect(results).toContainText('Building 464')
+  await expect(results.getByRole('button', { name: /by zone/ })).toHaveCount(0)
   expect(await seriousViolations(page)).toEqual([])
 })
 
-test('states: no heights yet, one zone per building, and a refused zoning on its field', async ({
+test('states: no heights yet, and one zone for a building without zone geometry', async ({
   page,
 }) => {
-  // Three fixtures and a Location setup run: close to the default 30 s alone.
+  // Two fixtures and a Location setup run: close to the default 30 s alone.
   test.setTimeout(90_000)
   await page.goto('/?fixture=partway')
   await selectBuilding(page, 'B0039')
   const floorsZones = properties(page).getByRole('grid', {
     name: 'Zones of Building 39',
   })
-  // Partway has preprocessed by RC's default: one zone per building.
+  // Without zone geometry from the backend, a building is one zone.
   await expect(floorsZones.getByRole('row')).toHaveCount(2)
   await expect(floorsZones).toContainText('Whole building')
+  await expect(properties(page).getByTestId('floors-and-zones')).toContainText(
+    'with no zone geometry from the backend',
+  )
   await tab(page, 'Table').click()
   await page.getByRole('tab', { name: 'Floors', exact: true }).click()
   await expect(page.getByRole('region', { name: 'Table' })).toContainText(
     'Every building’s floors',
-  )
-
-  // A server refusal lands on its field.
-  await page.goto('/?fixture=partway&fault=rejectInput')
-  const panel = await openPreprocessing(page)
-  const zoning = panel.getByRole('region', { name: 'Zoning' })
-  const byFloor = zoning.getByRole('radio', { name: /One zone per floor/ })
-  await byFloor.focus()
-  await page.keyboard.press('Space')
-  await zoning.getByRole('button', { name: 'Save zoning' }).click()
-  await expect(zoning).toContainText(
-    'The server rejected this value (demo condition: input rejected).',
   )
 
   // Footprints without heights: no floors or zones yet, and why.
@@ -291,7 +224,7 @@ test('states: no heights yet, one zone per building, and a refused zoning on its
   expect(await seriousViolations(page)).toEqual([])
 })
 
-test('the viewer shows floors and zones and leaves the zoning control out', async ({
+test('the viewer shows floors and zones, and where they come from', async ({
   page,
 }) => {
   test.setTimeout(90_000)
@@ -345,7 +278,7 @@ test('the viewer shows floors and zones and leaves the zoning control out', asyn
   await expect(page.getByTestId('zone-legend')).toContainText('Whole building')
 
   // The agent's floors-and-zones session leads to Geospatial preprocessing,
-  // shown as handed over: its zoning is a fact, and the form is left out.
+  // shown as handed over: where zones come from is a fact.
   await showTab(page, 'Reasoning')
   const agent = page.getByRole('region', { name: 'Reasoning' })
   await agent
@@ -354,22 +287,22 @@ test('the viewer shows floors and zones and leaves the zoning control out', asyn
     })
     .click()
   const transcript = agent.getByRole('log', { name: 'Agent transcript' })
-  await expect(transcript).toContainText(
-    'zoned one zone per building when the project was handed over',
-    { timeout: 20_000 },
-  )
+  await expect(transcript).toContainText('Zoning is done by the backend', {
+    timeout: 20_000,
+  })
   await transcript
-    .getByRole('button', {
-      name: 'Show the zoning Geospatial preprocessing applied',
-    })
+    .getByRole('button', { name: 'Show where the zones come from' })
     .click()
   const stage = properties(page)
   await expect(
     stage.getByRole('heading', { name: 'Geospatial preprocessing' }),
   ).toBeVisible()
-  await expect(stage.getByText('Zoning', { exact: true })).toBeVisible()
+  await expect(stage.getByText('Zones', { exact: true })).toBeVisible()
   await expect(
-    stage.getByText('One zone per building', { exact: true }),
+    stage.getByText(
+      '3 buildings with zone geometry from the backend (synthetic); the rest one zone each',
+      { exact: true },
+    ),
   ).toBeVisible()
   await expect(stage.getByRole('region', { name: 'Zoning' })).toHaveCount(0)
   await expect(stage.getByRole('radio')).toHaveCount(0)

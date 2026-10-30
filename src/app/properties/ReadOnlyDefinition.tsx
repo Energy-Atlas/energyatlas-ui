@@ -10,15 +10,22 @@ import {
   type WorkbenchState,
 } from '../../domain/types.ts'
 import { STAGE_IDS } from '../../domain/workflow.ts'
-import {
-  BUILDING_ZONING_LABELS,
-  describeZoning,
-} from '../../domain/zoning/zoning.ts'
+import { buildingZoning } from '../../domain/zoning/zoning.ts'
 import { useStageStates, useWorkbenchSnapshot } from '../WorkbenchContext.tsx'
 import { PropertyList, type Property } from '../components/PropertyList.tsx'
 import { StateBadge } from '../components/StateBadge.tsx'
 import { formatDateTime } from '../format.ts'
 import styles from './properties.module.css'
+
+/** How many buildings show the backend's zone geometry, for the viewer's facts. */
+function zoneGeometryFact(state: WorkbenchState): string {
+  const zoned = state.buildingIds.filter(
+    (id) => buildingZoning(state, id)?.source === 'geometry',
+  ).length
+  return zoned > 0
+    ? `${zoned} building${zoned === 1 ? '' : 's'} with zone geometry from the backend (synthetic); the rest one zone each`
+    : 'One zone per building'
+}
 
 const KIND_LABELS: Record<SelectableEntity, string> = {
   building: 'Building',
@@ -217,30 +224,15 @@ export function ReadOnlyDefinition({
               ? `${stage.lastRun.outcome === 'succeeded' ? 'Succeeded' : 'Failed'} ${formatDateTime(stage.lastRun.finishedAt)}`
               : 'Never ran',
           },
-          // The zoning setting is shown, never offered (decision 0032, stage 6).
+          // Zones are the backend's geometry, shown only (decision 0036).
           ...(id === STAGE_IDS.preprocessing
             ? [
                 {
-                  label: 'Zoning',
+                  label: 'Zones',
                   value: state.zoning.published
-                    ? describeZoning(state.zoning.published)
-                    : 'Not zoned by a setting yet',
+                    ? zoneGeometryFact(state)
+                    : 'Not zoned yet',
                 },
-                // Buildings zoned their own way (decision 0034).
-                ...(state.zoning.published &&
-                Object.keys(state.zoning.published.overrides).length > 0
-                  ? [
-                      {
-                        label: 'Building overrides',
-                        value: Object.entries(state.zoning.published.overrides)
-                          .map(
-                            ([buildingId, mode]) =>
-                              `${buildingId}: ${BUILDING_ZONING_LABELS[mode].toLowerCase()}`,
-                          )
-                          .join('; '),
-                      },
-                    ]
-                  : []),
               ]
             : []),
         ]}

@@ -127,24 +127,7 @@ import {
   type SelectableEntity,
 } from './types.ts'
 import { selectableExists } from './selection.ts'
-import {
-  BUILDING_ZONING_CHOICES,
-  BUILDING_ZONING_LABELS,
-  MAX_PERIMETER_DEPTH_M,
-  MIN_PERIMETER_DEPTH_M,
-  ZONING_MODES,
-  ZONING_MODE_LABELS,
-  buildingFloors,
-  buildingZoning,
-  describeBuildingZoning,
-  depthOverrides,
-  describeZoning,
-  plannedZoning,
-  projectZoningChanges,
-  ownerOf,
-  resolveBuildingZoning,
-  sameBuildingZoning,
-} from './zoning/zoning.ts'
+import { buildingFloors, buildingZoning, ownerOf } from './zoning/zoning.ts'
 import {
   STAGE_IDS,
   hasActiveTask,
@@ -435,8 +418,7 @@ function stageItem(
   const output = preprocessBuilding(
     building,
     computedOverrides(state, building),
-    resolveBuildingZoning(state.zoning, building.id),
-    state.zoning.drawn[building.id] ?? null,
+    state.zoning.geometry[building.id] ?? null,
   )
   return { output, missing: output ? null : 'The floor count is missing.' }
 }
@@ -2279,156 +2261,6 @@ export const commandDefinitions = {
     },
   }),
 
-  'zoning.set': defineCommand({
-    title: 'Set zoning',
-    description: `Set how "Geospatial preprocessing" divides buildings into thermal zones, in RC's three modes: single (${ZONING_MODE_LABELS.single.toLowerCase()}), floors (${ZONING_MODE_LABELS.floors.toLowerCase()}), or perimeterCore (a core and one perimeter zone per footprint edge on every floor; short edges join the zone before them). perimeterDepthM, ${MIN_PERIMETER_DEPTH_M} to ${MAX_PERIMETER_DEPTH_M} m, is the perimeter band's depth and is kept for perimeterCore. Buildings whose footprint cannot be inset fall back to one zone per floor with a warning. Geospatial preprocessing and every later stage become outdated until it runs again; zones are display only.`,
-    input: z.object({
-      mode: z.enum(ZONING_MODES, {
-        error: 'Choose single, floors, or perimeterCore.',
-      }),
-      perimeterDepthM: z
-        .number({ error: 'Enter a depth in metres.' })
-        .min(
-          MIN_PERIMETER_DEPTH_M,
-          `Use a depth from ${MIN_PERIMETER_DEPTH_M} to ${MAX_PERIMETER_DEPTH_M} m.`,
-        )
-        .max(
-          MAX_PERIMETER_DEPTH_M,
-          `Use a depth from ${MIN_PERIMETER_DEPTH_M} to ${MAX_PERIMETER_DEPTH_M} m.`,
-        )
-        .optional(),
-    }),
-    undoable: true,
-    run(state, { mode, perimeterDepthM }) {
-      const stage = state.workflow.stages[STAGE_IDS.preprocessing]
-      if (!stage) {
-        return rejected('The workflow has no "Geospatial preprocessing" stage.')
-      }
-      if (hasActiveTask(state.tasks, stage.id)) {
-        return rejected(
-          `"${stage.name}" is running. Wait for it to finish before changing the zoning.`,
-        )
-      }
-      const next = {
-        mode,
-        perimeterDepthM:
-          perimeterDepthM === undefined
-            ? state.zoning.perimeterDepthM
-            : Math.round(perimeterDepthM * 10) / 10,
-      }
-      if (
-        next.mode === state.zoning.mode &&
-        next.perimeterDepthM === state.zoning.perimeterDepthM
-      ) {
-        return rejected(
-          `The zoning is already ${describeZoning(next).toLowerCase()}.`,
-          perimeterDepthM === undefined ? 'mode' : 'perimeterDepthM',
-        )
-      }
-      const zonesChange = projectZoningChanges(state, next)
-      // Buildings overridden to perimeter and core use the project's depth
-      // whatever its mode (decision 0034).
-      const depthUsers = depthOverrides(state)
-      const depthOnly =
-        next.mode === state.zoning.mode &&
-        next.mode !== 'perimeterCore' &&
-        next.perimeterDepthM !== state.zoning.perimeterDepthM
-      state.zoning.mode = next.mode
-      state.zoning.perimeterDepthM = next.perimeterDepthM
-      if (!zonesChange) {
-        // A depth kept for perimeter and core changes no zone today.
-        return applied(
-          `Perimeter depth set to ${next.perimeterDepthM} m for perimeter and core zoning; the current zoning, ${describeZoning(next).toLowerCase()}, does not use it, and no building is zoned by perimeter and core of its own.`,
-        )
-      }
-      stage.editRevision = nextRevision(state)
-      if (depthOnly) {
-        return applied(
-          `Perimeter depth set to ${next.perimeterDepthM} m. The project's zoning, ${describeZoning(next).toLowerCase()}, does not use it, but ${depthUsers.length} building${depthUsers.length === 1 ? ' zoned' : 's zoned'} by perimeter and core of ${depthUsers.length === 1 ? 'its' : 'their'} own do (${depthUsers.slice(0, 5).join(', ')}${depthUsers.length > 5 ? ', …' : ''}). "${stage.name}" and the stages after it are outdated until it runs again.`,
-        )
-      }
-      const own = Object.keys(state.zoning.overrides).filter(
-        (id) => state.buildings[id],
-      ).length
-      return applied(
-        `Zoning set to ${describeZoning(next).toLowerCase()}. "${stage.name}" and the stages after it are outdated until it runs again.${own > 0 ? ` ${own} building${own === 1 ? ' keeps its' : 's keep their'} own zoning.` : ''}`,
-      )
-    },
-  }),
-
-  'zoning.setBuilding': defineCommand({
-    title: 'Set a building’s zoning',
-    description: `Zone one building its own way instead of the project's zoning (decision 0034), or return it to the project default. mode is default (follow the project's zoning), single (${BUILDING_ZONING_LABELS.single.toLowerCase()}), floors (${BUILDING_ZONING_LABELS.floors.toLowerCase()}), perimeterCore (${BUILDING_ZONING_LABELS.perimeterCore.toLowerCase()}, at the project's perimeter depth), or drawn (the building's drawn zone outlines stored with the project, synthetic). A building set to perimeterCore or drawn whose footprint or drawn zones do not allow it falls back to one zone per floor with a coded reason. When the building's zones change, "Geospatial preprocessing" and every later stage become outdated until it runs again; zones are display only.`,
-    input: z.object({
-      buildingId: z.string().min(1, 'Choose a building.'),
-      mode: z.enum(BUILDING_ZONING_CHOICES, {
-        error:
-          'Choose default, single, floors, perimeterCore, or drawn for the building.',
-      }),
-    }),
-    undoable: true,
-    run(state, { buildingId, mode }) {
-      const stage = state.workflow.stages[STAGE_IDS.preprocessing]
-      if (!stage) {
-        return rejected('The workflow has no "Geospatial preprocessing" stage.')
-      }
-      const building = state.buildings[buildingId]
-      if (!building) {
-        return rejected(`Building ${buildingId} does not exist.`, 'buildingId')
-      }
-      if (hasActiveTask(state.tasks, stage.id)) {
-        return rejected(
-          `"${stage.name}" is running. Wait for it to finish before changing a building's zoning.`,
-          'mode',
-        )
-      }
-      const label = `${building.name} (${building.id})`
-      const current = state.zoning.overrides[buildingId] ?? 'default'
-      if (current === mode) {
-        return rejected(
-          mode === 'default'
-            ? `${label} already follows the project's zoning, ${describeZoning(state.zoning).toLowerCase()}.`
-            : `${label} is already zoned by ${BUILDING_ZONING_LABELS[mode].toLowerCase()}.`,
-          'mode',
-        )
-      }
-      const before = resolveBuildingZoning(state.zoning, buildingId)
-      if (mode === 'default') delete state.zoning.overrides[buildingId]
-      else state.zoning.overrides[buildingId] = mode
-      const after = resolveBuildingZoning(state.zoning, buildingId)
-      const what =
-        mode === 'default'
-          ? `${label} follows the project's zoning again, ${describeZoning(state.zoning).toLowerCase()}.`
-          : `${label} is zoned by ${describeBuildingZoning(after).toLowerCase()}, overriding the project's ${describeZoning(state.zoning).toLowerCase()}.`
-      // A planned fallback is said now rather than discovered after the run.
-      const planned = plannedZoning(state, buildingId)
-      const fallback =
-        planned?.fallback ??
-        (planned === null &&
-        after.mode === 'drawn' &&
-        !state.zoning.drawn[buildingId]
-          ? {
-              code: 'drawn_zones_missing',
-              message:
-                'Drawn zones fell back to one zone per floor: this building has no drawn zones.',
-            }
-          : null)
-      const fallbackNote =
-        fallback && (after.mode === 'drawn' || after.mode === 'perimeterCore')
-          ? ` ${fallback.message} (${fallback.code})`
-          : ''
-      if (sameBuildingZoning(before, after)) {
-        return applied(
-          `${what} Its zones are unchanged, so nothing is outdated.${fallbackNote}`,
-        )
-      }
-      stage.editRevision = nextRevision(state)
-      return applied(
-        `${what} "${stage.name}" and the stages after it are outdated until it runs again.${fallbackNote}`,
-      )
-    },
-  }),
-
   'workflow.insertStage': defineCommand({
     title: 'Insert custom stage',
     description:
@@ -2888,7 +2720,7 @@ export const commandDefinitions = {
   'selection.set': defineCommand({
     title: 'Select',
     description:
-      'Replace the shared selection with buildings, grid elements, floors (ids <building>:F<n>) or zones (ids <building>:Z1 or <building>:F<n>:Z<k>, core first) of the published zoning, or one definition (archetype, schedule, measure, scenario, or asset) for the Properties panel, or one entry of the synthetic archetype, schedule, or measure library to show read-only. Unknown ids are rejected.',
+      'Replace the shared selection with buildings, grid elements, floors (ids <building>:F<n>) or zones (ids <building>:Z1 or <building>:F<n>:Z<k>, in the order of the zone geometry) of the published zoning, or one definition (archetype, schedule, measure, scenario, or asset) for the Properties panel, or one entry of the synthetic archetype, schedule, or measure library to show read-only. Unknown ids are rejected.',
     input: z.object({
       entityType: z.enum(SELECTABLE_ENTITIES),
       ids: z.array(z.string().min(1)).max(10_000),

@@ -4,7 +4,6 @@ import {
   Bell,
   BellDot,
   BookmarkPlus,
-  Box,
   Columns2,
   Command,
   FilePlus,
@@ -49,8 +48,6 @@ import {
   useWorkbenchSnapshot,
 } from './WorkbenchContext.tsx'
 import { freshRunAndSelect, retryAndSelect } from './pages/jobs/jobActions.ts'
-import { selectedBuildingIds } from '../domain/zoning/zoning.ts'
-import { showZonesIn3d, zones3dBlocker } from './pages/showZones3d.ts'
 import {
   cancelBlocker,
   freshRunBlocker,
@@ -138,7 +135,6 @@ export function useAppActions(dialogs: ShellDialogs): AppAction[] {
   const layoutVersion = useLayoutVersion()
   const view = useServices().view
   const jobsView = useViewState((current) => current.jobs)
-  const mapLayers = useViewState((current) => current.map.layers)
   const library = useStore(layouts.store)
   // Hand over's blocker reads the handover's own state and the session's
   // saved state, so the File menu follows both.
@@ -389,22 +385,6 @@ export function useAppActions(dialogs: ShellDialogs): AppAction[] {
             ? null
             : 'Nothing is selected. Select buildings or grid elements on the Map or Table page, or a definition in a table, first.',
         perform: () => showInspection(),
-      },
-      {
-        id: 'view.showZones3d',
-        label: 'Show zones in 3D',
-        group: 'View',
-        icon: Box,
-        disabledReason: zones3dBlocker(
-          state,
-          mapLayers,
-          selectedBuildingIds(state.selection),
-        ),
-        perform: () =>
-          showZonesIn3d(
-            { workbench, view, layout },
-            selectedBuildingIds(state.selection),
-          ),
       },
       {
         id: 'view.toggleMaximize',
@@ -730,7 +710,6 @@ export function useAppActions(dialogs: ShellDialogs): AppAction[] {
     transitioning,
     view,
     jobsView,
-    mapLayers,
     toastsShown,
     layouts,
     library,
@@ -774,7 +753,6 @@ const VIEWER_ACTION_IDS = new Set([
   'view.toggleLeftSide',
   'view.toggleRightSide',
   'view.inspectSelection',
-  'view.showZones3d',
   'view.toggleMaximize',
   'view.resetLayout',
   'view.layouts',

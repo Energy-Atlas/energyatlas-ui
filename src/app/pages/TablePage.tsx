@@ -32,12 +32,13 @@ import { PanelHeader } from '../components/PanelHeader.tsx'
 import { useWorkbenchTable } from '../components/useWorkbenchTable.ts'
 import { usePendingReason } from '../service/usePendingReason.ts'
 import { TABLE_VIEWS } from '../view/tableViews.ts'
-import { FloorsTable, ZonesTable } from './FloorZoneTables.tsx'
 import {
-  ZONING_SOURCE_LABELS,
-  describeBuildingZoning,
-  resolveBuildingZoning,
-} from '../../domain/zoning/zoning.ts'
+  FloorsTable,
+  ZonesTable,
+  zonedBy,
+  zonedByColumns,
+  type ZonedBy,
+} from './FloorZoneTables.tsx'
 import {
   ROW_SELECTION,
   useSelectionHandler,
@@ -52,10 +53,7 @@ type BuildingRow = Building & {
   partIds: Record<PartKind, string | null>
   archetype: string | null
   assignedBy: string | null
-  /** The building's zoning setting now, and whether it is its own (decision 0034). */
-  zoning: string
-  zoningSource: string
-}
+} & ZonedBy
 
 /** Column id of a part column. */
 const partColumn = (kind: PartKind) => `part:${kind}`
@@ -243,9 +241,7 @@ function BuildingsTable() {
             archetype: archetypeLabel({ overrides, archetypes }, building),
             assignedBy: assignedBy || null,
             baselineMwh: kwh === undefined ? null : Math.round(kwh / 100) / 10,
-            zoning: describeBuildingZoning(resolveBuildingZoning(zoning, id)),
-            zoningSource:
-              ZONING_SOURCE_LABELS[resolveBuildingZoning(zoning, id).source],
+            ...zonedBy({ zoning, buildings }, id),
           },
         ]
       }),
@@ -327,20 +323,7 @@ function BuildingsTable() {
         type: 'number',
         width: 100,
       },
-      {
-        id: 'zoning',
-        header: 'Zoning',
-        value: (row) => row.zoning,
-        type: 'enum',
-        width: 200,
-      },
-      {
-        id: 'zoningSource',
-        header: 'Zoning from',
-        value: (row) => row.zoningSource,
-        type: 'enum',
-        width: 170,
-      },
+      ...zonedByColumns<BuildingRow>(),
       {
         id: 'archetype',
         header: 'Archetype',

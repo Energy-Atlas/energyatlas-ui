@@ -3,15 +3,11 @@ import { useMemo, useRef, useState } from 'react'
 import type { Building } from '../../domain/types.ts'
 import { STAGE_IDS } from '../../domain/workflow.ts'
 import {
-  ZONING_SOURCE_LABELS,
   buildingFloors,
   buildingZoning,
-  describeAppliedZoning,
-  describeZoning,
-  publishedZoningOf,
+  describeBuildingZoning,
   zoneTypeLabel,
   type Floor,
-  type PublishedZoning,
   type Zone,
 } from '../../domain/zoning/zoning.ts'
 import { useWorkbenchSnapshot } from '../WorkbenchContext.tsx'
@@ -30,30 +26,30 @@ import {
 // building's floors, and every zone of the published zoning, sharing the
 // selection with Properties and the Map. Zones are display only.
 
-/** How the last run zoned the row's building, and whether by the project default or an override (decision 0034). */
-type ZonedBy = { zoning: string | null; zoningSource: string | null }
+/**
+ * How the last run zoned the row's building, and whether its zones are the
+ * backend's zone geometry or one zone for want of any (decision 0036).
+ */
+export type ZonedBy = { zoning: string | null; zoningSource: string | null }
 type FloorRow = Floor & { buildingName: string } & ZonedBy
 type ZoneRow = Zone & { buildingName: string } & ZonedBy
 
-function zonedBy(
+export function zonedBy(
   state: Parameters<typeof buildingZoning>[0],
   buildingId: string,
 ): ZonedBy {
   const zoning = buildingZoning(state, buildingId)
-  const published = publishedZoningOf(state, buildingId)
   return {
-    zoning: zoning ? describeAppliedZoning(zoning) : null,
-    zoningSource: published ? ZONING_SOURCE_LABELS[published.source] : null,
+    zoning: zoning ? describeBuildingZoning(zoning) : null,
+    zoningSource: zoning
+      ? zoning.source === 'geometry'
+        ? 'Zone geometry'
+        : 'No zone geometry'
+      : null,
   }
 }
 
-/** The published zoning in words: the project's mode and how many buildings were zoned their own way. */
-function describePublished(published: PublishedZoning): string {
-  const own = Object.keys(published.overrides).length
-  return `${describeZoning(published).toLowerCase()} by default${own > 0 ? `; ${own} building${own === 1 ? '' : 's'} zoned ${own === 1 ? 'its' : 'their'} own way` : ''}`
-}
-
-function zonedByColumns<Row extends ZonedBy>(): DataColumn<Row>[] {
+export function zonedByColumns<Row extends ZonedBy>(): DataColumn<Row>[] {
   return [
     {
       id: 'zoning',
@@ -65,7 +61,7 @@ function zonedByColumns<Row extends ZonedBy>(): DataColumn<Row>[] {
     },
     {
       id: 'zoningSource',
-      header: 'Zoning from',
+      header: 'Zones from',
       value: (row) => row.zoningSource,
       type: 'enum',
       empty: 'Not zoned',
@@ -306,20 +302,27 @@ export function ZonesTable() {
         title="No zones yet"
         message={
           zoning.published === null && buildings.some((b) => b.heightM !== null)
-            ? 'These buildings were zoned before the zoning setting existed. Run Geospatial preprocessing again to zone them by the setting.'
-            : 'Zones appear once Geospatial preprocessing has zoned the buildings by the zoning setting.'
+            ? 'Zones appear once Geospatial preprocessing runs again.'
+            : 'Zones appear once Geospatial preprocessing has run: the backend zones the buildings.'
         }
         stageId={STAGE_IDS.preprocessing}
       />
     )
   }
-  const published = zoning.published
+  const withGeometry = new Set(
+    rows
+      .filter((row) => row.zoningSource === 'Zone geometry')
+      .map((row) => row.buildingId),
+  ).size
   return (
     <div className={styles.tableView}>
       <p className={styles.hint}>
-        Every zone the last Geospatial preprocessing run made
-        {published ? ` (${describePublished(published)})` : ''}. Zones are
-        display only; choose one to see it in Properties and on the Map.
+        Every zone the last Geospatial preprocessing run published:{' '}
+        {withGeometry > 0
+          ? `${withGeometry} building${withGeometry === 1 ? '' : 's'} zoned by ${withGeometry === 1 ? 'its' : 'their'} zone geometry, the rest one zone each`
+          : 'one zone per building'}
+        . Zones are the backend&rsquo;s and display only; choose one to see it
+        in Properties and on the Map.
       </p>
       <GridTable<ZoneRow>
         id="table.zones"

@@ -4,10 +4,13 @@ import type { DataPalette } from '../appearance/appearances.ts'
 
 // The selected buildings' zones on the map (decision 0032, stage 6), drawn
 // over the "zones" source above the layer stack. Flat, one floor's plan with
-// outlines; in 3D, every zone and floor as its own cell between slab gaps.
-// With a floor or zone selected (decision 0035), the selected floor is solid
-// and the building's other floors are hollow: a faint shell drawn after the
-// solid cells and their edges, so the selected floor reads through it.
+// outlines; in 3D, every zone and floor as its own cell, storey on storey,
+// so together they make up the building's extrusion (decision 0036). With a
+// floor or zone selected (decision 0035), the selected floor is solid and
+// the building's other floors are hollow: a faint shell drawn after the
+// solid cells and their edges, so the selected floor reads through it. A
+// selected zone keeps its colour, as do its neighbours (decision 0036): its
+// edges in the selection colour mark it.
 
 export const ZONE_SOURCE = 'zones'
 
@@ -88,15 +91,7 @@ export function ZoneLayers({
           source={ZONE_SOURCE}
           filter={['!', isHollow] as unknown as FilterSpecification}
           paint={{
-            'fill-extrusion-color': [
-              'match',
-              ['get', 'state'],
-              'selected',
-              palette.selection,
-              'muted',
-              palette.hollow.muted,
-              color,
-            ] as unknown as ExpressionSpecification,
+            'fill-extrusion-color': color,
             'fill-extrusion-base': ['get', 'base'],
             'fill-extrusion-height': ['get', 'top'],
             'fill-extrusion-opacity': 0.95,

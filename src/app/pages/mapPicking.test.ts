@@ -10,7 +10,10 @@ import {
   type CameraView,
   type Ray,
 } from './mapPicking.ts'
+import { buildFixture } from '../../server/fixtures.ts'
+import { clickTarget, type MapHit } from './mapSelection.ts'
 import { toMercator } from './silhouette.ts'
+import { zoneOverlay } from './zoneFeatures.ts'
 
 // Picking the nearest extruded hit (decision 0036, M2 and M3).
 
@@ -122,5 +125,85 @@ describe('pointerRay', () => {
     const distance = rayPrismDistance(ray, prismOf(footprint, 0, 20))
     expect(distance).not.toBeNull()
     expect(distance ?? 2).toBeLessThan(1)
+  })
+})
+
+describe('a click on a selected floor (M2)', () => {
+  const NOW = () => new Date('2026-10-29T12:00:00Z')
+  const complete = buildFixture('complete', NOW)
+  const state = {
+    ...complete,
+    selection: { entityType: 'floor' as const, ids: ['B0439:F2'] },
+  }
+  const cells = zoneOverlay(state).cells.features
+
+  /** A click from a tilted camera straight at the middle of a zone's top on floor 2. */
+  function clickOn(zoneId: string) {
+    const cell = cells.find(
+      (each) => each.properties.id === zoneId && each.properties.floor === 2,
+    )
+    if (!cell) throw new Error(`No cell ${zoneId}.`)
+    const ring = (cell.geometry.coordinates[0] ?? []).slice(0, -1)
+    const middle: LngLat = [
+      ring.reduce((sum, point) => sum + point[0], 0) / ring.length,
+      ring.reduce((sum, point) => sum + point[1], 0) / ring.length,
+    ]
+    const top = toMercator(middle, cell.properties.top)
+    const ground = toMercator(middle, 0)
+    // The camera stands 300 m up and to the south, looking through the
+    // middle of the zone's top down to the ground beyond it.
+    const origin = toMercator([middle[0], middle[1] - 0.002], 300)
+    const scale = (ground[2] - origin[2]) / (top[2] - origin[2])
+    const ray = {
+      origin,
+      direction: [
+        (top[0] - origin[0]) * scale,
+        (top[1] - origin[1]) * scale,
+        ground[2] - origin[2],
+      ] as [number, number, number],
+    }
+    // MapLibre's order: the cells in source order, the bottom floor first.
+    const sorted = sortByDistance(
+      cells.filter(
+        (each) =>
+          rayPrismDistance(
+            ray,
+            prismOf(
+              each.geometry.coordinates[0] ?? [],
+              each.properties.base,
+              each.properties.top,
+            ),
+          ) !== null,
+      ),
+      ray,
+      (each) =>
+        prismOf(
+          each.geometry.coordinates[0] ?? [],
+          each.properties.base,
+          each.properties.top,
+        ),
+    )
+    const hits: MapHit[] = sorted.map((each) => ({
+      kind: 'building',
+      buildingId: 'B0439',
+      floor: each.properties.floor,
+      zoneId: each.properties.id,
+    }))
+    return clickTarget(state, hits)
+  }
+
+  it('selects the zone under the pointer, wherever on the floor the click lands', () => {
+    expect(clickOn('B0439:F2:Z2')).toEqual({
+      entityType: 'zone',
+      ids: ['B0439:F2:Z2'],
+    })
+    expect(clickOn('B0439:F2:Z3')).toEqual({
+      entityType: 'zone',
+      ids: ['B0439:F2:Z3'],
+    })
+    expect(clickOn('B0439:F2:Z7')).toEqual({
+      entityType: 'zone',
+      ids: ['B0439:F2:Z7'],
+    })
   })
 })

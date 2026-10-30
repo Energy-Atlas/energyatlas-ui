@@ -17,6 +17,11 @@ import {
   type ChartSpec,
 } from '../view/chartSpec.ts'
 import { TABLE_VIEWS, type TableView } from '../view/tableViews.ts'
+import {
+  mapCameraSchema,
+  normalizeCamera,
+  type MapCamera,
+} from '../view/mapCamera.ts'
 import type { JobFilter, ViewState } from '../view/viewOperations.ts'
 
 // A saved layout (decision 0032): a named panel arrangement plus the view
@@ -45,6 +50,8 @@ export type ViewSnapshot = {
     terrain: boolean
     terrainExaggeration: number
     lighting: LightingState
+    /** Where the map looks from (decision 0036); layouts saved before it have none. */
+    camera?: MapCamera | null
   }
   /** The Table page's view and text filter. */
   table: { view: TableView; quickFilter: string }
@@ -145,6 +152,7 @@ export function captureViewSnapshot(view: ViewState): ViewSnapshot {
       terrain: view.map.terrain,
       terrainExaggeration: view.map.terrainExaggeration,
       lighting: view.map.lighting,
+      camera: view.map.camera,
     },
     table: view.table,
     dashboard: view.dashboard,
@@ -174,6 +182,7 @@ const SECTIONS = {
       diffusionPercent: percent(LIGHTING_LIMITS.diffusionPercent),
       hazePercent: percent(LIGHTING_LIMITS.hazePercent),
     }),
+    camera: mapCameraSchema.nullable().optional(),
   }),
   table: z.object({
     view: z.enum(TABLE_VIEWS),
@@ -254,6 +263,13 @@ export function applyViewSnapshot(
     view.map.terrain = map.terrain && map.view3d
     view.map.terrainExaggeration = map.terrainExaggeration
     view.map.lighting = map.lighting
+    // The camera (decision 0036): the map moves to it; a layout without one
+    // leaves the map where it is.
+    if (map.camera) {
+      const camera = normalizeCamera(map.camera)
+      view.map.camera = map.view3d ? camera : { ...camera, pitch: 0 }
+      view.map.cameraRequest += 1
+    }
   }
 
   const table = section('table')

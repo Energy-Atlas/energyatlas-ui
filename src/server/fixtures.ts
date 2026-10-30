@@ -3,10 +3,7 @@ import { runStageNow } from '../domain/jobs/runNow.ts'
 import type { WorkbenchState } from '../domain/types.ts'
 import { createWorkbench, type Workbench } from '../domain/workbench.ts'
 import { STAGE_IDS, deriveStageStates } from '../domain/workflow.ts'
-import {
-  FIXTURE_ZONING_OVERRIDES,
-  fixtureDrawnZones,
-} from '../domain/zoning/drawnFixture.ts'
+import { fixtureZoneGeometry } from '../domain/zoning/fixtureGeometry.ts'
 
 // Project fixtures for the Demo conditions picker (decision 0023). Each one is
 // reached by running the real domain commands, so it is a state the workflow
@@ -68,23 +65,6 @@ function defineScenario(engine: Workbench) {
   )
 }
 
-/**
- * Three neighbouring buildings zoned their own way (decision 0034), set as a
- * user would in their Properties before Geospatial preprocessing zones them.
- */
-function overrideZoning(engine: Workbench) {
-  const state = engine.getState()
-  for (const [buildingId, mode] of Object.entries(FIXTURE_ZONING_OVERRIDES)) {
-    if (!state.buildings[buildingId] || state.zoning.overrides[buildingId]) {
-      continue
-    }
-    engine.execute(
-      { type: 'zoning.setBuilding', input: { buildingId, mode } },
-      'system',
-    )
-  }
-}
-
 /** The next stage in workflow order that can run, or null. */
 function nextRunnable(state: WorkbenchState): string | null {
   const states = deriveStageStates(state.workflow, state.tasks)
@@ -96,10 +76,10 @@ function nextRunnable(state: WorkbenchState): string | null {
 }
 
 export function buildFixture(id: FixtureId, now: () => Date): WorkbenchState {
-  // Every fixture carries the demo's drawn zones, stored with the project
-  // like a delivered floor plan (decision 0034).
+  // Every fixture carries the demo's zone geometry for three buildings,
+  // standing in for what the backend's zoning delivers (decision 0036).
   const initialState = createInitialState()
-  initialState.zoning.drawn = fixtureDrawnZones()
+  initialState.zoning.geometry = fixtureZoneGeometry()
   const engine = createWorkbench({
     initialState,
     operationIdPrefix: `fixture-${id}-op`,
@@ -122,7 +102,6 @@ export function buildFixture(id: FixtureId, now: () => Date): WorkbenchState {
     const stageId = nextRunnable(state)
     if (!stageId) break
     if (stageId === STAGE_IDS.scenarioDefinitions) defineScenario(engine)
-    if (stageId === STAGE_IDS.preprocessing) overrideZoning(engine)
     runStageNow(engine, stageId, 'system')
   }
   const state = engine.getState()

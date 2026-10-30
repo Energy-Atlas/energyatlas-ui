@@ -239,6 +239,7 @@ function createCoreServices(mode: AppMode): CoreServices {
   client.attachView(() => ({
     tables: view.getState().tables,
     layers: view.getState().map.layers,
+    camera: view.getState().map.camera,
     ...layouts.forSave(),
   }))
   const lifecycle = createProjectLifecycle({
@@ -286,6 +287,7 @@ function createCoreServices(mode: AppMode): CoreServices {
           input: {
             tables: snapshot.meta.view?.tables,
             layers: snapshot.meta.view?.layers,
+            camera: snapshot.meta.view?.camera,
           },
         },
         'system',

@@ -114,41 +114,44 @@ describe('handover package', () => {
     expect(read.ok).toBe(true)
     if (read.ok) {
       expect(read.package.model.zoning).toEqual({
-        mode: 'single',
-        perimeterDepthM: 4.5,
-        overrides: {},
-        drawn: {},
+        geometry: {},
         published: null,
       })
     }
   })
 
-  test('carries per-building zoning and drawn zones, and opens packages made before them (decision 0034)', () => {
+  test('carries the zone geometry, and opens packages made with the zoning settings decision 0036 removed', () => {
     const pkg = packageOf()
     const read = readHandoverText(JSON.stringify(pkg))
     expect(read.ok).toBe(true)
     if (!read.ok) return
     const zoning = read.package.model.zoning
-    expect(zoning.overrides).toEqual({
-      B0439: 'drawn',
-      B0427: 'floors',
-      B0426: 'perimeterCore',
-    })
-    expect(zoning.published?.overrides).toEqual(zoning.overrides)
-    expect(zoning.drawn.B0439?.plans).toHaveLength(3)
+    expect(Object.keys(zoning.geometry).sort()).toEqual([
+      'B0426',
+      'B0427',
+      'B0439',
+    ])
+    expect(zoning.geometry.B0439?.plans).toHaveLength(3)
     const older = JSON.parse(JSON.stringify(pkg)) as {
       model: {
         zoning: Record<string, unknown> & { published: Record<string, unknown> }
       }
     }
-    delete older.model.zoning.overrides
-    delete older.model.zoning.drawn
-    delete older.model.zoning.published.overrides
+    older.model.zoning.mode = 'perimeterCore'
+    older.model.zoning.perimeterDepthM = 4.5
+    older.model.zoning.overrides = { B0439: 'drawn' }
+    older.model.zoning.drawn = {}
+    older.model.zoning.published.overrides = { B0439: 'drawn' }
     const before = readHandoverText(JSON.stringify(older))
     expect(before.ok).toBe(true)
     if (before.ok) {
-      expect(before.package.model.zoning.overrides).toEqual({})
-      expect(before.package.model.zoning.published?.overrides).toEqual({})
+      expect(Object.keys(before.package.model.zoning).sort()).toEqual([
+        'geometry',
+        'published',
+      ])
+      expect(
+        Object.keys(before.package.model.zoning.published ?? {}).sort(),
+      ).toEqual(['runId', 'storeys'])
     }
   })
 
@@ -332,10 +335,12 @@ describe('handover through the mock server', () => {
     await modeller.manual.settle()
     await saved
     const savedAt = modeller.client.store.getState().meta.savedAt
-    const savedMode = modeller.workbench.getState().zoning.mode
+    const skippedOf = (state: WorkbenchState | undefined) =>
+      state?.workflow.stages[STAGE_IDS.shading]?.skipped
+    const savedSkipped = skippedOf(modeller.workbench.getState())
     const changed = modeller.client.execute({
-      type: 'zoning.set',
-      input: { mode: savedMode === 'floors' ? 'single' : 'floors' },
+      type: 'workflow.setStageSkipped',
+      input: { stageId: STAGE_IDS.shading, skipped: !savedSkipped },
     })
     await modeller.manual.settle()
     expect((await changed).outcome.status).toBe('applied')
@@ -344,11 +349,11 @@ describe('handover through the mock server', () => {
     const handed = modeller.client.handOver()
     await modeller.manual.settle()
     const { package: pkg } = await handed
-    expect(pkg?.model.zoning.mode).toBe(savedMode)
+    expect(skippedOf(pkg?.model)).toBe(savedSkipped)
     expect(pkg?.provenance).toMatchObject({ savedAt, unsavedChanges: true })
     // Handing over neither saves nor discards the modeller's changes.
     expect(modeller.client.store.getState().meta.dirty).toBe(true)
-    expect(modeller.workbench.getState().zoning.mode).not.toBe(savedMode)
+    expect(skippedOf(modeller.workbench.getState())).not.toBe(savedSkipped)
   })
 
   test('a copy saved while jobs ran is refused, whatever runs now', () => {

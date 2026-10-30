@@ -1,104 +1,31 @@
 import type { LngLat, WorkbenchState } from '../../domain/types.ts'
 import {
-  buildingFloors,
   buildingZoning,
   ownerOf,
   selectedBuildingIds,
   type ZoneKind,
 } from '../../domain/zoning/zoning.ts'
-import { METRICS, type MetricId, type MetricValues } from './mapMetrics.ts'
-import { metricProperty } from './StackLayer.tsx'
 
-// GeoJSON for floors and zones on the map (decision 0032, stage 6): every
-// building's floor slabs, and the zones of the selected buildings only, so
-// the geometry stays bounded without the 10,000-building benchmark.
+// GeoJSON for zones on the map (decision 0032, stage 6; decision 0036): the
+// zones of the selected buildings only, so the geometry stays bounded
+// without the 10,000-building benchmark. Zones are the backend's geometry
+// (decision 0036); every storey is drawn at its own height, from its floor
+// to the next, so a building's zone volumes make up its extrusion exactly.
 
 /** Most buildings whose zones the map draws at once. */
 export const MAX_ZONED_BUILDINGS = 20
 
-/** The vertical gap left between slabs so floors read apart, in metres. */
-function slabGap(floorHeightM: number): number {
-  return Math.min(0.35, floorHeightM * 0.1)
-}
-
-/**
- * Where a zoned storey is drawn: at its own height, its top less the slab
- * gap (decision 0035 keeps every storey in place).
- */
-export function storeySpan(floor: {
-  number: number
-  bottomM: number
-  topM: number
-}): { base: number; top: number } {
-  const height = floor.topM - floor.bottomM
-  const round = (value: number) => Math.round(value * 100) / 100
-  return {
-    base: round(floor.bottomM),
-    top: round(Math.max(floor.bottomM, floor.topM - slabGap(height))),
-  }
-}
-
 type Polygon = { type: 'Polygon'; coordinates: LngLat[][] }
 
-export type SlabFeature = {
-  type: 'Feature'
-  properties: Record<string, string | number> & {
-    id: string
-    floorId: string
-    base: number
-    top: number
-  }
-  geometry: Polygon
-}
-
 /**
- * One slab per floor of every building with a height: its base and top less
- * a small gap, with the building's metric values for colouring.
+ * How a zone cell is drawn (decision 0035, changed by decision 0036): every
+ * zone of a selected building in its colour (`zone`); with a floor or zone
+ * selected, the selected floor solid (`floor`) with the selected zone marked
+ * by its edges in the selection colour (`selected`) while the floor's other
+ * zones keep their colours, and the building's other floors hollow
+ * (`hollow`). A selected whole-building zone is marked on every storey.
  */
-export function slabFeatures(
-  state: Pick<WorkbenchState, 'buildingIds' | 'buildings' | 'zoning'>,
-  metrics: Record<MetricId, MetricValues>,
-): { type: 'FeatureCollection'; features: SlabFeature[] } {
-  const features: SlabFeature[] = []
-  for (const id of state.buildingIds) {
-    const building = state.buildings[id]
-    if (!building) continue
-    const floors = buildingFloors(state, id)
-    if (floors.length === 0) continue
-    const values = Object.fromEntries(
-      METRICS.map((metric) => [
-        metricProperty(metric.id),
-        metrics[metric.id].values[id] ?? -1,
-      ]),
-    )
-    for (const floor of floors) {
-      const gap = slabGap(floor.topM - floor.bottomM)
-      features.push({
-        type: 'Feature',
-        properties: {
-          ...values,
-          id,
-          name: building.name,
-          floorId: floor.id,
-          base: floor.bottomM,
-          top: Math.max(floor.bottomM, floor.topM - gap),
-        },
-        geometry: { type: 'Polygon', coordinates: [building.footprint] },
-      })
-    }
-  }
-  return { type: 'FeatureCollection', features }
-}
-
-/**
- * How a zone cell is drawn (decision 0035): every zone of a selected
- * building in its colour (`zone`); with a floor or zone selected, the
- * selected floor solid (`floor`), the selected zone highlighted and the
- * floor's other zones muted (`selected`, `muted`), and the building's other
- * floors hollow (`hollow`). A selected whole-building zone is highlighted on
- * every storey (`selected`), with the building's other zones muted.
- */
-export type CellState = 'zone' | 'floor' | 'selected' | 'muted' | 'hollow'
+export type CellState = 'zone' | 'floor' | 'selected' | 'hollow'
 
 export type ZoneCell = {
   type: 'Feature'
@@ -123,7 +50,7 @@ export type ZoneCell = {
 
 export type ZoneOverlay = {
   cells: { type: 'FeatureCollection'; features: ZoneCell[] }
-  /** Buildings whose zones are drawn; their slabs and extrusions are hidden. */
+  /** Buildings whose zones are drawn; their extrusions are hidden. */
   buildingIds: string[]
   /** Selected buildings whose zones are not drawn, beyond the limit. */
   omitted: number
@@ -148,6 +75,8 @@ export type ZoneOverlay = {
    * drawn cells use (-1 for the core's de-emphasis colour), in drawing order.
    */
   legend: { kind: ZoneKind; slots: number[] }[]
+  /** Whether a drawn building's zones come from the backend's zone geometry. */
+  geometry: boolean
   /** Selected buildings with no zones yet. */
   withoutZones: number
 }
@@ -193,7 +122,7 @@ export function selectedFloorsByBuilding(
  * The selected buildings' zones as one cell per zone and floor (a
  * whole-building zone has a cell on every floor), so a selected floor or zone
  * can be shown solid among hollow floors in 3D and a flat map can show one
- * floor's plan. Geometry never moves: every cell keeps its storey's height.
+ * floor's plan. Geometry never moves: every cell spans its storey exactly.
  */
 export function zoneOverlay(
   state: Pick<WorkbenchState, 'selection' | 'buildings' | 'zoning'>,
@@ -212,6 +141,7 @@ export function zoneOverlay(
   const legend = new Map<ZoneKind, Set<number>>()
   let withoutZones = 0
   let hollow = false
+  let geometry = false
   for (const buildingId of shown) {
     const zoning = buildingZoning(state, buildingId)
     if (!zoning) {
@@ -219,14 +149,8 @@ export function zoneOverlay(
       continue
     }
     buildingIds.push(buildingId)
+    if (zoning.source === 'geometry') geometry = true
     const focusFloors = floorsByBuilding.get(buildingId)
-    // A selected whole-building zone is on no single floor: it is
-    // highlighted on every storey, and nothing is hollow.
-    const wholeSelected =
-      !focusFloors &&
-      zoning.zones.some(
-        (zone) => zone.floor === null && selectedZones.has(zone.id),
-      )
     for (const zone of zoning.zones) {
       kinds.add(zone.kind)
       const floors =
@@ -235,26 +159,19 @@ export function zoneOverlay(
           : zoning.floors.filter((floor) => floor.number === zone.floor)
       for (const floor of floors) {
         const onFocus = focusFloors?.has(floor.number) ?? false
-        const cellState: CellState = wholeSelected
-          ? selectedZones.has(zone.id)
-            ? 'selected'
-            : 'muted'
+        const cellState: CellState = selectedZones.has(zone.id)
+          ? 'selected'
           : !focusFloors
             ? 'zone'
-            : !onFocus
-              ? 'hollow'
-              : !zoneLevel
-                ? 'floor'
-                : selectedZones.has(zone.id)
-                  ? 'selected'
-                  : 'muted'
+            : onFocus
+              ? 'floor'
+              : 'hollow'
         if (cellState === 'hollow') hollow = true
         else {
           const slots = legend.get(zone.kind) ?? new Set<number>()
           slots.add(zone.colorSlot ?? -1)
           legend.set(zone.kind, slots)
         }
-        const span = storeySpan(floor)
         features.push({
           type: 'Feature',
           properties: {
@@ -267,8 +184,8 @@ export function zoneOverlay(
             colorSlot: zone.colorSlot ?? -1,
             selected: selectedZones.has(zone.id) || (!zoneLevel && onFocus),
             state: cellState,
-            base: span.base,
-            top: span.top,
+            base: floor.bottomM,
+            top: floor.topM,
           },
           geometry: { type: 'Polygon', coordinates: [zone.plan] },
         })
@@ -320,71 +237,282 @@ export function zoneOverlay(
       kind,
       slots: [...slots].sort((a, b) => a - b),
     })),
+    geometry,
     withoutZones,
   }
 }
 
-/** Which edges a cell's outline joins, by how it is drawn. */
+/**
+ * How an edge is drawn, by the most prominent cell it bounds: ordinary zone
+ * edges, the emphasised edges of a selected floor, a selected zone's, and
+ * the thin edges of hollow floors.
+ */
 export type EdgeStyle = 'zone' | 'focus' | 'selected' | 'hollow'
+
+/**
+ * What an edge is (decision 0036): the building's envelope (its outline at
+ * the ground and the roof, and its corners), or a boundary between zones,
+ * drawn in a colour of its own.
+ */
+export type EdgeRole = 'envelope' | 'boundary'
+
+const STYLE_RANK: Record<EdgeStyle, number> = {
+  hollow: 0,
+  zone: 1,
+  focus: 2,
+  selected: 3,
+}
 
 const EDGE_STYLE: Record<CellState, EdgeStyle> = {
   zone: 'zone',
   floor: 'focus',
   selected: 'selected',
-  muted: 'focus',
   hollow: 'hollow',
 }
 
 /**
- * The edges of zone cells in 3D (decisions 0034 and 0035), as segments of
- * [longitude, latitude, metres] pairs flattened six numbers a segment: every
- * cell's outline at its base and top, and one upright per corner, grouped by
- * how they are drawn: ordinary zone edges, the emphasised edges of a
- * selected floor, the selected zone's, and the thin edges of hollow floors.
+ * The edges of zone cells in 3D (decisions 0034 to 0036), each drawn once, as
+ * segments of [longitude, latitude, metres] pairs flattened six numbers a
+ * segment, grouped by style and role.
  */
 export type ZoneEdges = {
   buildingId: string
-  /**
-   * Where terrain is sampled to lift the building's edges: the mean vertex of
-   * its first zone cell, near but not the footprint centroid MapLibre lifts
-   * extrusions by, so on steep terrain edges can sit slightly off.
-   */
+  /** Where terrain is sampled to lift the building's edges: its footprint's mean corner. */
   anchor: LngLat
-  edges: Record<EdgeStyle, number[]>
+  parts: { style: EdgeStyle; role: EdgeRole; segments: number[] }[]
 }
 
-export function zoneEdges(cells: ZoneCell[]): ZoneEdges[] {
-  const byBuilding = new Map<string, ZoneEdges>()
+const METERS_PER_DEGREE = 111_320
+/** Points closer than this, in metres, are one point; lines within it are one line. */
+const TOLERANCE_M = 0.01
+
+function openRing(ring: LngLat[]): LngLat[] {
+  const first = ring[0]
+  const last = ring.at(-1)
+  return ring.length > 1 &&
+    first &&
+    last &&
+    first[0] === last[0] &&
+    first[1] === last[1]
+    ? ring.slice(0, -1)
+    : ring
+}
+
+type Plane = { x: (point: LngLat) => number; y: (point: LngLat) => number }
+
+function planeOf(origin: LngLat): Plane {
+  const perLng = METERS_PER_DEGREE * Math.cos((origin[1] * Math.PI) / 180)
+  return {
+    x: (point) => (point[0] - origin[0]) * perLng,
+    y: (point) => (point[1] - origin[1]) * METERS_PER_DEGREE,
+  }
+}
+
+/** How far along a–b the point p lies (0 to 1), when it lies on the segment; else null. */
+function along(plane: Plane, a: LngLat, b: LngLat, p: LngLat): number | null {
+  const ax = plane.x(a)
+  const ay = plane.y(a)
+  const dx = plane.x(b) - ax
+  const dy = plane.y(b) - ay
+  const length2 = dx * dx + dy * dy
+  if (length2 === 0) return null
+  const px = plane.x(p) - ax
+  const py = plane.y(p) - ay
+  const t = (px * dx + py * dy) / length2
+  const offset = Math.abs(px * dy - py * dx) / Math.sqrt(length2)
+  return offset <= TOLERANCE_M ? t : null
+}
+
+const keyOf = ([lng, lat]: LngLat) => `${lng.toFixed(9)},${lat.toFixed(9)}`
+
+/** The corners of a footprint where its outline turns by more than ten degrees. */
+function cornersOf(plane: Plane, ring: LngLat[]): Set<string> {
+  const corners = new Set<string>()
+  ring.forEach((point, index) => {
+    const before = ring[(index - 1 + ring.length) % ring.length] ?? point
+    const after = ring[(index + 1) % ring.length] ?? point
+    const ux = plane.x(point) - plane.x(before)
+    const uy = plane.y(point) - plane.y(before)
+    const vx = plane.x(after) - plane.x(point)
+    const vy = plane.y(after) - plane.y(point)
+    const turn = Math.abs(Math.atan2(ux * vy - uy * vx, ux * vx + uy * vy))
+    if (turn > (10 * Math.PI) / 180) corners.add(keyOf(point))
+  })
+  return corners
+}
+
+type EdgeEntry = {
+  a: LngLat
+  b: LngLat
+  zA: number
+  zB: number
+  zones: Set<string>
+  style: EdgeStyle
+  onOutline: boolean
+  vertical: boolean
+}
+
+/**
+ * Each building's zone edges, every boundary once: horizontal edges at each
+ * storey level are split at every corner on them (so neighbours' outlines
+ * that split a wall differently give one line), then kept when they are the
+ * building's outline at the ground or the roof (envelope) or when they part
+ * two zones (boundary: between neighbours on a floor, or between a zone and
+ * the one above it); uprights at the footprint's corners are envelope
+ * edges, and uprights elsewhere are boundaries where two zones meet.
+ */
+export function zoneEdges(
+  cells: ZoneCell[],
+  footprints: Record<string, LngLat[] | undefined>,
+): ZoneEdges[] {
+  const byBuilding = new Map<string, ZoneCell[]>()
   for (const cell of cells) {
-    const ring = cell.geometry.coordinates[0] ?? []
-    const first = ring[0]
-    const last = ring.at(-1)
-    const open =
-      first && last && first[0] === last[0] && first[1] === last[1]
-        ? ring.slice(0, -1)
-        : ring
-    if (open.length < 3) continue
-    let entry = byBuilding.get(cell.properties.buildingId)
-    if (!entry) {
-      const count = open.length
-      entry = {
-        buildingId: cell.properties.buildingId,
-        anchor: [
-          open.reduce((sum, point) => sum + point[0], 0) / count,
-          open.reduce((sum, point) => sum + point[1], 0) / count,
-        ],
-        edges: { zone: [], focus: [], selected: [], hollow: [] },
+    const list = byBuilding.get(cell.properties.buildingId) ?? []
+    list.push(cell)
+    byBuilding.set(cell.properties.buildingId, list)
+  }
+  const result: ZoneEdges[] = []
+  for (const [buildingId, own] of byBuilding) {
+    const footprint = openRing(footprints[buildingId] ?? [])
+    const origin = footprint[0] ?? own[0]?.geometry.coordinates[0]?.[0]
+    if (!origin) continue
+    const plane = planeOf(origin)
+    const corners = cornersOf(plane, footprint)
+    const onOutline = (a: LngLat, b: LngLat) =>
+      footprint.some((point, index) => {
+        const next = footprint[(index + 1) % footprint.length] ?? point
+        const ta = along(plane, point, next, a)
+        const tb = along(plane, point, next, b)
+        const slack = 1e-6
+        return (
+          ta !== null &&
+          tb !== null &&
+          ta >= -slack &&
+          ta <= 1 + slack &&
+          tb >= -slack &&
+          tb <= 1 + slack
+        )
+      })
+    const roof = Math.max(...own.map((cell) => cell.properties.top))
+    const entries = new Map<string, EdgeEntry>()
+    const add = (
+      key: string,
+      make: () => Omit<EdgeEntry, 'zones' | 'style'>,
+      cell: ZoneCell,
+    ) => {
+      let entry = entries.get(key)
+      if (!entry) {
+        entry = { ...make(), zones: new Set(), style: 'hollow' }
+        entries.set(key, entry)
       }
-      byBuilding.set(cell.properties.buildingId, entry)
+      entry.zones.add(cell.properties.id)
+      const style = EDGE_STYLE[cell.properties.state]
+      if (STYLE_RANK[style] > STYLE_RANK[entry.style]) entry.style = style
     }
-    const target = entry.edges[EDGE_STYLE[cell.properties.state]]
-    const { base, top } = cell.properties
-    open.forEach((point, index) => {
-      const next = open[(index + 1) % open.length] ?? point
-      target.push(point[0], point[1], base, next[0], next[1], base)
-      target.push(point[0], point[1], top, next[0], next[1], top)
-      target.push(point[0], point[1], base, point[0], point[1], top)
+    // Every corner at each level, to split the edges there.
+    const levels = new Map<number, LngLat[]>()
+    const ringOf = (cell: ZoneCell) =>
+      openRing(cell.geometry.coordinates[0] ?? [])
+    for (const cell of own) {
+      for (const level of [cell.properties.base, cell.properties.top]) {
+        const points = levels.get(level) ?? []
+        points.push(...ringOf(cell))
+        levels.set(level, points)
+      }
+    }
+    for (const cell of own) {
+      const ring = ringOf(cell)
+      if (ring.length < 3) continue
+      const { base, top } = cell.properties
+      for (const level of [base, top]) {
+        const points = levels.get(level) ?? []
+        ring.forEach((a, index) => {
+          const b = ring[(index + 1) % ring.length] ?? a
+          // Split a–b at every corner of this level that lies on it.
+          const stops = new Map<string, { t: number; point: LngLat }>()
+          stops.set(keyOf(a), { t: 0, point: a })
+          stops.set(keyOf(b), { t: 1, point: b })
+          for (const point of points) {
+            const t = along(plane, a, b, point)
+            if (t !== null && t > 1e-6 && t < 1 - 1e-6) {
+              stops.set(keyOf(point), { t, point })
+            }
+          }
+          const ordered = [...stops.values()].sort((p, q) => p.t - q.t)
+          for (let step = 0; step + 1 < ordered.length; step += 1) {
+            const p = ordered[step]?.point
+            const q = ordered[step + 1]?.point
+            if (!p || !q) continue
+            const [first, second] = [keyOf(p), keyOf(q)].sort()
+            add(
+              `h|${level}|${first}|${second}`,
+              () => ({
+                a: p,
+                b: q,
+                zA: level,
+                zB: level,
+                onOutline: onOutline(p, q),
+                vertical: false,
+              }),
+              cell,
+            )
+          }
+        })
+      }
+      for (const point of ring) {
+        add(
+          `v|${keyOf(point)}|${base}|${top}`,
+          () => ({
+            a: point,
+            b: point,
+            zA: base,
+            zB: top,
+            onOutline: corners.has(keyOf(point)),
+            vertical: true,
+          }),
+          cell,
+        )
+      }
+    }
+    const parts = new Map<
+      string,
+      { style: EdgeStyle; role: EdgeRole; segments: number[] }
+    >()
+    for (const entry of entries.values()) {
+      const envelope = entry.vertical
+        ? entry.onOutline
+        : entry.onOutline && (entry.zA === 0 || entry.zA === roof)
+      const parting = entry.zones.size >= 2
+      if (!envelope && !parting) continue
+      const role: EdgeRole = envelope ? 'envelope' : 'boundary'
+      const key = `${entry.style}|${role}`
+      let part = parts.get(key)
+      if (!part) {
+        part = { style: entry.style, role, segments: [] }
+        parts.set(key, part)
+      }
+      part.segments.push(
+        entry.a[0],
+        entry.a[1],
+        entry.zA,
+        entry.b[0],
+        entry.b[1],
+        entry.zB,
+      )
+    }
+    const count = footprint.length || 1
+    result.push({
+      buildingId,
+      anchor: [
+        footprint.reduce((sum, point) => sum + point[0], 0) / count,
+        footprint.reduce((sum, point) => sum + point[1], 0) / count,
+      ],
+      parts: [...parts.values()].sort(
+        (p, q) =>
+          STYLE_RANK[p.style] - STYLE_RANK[q.style] ||
+          (p.role === q.role ? 0 : p.role === 'envelope' ? 1 : -1),
+      ),
     })
   }
-  return [...byBuilding.values()]
+  return result
 }

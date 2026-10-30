@@ -17,12 +17,12 @@ import { floorNumberOf } from './zoneFeatures.ts'
 
 type Project = Pick<WorkbenchState, 'selection' | 'buildings' | 'zoning'>
 
-/** What a click or hover found on the map, nearest first. */
+/** What a click or hover found on the map, nearest first (in 3D the map orders hits itself: mapPicking.ts). */
 export type MapHit =
   | {
       kind: 'building'
       buildingId: string
-      /** The storey hit, when the map draws storeys (slabs or zone cells). */
+      /** The storey hit, when the map draws storeys (zone cells). */
       floor: number | null
       /** The zone hit, when the map draws the building's zones. */
       zoneId: string | null
@@ -340,7 +340,7 @@ export function clickNotice(
     if (selection.entityType === 'building') {
       return floorsOf(state, hit.buildingId).length === 0
         ? `${name} has no floors yet: "Geospatial preprocessing" has not zoned it.`
-        : `${name} has no storeys drawn on the map: show its zones in 3D, or choose a floor in its Floors table.`
+        : `${name} has no storeys drawn on the map: show it in 3D with a building layer that extrudes, or choose a floor in its Floors table.`
     }
     if (selection.entityType === 'floor') {
       return `Shift-click keeps the last selected floor: press Escape to select ${name}.`

@@ -14,12 +14,11 @@ import {
   SELECTABLE_ENTITIES,
   type WorkbenchState,
 } from '../domain/types.ts'
-import { DRAWN_ZONE_USES, MAX_DRAWN_FLOOR } from '../domain/zoning/drawn.ts'
 import {
-  BUILDING_ZONING_MODES,
-  MAX_PERIMETER_DEPTH_M,
-  MIN_PERIMETER_DEPTH_M,
-  ZONING_MODES,
+  FACINGS,
+  MAX_ZONE_FLOOR,
+  ZONE_KINDS,
+  ZONE_USES,
   initialZoning,
 } from '../domain/zoning/zoning.ts'
 import { migrateArchetypeParts } from './migrateArchetypes.ts'
@@ -212,49 +211,42 @@ const schemaMatching = z.object({
     })
     .nullable(),
 })
-// The zoning setting (decision 0032, stage 6). Projects and handover packages
-// saved before it get RC's default, one zone per building, and no published
-// zoning: their zone counts came from an estimate by floor area, so their zones
-// are shown again only after Geospatial preprocessing runs.
-const zoningSetting = {
-  mode: z.enum(ZONING_MODES),
-  perimeterDepthM: number.min(MIN_PERIMETER_DEPTH_M).max(MAX_PERIMETER_DEPTH_M),
-}
-// Per-building overrides and drawn zones (decision 0034). Saves and packages
-// from before them have none; a published zoning without overrides applied
-// none. Drawn outlines are checked against footprints when buildings are
-// zoned, not here, so a save with a bad outline still opens and explains it.
-const buildingZoningMode = z.enum(BUILDING_ZONING_MODES)
-const drawnZoning = z.object({
+// Zoning (decisions 0032, 0034, and 0036). Zones are the backend's geometry
+// (decision 0036): saves and packages carry it by building, and saves from
+// before it have none, so their buildings are one zone each. The browser's
+// zoning settings were removed by decision 0036: a save that carries the
+// project's mode or perimeter depth, building overrides, drawn outlines, or a
+// published setting still opens, and those fields are dropped (zod strips
+// unknown keys). Geometry is checked against floors when buildings are
+// zoned, not here, so a save whose plans miss a floor still opens and says so.
+const zoneGeometry = z.object({
   source: text,
   plans: z.array(
     z
       .object({
-        fromFloor: number.int().positive().max(MAX_DRAWN_FLOOR),
-        toFloor: number.int().positive().max(MAX_DRAWN_FLOOR),
+        fromFloor: number.int().positive().max(MAX_ZONE_FLOOR),
+        toFloor: number.int().positive().max(MAX_ZONE_FLOOR),
         zones: z.array(
           z.object({
-            name: text.min(1),
-            use: z.enum(DRAWN_ZONE_USES),
-            outline: z.array(point),
+            name: text,
+            kind: z.enum(ZONE_KINDS),
+            use: z.enum(ZONE_USES).nullable(),
+            facing: z.enum(FACINGS).nullable(),
+            outline: z.array(point).min(3),
           }),
         ),
       })
       .refine((plan) => plan.toFloor >= plan.fromFloor, {
-        message: 'A drawn plan ends below the floor it starts on.',
+        message: 'A zone plan ends below the floor it starts on.',
       }),
   ),
 })
 const zoning = z.object({
-  ...zoningSetting,
-  overrides: z.record(id, buildingZoningMode).default({}),
-  drawn: z.record(id, drawnZoning).default({}),
+  geometry: z.record(id, zoneGeometry).default({}),
   published: z
     .object({
-      ...zoningSetting,
       runId: id,
       storeys: z.record(id, number.positive()).default({}),
-      overrides: z.record(id, buildingZoningMode).default({}),
     })
     .nullable(),
 })
@@ -884,4 +876,6 @@ export const savedViewSchema = z.object({
     )
     .optional(),
   defaultLayoutId: z.string().min(1).nullable().optional().catch(undefined),
+  // The map camera (decision 0036), validated by the UI when it opens.
+  camera: z.unknown().optional(),
 })
