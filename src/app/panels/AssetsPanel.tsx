@@ -30,7 +30,6 @@ import { capabilities } from '../../domain/capabilities.ts'
 import type { AssetKind } from '../../domain/types.ts'
 import { useServices, useWorkbenchSnapshot } from '../WorkbenchContext.tsx'
 import { CapabilityBadge, StatusTag } from '../components/CapabilityBadge.tsx'
-import { useRecordBlocked } from '../components/ActionButton.tsx'
 import { PanelHeader } from '../components/PanelHeader.tsx'
 import { cx } from '../cx.ts'
 import { useStore } from 'zustand'
@@ -73,7 +72,7 @@ const KIND_ICONS: Record<AssetKind, LucideIcon> = {
  */
 export function AssetsPanel() {
   const headingId = useId()
-  const { layout, workbench, showInspection, layouts } = useServices()
+  const { layout, workbench, showInspection, layouts, messages } = useServices()
   const projectLayouts = useStore(layouts.store, (snapshot) => snapshot.project)
   const defaultLayoutId = useStore(
     layouts.store,
@@ -111,7 +110,6 @@ export function AssetsPanel() {
   )
   const selectedId =
     selection.entityType === 'asset' ? (selection.ids[0] ?? null) : null
-  const recordBlocked = useRecordBlocked()
 
   const openFirstRelatedPage = (assetId: string) => {
     const asset = assets[assetId]
@@ -124,13 +122,18 @@ export function AssetsPanel() {
       return
     }
     // Groups open and close instead; any other asset says why nothing opens.
+    // Nothing failed, so it is a note (decision 0036), not a refusal.
     if (asset.kind === 'group') return
-    recordBlocked(
-      `Open ${asset.name}`,
-      related.length > 0
-        ? `${asset.name} has no page in the viewer; its details are in Properties.`
-        : `${asset.name} has no page of its own; its details are in Properties.`,
-    )
+    messages.post({
+      tone: 'info',
+      source: 'workspace',
+      projectId: workbench.getState().project.id,
+      text:
+        related.length > 0
+          ? `${asset.name} has no page in the viewer; its details are in Properties.`
+          : `${asset.name} has no page of its own; its details are in Properties.`,
+      toast: true,
+    })
     showInspection()
   }
 
