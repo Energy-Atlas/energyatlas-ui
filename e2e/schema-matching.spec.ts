@@ -161,7 +161,8 @@ test('saves, loads, downloads, and reads rule sets, and keeps the mapping throug
   await ruleSets
     .getByRole('button', { name: 'Save the mapping as a rule set' })
     .click()
-  await expect(ruleSets).toContainText(
+  // Outcomes are messages, not notices that push the section down (decision 0036).
+  await expect(page.getByTestId('status-notice')).toContainText(
     'Saved the rule set "All OSM tags" with 5 mappings.',
   )
   await expect(
@@ -218,11 +219,14 @@ test('saves, loads, downloads, and reads rule sets, and keeps the mapping throug
     }),
   )
   await ruleSets.getByLabel('Rule set file').setInputFiles(path)
-  await expect(ruleSets).toContainText('Loaded "County export": 2 mappings')
-  await expect(ruleSets).toContainText(
+  // Skipped mappings are a warning message (decision 0036).
+  const loaded = notifications(page).locator('[data-tone="warning"]', {
+    hasText: 'Loaded "County export": 2 mappings',
+  })
+  await expect(loaded).toContainText(
     '"stories" is not an attribute of the captured footprints.',
   )
-  await expect(ruleSets).toContainText(
+  await expect(loaded).toContainText(
     '"roofType" is not a target field of this model.',
   )
   await expect(schema).toContainText('Schema matching cannot run')

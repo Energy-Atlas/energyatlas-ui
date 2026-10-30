@@ -527,8 +527,7 @@ describe('layout library', () => {
       status: 'rejected',
       issues: [
         {
-          message:
-            'Handed-over layouts are read-only here; apply one to use it.',
+          message: "A view's layouts are read-only here; apply one to use it.",
         },
       ],
     }

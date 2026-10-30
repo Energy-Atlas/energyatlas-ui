@@ -29,6 +29,6 @@ export function storageFullMessage(
 ): string {
   const packages = handoverCatalogSize(storage)
   return packages > 0
-    ? `Browser storage is full, so ${what}. Handover packages in this browser take about ${Math.ceil(packages / 1024).toLocaleString('en-US')} KB: remove older ones from File > Hand over… or the viewer page, then try again.`
+    ? `Browser storage is full, so ${what}. Views in this browser take about ${Math.ceil(packages / 1024).toLocaleString('en-US')} KB: remove older ones from File > Save as… or the viewer page, then try again.`
     : `Browser storage is full, so ${what}. Remove saved projects or site data in this browser, then try again.`
 }

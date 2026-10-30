@@ -3,6 +3,7 @@ import type { ValidationIssue } from '../../domain/commands.ts'
 import type { CommandSource } from '../../domain/types.ts'
 import type { ExecuteResult, Workbench } from '../../domain/workbench.ts'
 import type { FixtureId } from '../../server/fixtures.ts'
+import type { ProjectFile } from '../../server/projectFile.ts'
 import type { ProjectClient } from './projectClient.ts'
 import { projectNameSchema } from '../../server/projectValidation.ts'
 
@@ -13,6 +14,8 @@ export type ProjectIntent =
   | { type: 'close' }
   | { type: 'save' }
   | { type: 'fixture'; fixture: FixtureId }
+  /** Opens a project file (decision 0036), keeping it in this browser. */
+  | { type: 'openFile'; file: { name: string; text: string } }
 export type LifecycleSnapshot = {
   dialog: 'create' | 'open' | null
   guard: ProjectIntent | null
@@ -104,6 +107,8 @@ export function createProjectLifecycle({
           return await client.closeProject(source)
         case 'fixture':
           return await client.replaceProject(intent.fixture, source)
+        case 'openFile':
+          return await client.openProjectFile(intent.file, source)
       }
     }
     try {
@@ -186,6 +191,42 @@ export function createProjectLifecycle({
           intent.type === 'save' ? 'appliedOnly' : 'discard',
         ),
       )
+    },
+    /**
+     * File > Save as… > Project (decision 0036): keeps a copy of the open
+     * project as a new project in this browser. The open project stays open,
+     * so nothing is left behind and no guard asks first.
+     */
+    async saveAs(
+      name: string,
+      source: CommandSource = 'manual',
+    ): Promise<{ result: ExecuteResult; file: ProjectFile | null }> {
+      const parsed = projectNameSchema.safeParse(name)
+      if (!parsed.success) {
+        const result = refused(
+          parsed.error.issues[0]?.message ?? 'Enter a project name.',
+          'name',
+        )
+        return { result, file: null }
+      }
+      if (
+        store.getState().busy ||
+        waiting ||
+        client.store.getState().pending.length > 0
+      ) {
+        return {
+          result: refused(
+            'Wait for the current server request before saving a copy.',
+          ),
+          file: null,
+        }
+      }
+      store.setState({ busy: true })
+      try {
+        return await client.saveProjectAs(parsed.data, source)
+      } finally {
+        store.setState({ busy: false })
+      }
     },
     async confirm(mode: 'save' | 'discard' | 'appliedOnly') {
       if (!waiting || store.getState().busy) return null

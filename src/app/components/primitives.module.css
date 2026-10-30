@@ -343,3 +343,18 @@
   border-color: transparent;
   background: transparent;
 }
+
+/* The confirmation dialog (decision 0036): a question needs less width than
+   a dialog of settings. Doubled to win over the shell's dialog width
+   whatever order the sheets load in. */
+.confirmModal.confirmModal {
+  width: min(30rem, calc(100vw - 2rem));
+}
+
+.confirmModal p {
+  margin: 0 0 var(--space-2);
+}
+
+.confirmBusy {
+  color: var(--color-text-muted);
+}

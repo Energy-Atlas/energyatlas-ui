@@ -705,9 +705,11 @@ describe('review fixes', () => {
     expect(compared.result.byBuildingKwh).toEqual(versions.baseKwh)
     expect(baselineChangeNote(moved, scenario.id)).toMatch(
       new RegExp(
-        `Modeled against baseline run ${old.runId}; the working baseline is now run run-calibrated`,
+        `Modeled against the baseline ${old.runId}; the working baseline is now run-calibrated`,
       ),
     )
+    // Run ids carry the word: never "run run-40".
+    expect(baselineChangeNote(moved, scenario.id)).not.toMatch(/run run-/)
     const row = compareScenarios(
       moved,
       deriveStageStates(moved.workflow, moved.tasks),

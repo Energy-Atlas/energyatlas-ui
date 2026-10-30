@@ -14,8 +14,10 @@
   padding: var(--space-2) var(--space-4) 0;
 }
 
-.staleNotice {
-  margin: 0 var(--space-4);
+/* Outdated scenario results, beside the title (decision 0036). */
+.staleState {
+  display: inline-flex;
+  align-items: center;
 }
 
 /* Controls are a ruled cell of the dashboard grid. */

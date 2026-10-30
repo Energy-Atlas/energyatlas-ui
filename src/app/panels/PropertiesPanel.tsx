@@ -23,11 +23,8 @@ import { ScenarioProperties } from '../properties/ScenarioProperties.tsx'
 import { ScheduleProperties } from '../properties/ScheduleProperties.tsx'
 import { StageProperties } from '../properties/StageProperties.tsx'
 import { ReadOnlyDefinition } from '../properties/ReadOnlyDefinition.tsx'
-import componentStyles from '../components/components.module.css'
-import { cx } from '../cx.ts'
 import { shownEdits } from '../properties/useEdits.ts'
-import { DialogFrame } from '../shell/HelpDialogs.tsx'
-import shellStyles from '../shell/shell.module.css'
+import { ConfirmDialog } from '../components/ConfirmDialog.tsx'
 import { MapProperties } from './MapProperties.tsx'
 import { FloorsAndZones } from '../properties/FloorsAndZones.tsx'
 import styles from './inspection.module.css'
@@ -461,7 +458,7 @@ export function PropertiesPanel() {
           </p>
           <p className={styles.muted}>
             {viewOnly
-              ? 'Select buildings or grid elements on the Map or Table page, or an asset, to see its properties here as handed over.'
+              ? 'Select buildings or grid elements on the Map or Table page, or an asset, to see its properties here as saved in the view.'
               : 'Select buildings or grid elements on the Map or Table page, an asset, or an assignment rule, archetype, part, schedule, measure, scenario, or scenario rule to see its properties here. Definitions are edited here too.'}
           </p>
           <div className={styles.actions}>{pageActions}</div>
@@ -521,32 +518,24 @@ function CloseSelection() {
       >
         <X size={16} aria-hidden="true" />
       </Button>
-      <DialogFrame
+      <ConfirmDialog
         title="Leave with unsaved edits?"
-        role="alertdialog"
         isOpen={confirming}
         onOpenChange={setConfirming}
+        cancelLabel="Keep editing"
+        confirm={{
+          label: 'Discard and leave',
+          onPress: () => {
+            shownEdits().discard()
+            close()
+          },
+        }}
       >
         <p>
           {count === 1 ? '1 field is' : `${count} fields are`} edited and not
           saved. Leaving discards {count === 1 ? 'it' : 'them'}.
         </p>
-        <div className={shellStyles.dialogActions}>
-          <Button slot="close" className={componentStyles.button}>
-            Keep editing
-          </Button>
-          <Button
-            className={cx(componentStyles.button, componentStyles.primary)}
-            onPress={() => {
-              shownEdits().discard()
-              setConfirming(false)
-              close()
-            }}
-          >
-            Discard and leave
-          </Button>
-        </div>
-      </DialogFrame>
+      </ConfirmDialog>
     </>
   )
 }

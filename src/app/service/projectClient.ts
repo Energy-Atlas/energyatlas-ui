@@ -17,6 +17,7 @@ import {
 } from '../../server/conditions.ts'
 import type { FixtureId } from '../../server/fixtures.ts'
 import type { HandoverPackage } from '../../server/handover.ts'
+import type { ProjectFile } from '../../server/projectFile.ts'
 import {
   SERVER_COMMANDS,
   type ServerMeta,
@@ -134,6 +135,20 @@ export type ProjectClient = {
     source?: CommandSource,
   ) => Promise<ExecuteResult>
   closeProject: (source?: CommandSource) => Promise<ExecuteResult>
+  /**
+   * File > Save as… > Project (decision 0036): keeps a copy of the open
+   * project, unsaved changes and the current views included, as a new
+   * project in this browser, and returns it as a project file.
+   */
+  saveProjectAs: (
+    name: string,
+    source?: CommandSource,
+  ) => Promise<{ result: ExecuteResult; file: ProjectFile | null }>
+  /** Opens a project file, keeping it in this browser's projects. */
+  openProjectFile: (
+    file: { name: string; text: string },
+    source?: CommandSource,
+  ) => Promise<ExecuteResult>
   /**
    * Freezes the copy of the open project saved in this browser into a
    * handover package (decision 0032, stage 5). `viewUnsaved` tells the server
@@ -483,6 +498,30 @@ export function createProjectClient(options: {
         {},
       )
     },
+    async saveProjectAs(name, source = 'manual') {
+      const sent = await send(
+        { type: 'project.saveAs', name, source, view: viewOf?.() },
+        'project.saveAs',
+        'Save as project',
+        { name },
+        source,
+      )
+      if (!sent.ok) return { result: sent.result, file: null }
+      return {
+        result: {
+          operationId: sent.operationId,
+          outcome: { status: 'applied', summary: sent.summary },
+        },
+        file: (sent.data as { file: ProjectFile }).file,
+      }
+    },
+    openProjectFile(file, source = 'manual') {
+      return projectRequest(
+        { type: 'project.openFile', source, file },
+        'Open project file',
+        { file: file.name },
+      )
+    },
     attachView(view) {
       viewOf = view
     },
@@ -495,7 +534,7 @@ export function createProjectClient(options: {
           drafts: Object.keys(workbench.getState().pendingEdits).length,
         },
         'project.handover',
-        'Hand over project',
+        'Save as view',
         {},
         source,
       )
@@ -515,23 +554,19 @@ export function createProjectClient(options: {
       }
     },
     listPackages(source = 'manual') {
-      return projectRequest(
-        { type: 'handover.list', source },
-        'List handover packages',
-        {},
-      )
+      return projectRequest({ type: 'handover.list', source }, 'List views', {})
     },
     openPackage(from, source = 'manual') {
       return projectRequest(
         { type: 'handover.open', source, ...from },
-        'Open handover package',
+        'Open view',
         'file' in from ? { file: from.file.name } : from,
       )
     },
     removePackage(packageId, source = 'manual') {
       return projectRequest(
         { type: 'handover.remove', source, packageId },
-        'Remove handover package',
+        'Remove view',
         { packageId },
       )
     },

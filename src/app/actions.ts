@@ -7,6 +7,7 @@ import {
   Columns2,
   Command,
   FilePlus,
+  FileUp,
   FolderTree,
   FlaskConical,
   Info,
@@ -56,6 +57,7 @@ import {
 import { DEFAULT_PAGES, PAGES, type PageId } from './layout/layoutController.ts'
 import { inScope } from './messages/messageCenter.ts'
 import { openSaveLayoutPrompt } from './layouts/layoutsPanelStore.ts'
+import { pickProjectFile } from './project/projectFileChooser.ts'
 
 // One registry of app actions drives the ribbon menus, quick buttons, command
 // palette, and keyboard shortcuts, so they cannot drift apart. A disabled or
@@ -206,11 +208,24 @@ export function useAppActions(dialogs: ShellDialogs): AppAction[] {
         perform: () => lifecycle.openCatalog(),
       },
       {
-        id: 'file.handOver',
-        label: 'Hand over…',
+        id: 'file.openProjectFile',
+        label: 'Open project file…',
+        group: 'File',
+        icon: FileUp,
+        disabledReason: null,
+        perform: pickProjectFile,
+      },
+      {
+        // Replaced File > Hand over… (decision 0036): a project or a view.
+        id: 'file.saveAs',
+        label: 'Save as…',
         group: 'File',
         icon: PackageCheck,
-        disabledReason: handover.blocker(),
+        shortcut: 'Ctrl+Shift+S',
+        allowInEditable: true,
+        disabledReason: clientMeta.currentProject
+          ? null
+          : 'Open or create a project first.',
         perform: () => handover.openDialog(),
       },
       {
@@ -720,28 +735,70 @@ export function useAppActions(dialogs: ShellDialogs): AppAction[] {
 }
 
 /**
- * What the viewer page keeps of the shared actions (decision 0032, stage 5):
- * pages and panels it shows, docking, layouts, appearance, and help. Every
- * action that changes the model, runs or cancels work, saves, or manages
- * projects is left out rather than shown unavailable; `extras` adds the
- * viewer's own (packages, file, handed-over layout).
+ * The shared actions as the viewer page shows them (decision 0032, stage 5;
+ * decision 0036): the editor's menus, toolbar, and shortcuts, with what a
+ * view cannot do (change the model, run or cancel work, save, manage
+ * projects, open pages the viewer leaves out) unavailable and saying why,
+ * never removed. `extras` adds the viewer's own (views, view files, the
+ * view's layout) at the top of their menus.
  */
 export function forViewer(
   actions: AppAction[],
   hasPage: (page: PageId) => boolean,
   extras: AppAction[],
 ): AppAction[] {
-  const kept = actions.filter((action) => {
+  const shown = actions.map((action): AppAction => {
     if (action.id.startsWith('view.open.')) {
-      return hasPage(action.id.slice('view.open.'.length) as PageId)
+      const page = action.id.slice('view.open.'.length) as PageId
+      return hasPage(page)
+        ? action
+        : {
+            ...action,
+            pressed: undefined,
+            disabledReason: `The viewer has no ${PAGES[page].name} page; open the project in the modeller for it.`,
+          }
     }
-    return (
+    if (
       VIEWER_ACTION_IDS.has(action.id) ||
       action.id.startsWith('view.appearance.') ||
-      action.id.startsWith('view.layout.')
-    )
+      action.id.startsWith('view.layout.') ||
+      // Planned actions keep their own reason.
+      (action.disabledReason?.startsWith('Planned') ?? false)
+    ) {
+      return action
+    }
+    return {
+      ...action,
+      pressed: undefined,
+      // The viewer's Open view file… takes Ctrl+O.
+      shortcut: action.id === 'file.openProject' ? undefined : action.shortcut,
+      disabledReason: viewOnlyReason(action),
+    }
   })
-  return [...extras, ...kept]
+  // The viewer's own File actions lead their menu, as Open does in the editor.
+  return [...extras, ...shown]
+}
+
+/** Why an action cannot act in a view, by what it would do. */
+function viewOnlyReason(action: AppAction): string {
+  switch (action.group) {
+    case 'Edit':
+      return 'This is a view: nothing in it can be changed or undone.'
+    case 'Run':
+      return 'This is a view: it runs nothing. Runs happen in the project, in the modeller.'
+    case 'Account':
+      return 'The viewer has no Account page.'
+    case 'File':
+      return action.id === 'file.save' || action.id === 'file.saveAs'
+        ? 'This is a view: it is not saved again. Views are saved from a project in the modeller.'
+        : 'Projects are opened and made in the modeller; the viewer opens views only.'
+    default:
+      return action.id === 'view.toggleWorkflow'
+        ? 'The viewer has no Workflow panel: stages are run in the modeller.'
+        : action.id === 'view.saveLayout'
+          ? "A view's layouts cannot be changed; apply one from the Layouts panel."
+          : 'This is a view: this is not available in it.'
+  }
 }
 
 const VIEWER_ACTION_IDS = new Set([
@@ -765,12 +822,14 @@ const VIEWER_ACTION_IDS = new Set([
   'help.shortcuts',
   'help.capabilities',
   'help.demoConditions',
+  'account.logOut',
 ])
 
 /** What the start screen offers from the shared menus; the rest need a project. */
 const START_ACTION_IDS = new Set([
   'file.new',
   'file.openProject',
+  'file.openProjectFile',
   'view.fullScreen',
   'help.palette',
   'help.shortcuts',

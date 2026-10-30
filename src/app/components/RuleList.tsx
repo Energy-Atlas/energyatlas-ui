@@ -1,5 +1,6 @@
 import { ArrowDown, ArrowUp, Copy, Plus, Trash2 } from 'lucide-react'
-import type { ReactNode } from 'react'
+import { useRef, useState, type ReactNode } from 'react'
+import { ConfirmDialog } from './ConfirmDialog.tsx'
 import { ReorderableList } from './ReorderableList.tsx'
 import { Toolbar, type ToolbarItem } from './Toolbar.tsx'
 import styles from './ruleList.module.css'
@@ -63,6 +64,9 @@ export function RuleList({
   empty,
   className,
 }: RuleListProps) {
+  // Removing asks first (decision 0036): a removed rule cannot be undone.
+  const [removing, setRemoving] = useState<RuleListItem | null>(null)
+  const frameRef = useRef<HTMLDivElement>(null)
   const index = rules.findIndex((rule) => rule.id === selectedId)
   const chosen = index >= 0 ? rules[index] : undefined
   const needsChoice = chosen ? null : `Choose a ${noun} first.`
@@ -94,7 +98,7 @@ export function RuleList({
       icon: Trash2,
       group: 'edit',
       disabledReason: needsChoice ?? disabledReason,
-      onPress: () => chosen && onRemove(chosen.id),
+      onPress: () => chosen && setRemoving(chosen),
     },
     {
       id: 'up',
@@ -127,7 +131,36 @@ export function RuleList({
     ...extraItems,
   ]
   return (
-    <div className={[styles.frame, className].filter(Boolean).join(' ')}>
+    <div
+      ref={frameRef}
+      className={[styles.frame, className].filter(Boolean).join(' ')}
+    >
+      <ConfirmDialog
+        isOpen={removing !== null}
+        onOpenChange={(open) => {
+          if (!open) setRemoving(null)
+        }}
+        title={`Remove "${removing?.name ?? ''}"?`}
+        confirm={{
+          label: `Remove ${noun}`,
+          disabledReason,
+          onPress: () => {
+            if (removing) onRemove(removing.id)
+          },
+        }}
+        onBlocked={(label, reason) =>
+          onBlocked?.({ id: 'remove', label, onPress: () => undefined }, reason)
+        }
+        returnFocus={() =>
+          frameRef.current?.querySelector<HTMLElement>('[role="grid"]') ??
+          frameRef.current?.querySelector<HTMLElement>('button') ??
+          null
+        }
+      >
+        <p>
+          {`The ${noun} leaves the list, and the ${noun}s after it move up. This cannot be undone.`}
+        </p>
+      </ConfirmDialog>
       <Toolbar
         aria-label={`${ariaLabel} actions`}
         items={items}

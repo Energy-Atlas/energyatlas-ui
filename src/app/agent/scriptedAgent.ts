@@ -380,6 +380,9 @@ export function createScriptedAgent(
   /** The permission mode that answers this proposal, or null to ask the user. */
   function autoDecision(calls: TitledCall[]): PermissionMode | null {
     const mode = store.getState().permissionMode
+    // A view's agent changes views only, so every mode allows everything
+    // (decision 0036), Plan included.
+    if (viewOnly) return mode
     if (mode === 'bypass' || mode === 'plan') return mode
     if (mode === 'automatic' && calls.every(isWorkflowCall)) return mode
     return null
@@ -387,7 +390,7 @@ export function createScriptedAgent(
 
   function propose(title: string, description: string, calls: TitledCall[]) {
     const decided = autoDecision(calls)
-    if (decided === 'plan') {
+    if (decided === 'plan' && !viewOnly) {
       push({
         id: nextId(),
         kind: 'agent',
@@ -472,7 +475,7 @@ export function createScriptedAgent(
           .map((step) => `"${stageName(step.stageId)}"`)
           .join(
             ', ',
-          )}, which this handover package does not include. The viewer is view only and cannot run stages; ask the modeller for a new handover.`,
+          )}, which this view does not include. The viewer is view only and cannot run stages; ask the modeller for a new view.`,
       )
       return
     }

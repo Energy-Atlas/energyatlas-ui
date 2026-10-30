@@ -237,7 +237,7 @@ describe('a scenario modeled against an earlier baseline', () => {
     )[1]!
     expect(entry.compareTo?.runId).toBe(old.runId)
     expect(entry.baselineNote).toMatch(
-      /the working baseline is now run run-calibrated/,
+      /the working baseline is now run-calibrated/,
     )
     // Buildings that do not adopt save nothing against their own baseline.
     for (const row of buildingRows(moved, entry)) {
@@ -246,7 +246,7 @@ describe('a scenario modeled against an earlier baseline', () => {
     const csv = resultCsv(moved, entry, 'now')
     expect(csv).toContain(`# compared to baseline run: ${old.runId}`)
     expect(csv).toContain(
-      `# baseline: Modeled against baseline run ${old.runId}`,
+      `# baseline: Modeled against the baseline ${old.runId}`,
     )
   })
 })

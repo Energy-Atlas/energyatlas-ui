@@ -255,7 +255,7 @@ export async function executeToolCall(
         status: 'rejected',
         summary: null,
         issues: [
-          { path: '', message: 'Hand over is unavailable in this session.' },
+          { path: '', message: 'Save as view is unavailable in this session.' },
         ],
         operationIds: [],
       }
@@ -267,7 +267,7 @@ export async function executeToolCall(
       ? {
           status: 'applied',
           summary:
-            entry?.summary ?? `Handed over "${handed.last.package.name}".`,
+            entry?.summary ?? `Saved "${handed.last.package.name}" as a view.`,
           issues: [],
           operationIds: entry ? [entry.id] : [],
           data: {
@@ -525,9 +525,9 @@ const LAYOUTS_TOOLS = [
 /** Viewer only: the reset to the layouts and views as handed over. */
 const VIEWER_LAYOUTS_TOOL = {
   name: 'layouts.resetToHandover',
-  title: 'Reset to handed-over layout',
+  title: "Reset to the view's layout",
   description:
-    'Viewer page: return the panels and view settings to the handed-over layout (the package default layout, or the default arrangement with the package table settings and map layers).',
+    "Viewer page: return the panels and view settings to the view's layout (the view's default layout, or the default arrangement with the view's table settings and map layers).",
   input: z.object({}),
 }
 
@@ -651,9 +651,9 @@ function describeModellerTools(): AgentToolDescription[] {
     {
       name: 'project.handover',
       kind: 'handover' as const,
-      title: 'Hand over project',
+      title: 'Save as view',
       description:
-        'Freeze the copy of the open project saved in this browser into a view-only handover package (the published model and results, its layouts and views, and provenance, without held job outputs, drafts, job logs, or unsaved changes), keep it in this browser handover catalog for the viewer page, and return its id. Refused before the project is first saved, or when the saved copy was saved while jobs ran. Waits for approval.',
+        "Save the copy of the open project saved in this browser as a view: a view-only copy (the published model and results, its layouts and views, and provenance, without held job outputs, drafts, job logs, or unsaved changes), kept in this browser's list of views for the viewer page; return its id. Refused before the project is first saved, or when the saved copy was saved while jobs ran. Waits for approval.",
       requiresApproval: true,
       inputSchema: z.toJSONSchema(z.object({}), { io: 'input' }),
     },

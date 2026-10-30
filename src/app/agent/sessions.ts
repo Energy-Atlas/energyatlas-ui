@@ -1251,7 +1251,7 @@ const viewerResultsSession: ScriptedSession = {
   prompt:
     'Which building uses the most energy, and how current are these results?',
   description:
-    'Reads the handed-over results and their stage states, then shows the highest-demand building through view operations and the shared selection.',
+    "Reads the view's results and their stage states, then shows the highest-demand building through view operations and the shared selection.",
   keywords: [
     /\bmost energy\b/,
     /\bhighest\b/,
@@ -1262,7 +1262,7 @@ const viewerResultsSession: ScriptedSession = {
   ],
   steps: [
     reason(
-      'The package holds the results as they were published when the project was handed over. I read them and their stage states; nothing in the package changes.',
+      'The view holds the results as they were published when it was saved. I read them and their stage states; nothing in the view changes.',
     ),
     (context) => {
       const state = context.state()
@@ -1270,7 +1270,7 @@ const viewerResultsSession: ScriptedSession = {
       const baseline = state.results.baseline
       if (!baseline) {
         return say(
-          'This package has no published results to explain: Baseline model setup had not published a baseline when it was handed over. Ask the modeller for a new handover once the baseline has run.',
+          'This view has no published results to explain: Baseline model setup had not published a baseline when it was saved. Ask the modeller for a new view once the baseline has run.',
         )
       }
       const outdated = RESULT_STAGES.filter((id) => states[id] === 'stale').map(
@@ -1283,7 +1283,7 @@ const viewerResultsSession: ScriptedSession = {
       const currency =
         outdated.length > 0
           ? `They are **outdated** relative to the model: ${outdated.join(', ')} changed after the last run, so the numbers are from before those changes.`
-          : 'They were current when the project was handed over.'
+          : 'They were current when the view was saved.'
       const steps: Step[] = [
         say(
           `The published baseline totals **${formatEnergy(baseline.totalKwh)}** a year with a peak of ${Math.round(baseline.peakKw).toLocaleString('en-US')} kW, from run ${baseline.runId}.${scenarios.length > 0 ? ` ${scenarios.length} scenario result${scenarios.length === 1 ? ' is' : 's are'} published beside it.` : ''} ${currency} All numbers are synthetic.`,
@@ -1325,10 +1325,10 @@ const viewerResultsSession: ScriptedSession = {
 
 const viewerRestoreSession: ScriptedSession = {
   id: 'viewerRestore',
-  label: 'Reset to the handed-over layout',
-  prompt: 'Reset to the handed-over layout.',
+  label: "Reset to the view's layout",
+  prompt: "Reset to the view's layout.",
   description:
-    'Returns the panels and views to the layout the package was handed over with.',
+    'Returns the panels and views to the layout the view was saved with.',
   keywords: [
     /\brestore\b/,
     /\breset\b/,
@@ -1337,14 +1337,14 @@ const viewerRestoreSession: ScriptedSession = {
   ],
   steps: [
     reason(
-      'Resetting changes only how this viewer arranges the package; the handed-over layouts and the model stay as they are.',
+      "Resetting changes only how this viewer arranges the view; the view's layouts and the model stay as they are.",
     ),
     tool(
-      'Reset to the handed-over layout',
+      "Reset to the view's layout",
       layoutsCall({ type: 'layouts.resetToHandover', input: {} }),
     ),
     say(
-      'The panels and views are back as they were handed over. The handed-over layouts are still in the Layouts panel.',
+      "The panels and views are back as the view was saved. The view's layouts are still in the Layouts panel.",
     ),
   ],
 }
@@ -1460,8 +1460,8 @@ export function asksForModelChange(text: string): boolean {
 }
 
 export const VIEW_ONLY_ANSWER =
-  'This is a **view-only handover**, so I cannot change the model, run or cancel stages, or change the handed-over layouts; the server refuses model changes from the viewer. I can explain the published results, select and point out buildings, change how the map, table, dashboard, and results are shown, apply the handed-over layouts in the Layouts panel, and reset to the handed-over layout. For model changes, ask the modeller for a new handover.'
+  "This is a **view**, so I cannot change the model, run or cancel stages, or change the view's layouts; the server refuses model changes from the viewer. I can explain the published results, select and point out buildings, change how the map, table, dashboard, and results are shown, apply the view's layouts in the Layouts panel, and reset to the view's layout. For model changes, ask the modeller for a new view."
 
 /** The viewer's answer when no prepared session matches a message. */
 export const VIEWER_UNMATCHED_ANSWER =
-  "I am a **scripted agent** in this prototype and can only run the prepared sessions offered below, so I did not act on this message. You can change views yourself: map layers, colours, seasons, and lighting in the map's Properties, table columns and filters on the Table page, and the handed-over layouts in the Layouts panel (View > Layouts), with Reset to handed-over layout to go back."
+  "I am a **scripted agent** in this prototype and can only run the prepared sessions offered below, so I did not act on this message. You can change views yourself: map layers, colours, seasons, and lighting in the map's Properties, table columns and filters on the Table page, and the view's layouts in the Layouts panel (View > Layouts), with Reset to the view's layout to go back."

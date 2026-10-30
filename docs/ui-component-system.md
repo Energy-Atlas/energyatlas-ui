@@ -539,3 +539,27 @@ checks, unrecognised enumerated values and their "Read as" choice) and a bar tab
 distribution. Rows that need attention are fills. It needs no workbench services; changes go to the host's callbacks.
 Its states are in the gallery (`src/app/gallery/MappingSpecimen.tsx`): review with a pending suggestion, an unmapped
 compulsory field, and an unrecognised value; waiting for the server; and no source attributes.
+
+## Confirmation dialog and start screen (decision 0036, 2026-10-29)
+
+Built on `claude/0036-views-dialogs`, not merged, not pushed.
+
+- **`ConfirmDialog`** (`src/app/components/ConfirmDialog.tsx`) is the app's only confirmation: a React Aria modal
+  `alertdialog` on the shell's dialog styles and the appearance tokens. The confirming button has focus when it opens,
+  so **Enter** confirms (Enter elsewhere in the dialog, except on another button, also confirms); **Esc**, Cancel, and
+  the close button cancel. Focus returns to the control that opened it; when that control is gone (a menu item, a
+  deleted row's menu) it goes to `returnFocus`. A choice can be unavailable with its reason (shown in the dialog and
+  reported when pressed through `onBlocked`); `onPress` may be asynchronous and return a message, which the dialog
+  shows while it stays open; `secondary` adds a second way to go on (Discard and leave); `isBusy` and `busyText`
+  cover waiting for the server. It needs no workbench services. Its states are in the gallery (Delete…, Leave
+  project…, unavailable, failing, and waiting), checked by `e2e/gallery.spec.ts`.
+- **Converted to it:** deleting a layout (inline before), removing a view from this browser in File > Save as… and on
+  the viewer's start page (inline before), removing an assignment rule or a scenario rule (`RuleList`; no
+  confirmation before), deleting a schema rule set and removing a custom target (no confirmation before), and the
+  three modal confirmations that were built by hand: Start a new empty project?, Leave with unsaved edits? (Properties),
+  and the leave-project guard (unsaved changes, drafts, active jobs; Stay, Discard and leave, Save and leave). No
+  definition (archetype, schedule, measure, scenario) can be deleted in the app, so none needed converting. Rename of
+  a layout is an edit, not a confirmation; it moved into a prompt so it no longer pushes the table down.
+- **`StartScreen` and `StartSection`** (`src/app/project/StartScreen.tsx`): the start screen's layout, shared by the
+  Projects screen and the viewer's Views page.
+- Rule set outcomes on Schema matching are messages now, not a notice inside the section.

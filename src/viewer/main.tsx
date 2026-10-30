@@ -6,8 +6,9 @@ import '../index.css'
 import { ViewerApp } from './ViewerApp.tsx'
 
 // The viewer page (decision 0032, stage 5): a second entry, viewer.html,
-// beside the modeller's index.html. It opens frozen handover packages and is
-// view only; its server session refuses every model change.
+// beside the modeller's index.html. It opens views (frozen handover packages
+// in storage and code) and is view only; its server session refuses every
+// model change.
 
 const root = document.getElementById('root')
 if (!root) {

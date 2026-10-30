@@ -54,7 +54,7 @@ import { Ribbon } from './Ribbon.tsx'
 import { ShellDialogHost } from './ShellDialogHost.tsx'
 import { LayoutsPanel } from '../layouts/LayoutsPanel.tsx'
 import { SaveLayoutPrompt } from '../layouts/SaveLayoutPrompt.tsx'
-import { HandoverDialog } from '../handover/HandoverDialog.tsx'
+import { SaveAsDialog } from '../handover/SaveAsDialog.tsx'
 import { StatusBar } from './StatusBar.tsx'
 import { ToastHost } from './ToastHost.tsx'
 import { useShellDialogs } from './useShellDialogs.ts'
@@ -202,7 +202,7 @@ export function WorkbenchShell() {
         }}
       />
       <SaveLayoutPrompt />
-      <HandoverDialog />
+      <SaveAsDialog />
       <ShellDialogHost
         open={open}
         onOpenChange={onOpenChange}

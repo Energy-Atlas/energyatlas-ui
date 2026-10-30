@@ -18,7 +18,9 @@ import {
   useUnsavedChanges,
   useWorkbenchSnapshot,
 } from '../WorkbenchContext.tsx'
+import { useRecordBlocked } from '../components/ActionButton.tsx'
 import { StatusTag } from '../components/CapabilityBadge.tsx'
+import { ViewOnlyBadge } from '../components/HandoverSummary.tsx'
 import { StateBadge } from '../components/StateBadge.tsx'
 import { cx } from '../cx.ts'
 import { formatDateTime, formatTime } from '../format.ts'
@@ -59,6 +61,17 @@ export function StatusBar({
   )
   const history = useStore(messages.store, (snapshot) => snapshot.messages)
   const stageStates = useStageStates()
+  const recordBlocked = useRecordBlocked()
+  // The viewer keeps the editor's items (decision 0036); those that open a
+  // page it lacks are unavailable and say why.
+  const pageButton = (page: PageId, label: string, reason: string) => ({
+    'aria-disabled': viewOnly ? true : undefined,
+    title: viewOnly ? reason : undefined,
+    onClick: () => {
+      if (viewOnly) recordBlocked(label, reason)
+      else onOpenPage(page)
+    },
+  })
 
   const currentId = state.workflow.currentStageId
   const currentStage = currentId ? state.workflow.stages[currentId] : undefined
@@ -103,14 +116,16 @@ export function StatusBar({
     <footer className={styles.statusBar} aria-label="Status bar">
       <span className={styles.statusItem}>
         {state.project.name}
+        {/* A view says so next to its name (decision 0036). */}
+        {viewOnly ? <ViewOnlyBadge /> : null}
         {state.project.location ? '' : ' · no location yet'}
         {dirty ? ' · unsaved changes' : ''}
       </span>
       {viewOnly ? (
-        // The viewer saves nothing; it says when the package was frozen.
+        // The viewer saves nothing; it says when the view was saved.
         <span className={styles.statusItem} data-testid="handover-status">
           {handover
-            ? `Handed over ${formatDateTime(handover.createdAt)}`
+            ? `View saved ${formatDateTime(handover.createdAt)}`
             : 'View only'}
         </span>
       ) : (
@@ -132,34 +147,39 @@ export function StatusBar({
           <FlaskConical size={14} aria-hidden="true" /> Demo: {conditions}
         </button>
       ) : null}
-      {currentStage && !viewOnly ? (
+      {currentStage ? (
         <span className={styles.statusItem}>
           Stage: {currentStage.name}{' '}
           <StateBadge state={stageStates[currentStage.id] ?? 'future'} />
         </span>
       ) : null}
-      {/* Issues and Jobs are modeller pages (decision 0032, stage 5). */}
-      {viewOnly ? null : (
-        <>
-          <button
-            type="button"
-            className={styles.statusButton}
-            aria-label={`${errors} errors and ${warnings} warnings. Open Issues.`}
-            onClick={() => onOpenPage('issues')}
-          >
-            <CircleX size={14} aria-hidden="true" /> {errors}
-            <TriangleAlert size={14} aria-hidden="true" /> {warnings}
-          </button>
-          <button
-            type="button"
-            className={styles.statusButton}
-            aria-label={`${activeTasks.length} active jobs. Open Jobs.`}
-            onClick={() => onOpenPage('tasks')}
-          >
-            <ListChecks size={14} aria-hidden="true" /> {activeTasks.length}
-          </button>
-        </>
-      )}
+      {/* Issues and Jobs are modeller pages (decision 0032, stage 5): the
+          viewer shows their counts but cannot open them. */}
+      <button
+        type="button"
+        className={styles.statusButton}
+        aria-label={`${errors} errors and ${warnings} warnings. Open Issues.`}
+        {...pageButton(
+          'issues',
+          'Open Issues',
+          'The viewer has no Issues page; issues are reviewed in the modeller.',
+        )}
+      >
+        <CircleX size={14} aria-hidden="true" /> {errors}
+        <TriangleAlert size={14} aria-hidden="true" /> {warnings}
+      </button>
+      <button
+        type="button"
+        className={styles.statusButton}
+        aria-label={`${activeTasks.length} active jobs. Open Jobs.`}
+        {...pageButton(
+          'tasks',
+          'Open Jobs',
+          'The viewer has no Jobs page: a view runs nothing.',
+        )}
+      >
+        <ListChecks size={14} aria-hidden="true" /> {activeTasks.length}
+      </button>
       <button
         type="button"
         className={cx(
@@ -176,7 +196,7 @@ export function StatusBar({
       >
         <Bell size={14} aria-hidden="true" /> {unread.length}
       </button>
-      {(viewOnly ? [] : activeTasks.slice(0, 2)).map((task) => (
+      {activeTasks.slice(0, 2).map((task) => (
         <ProgressBar
           key={task.id}
           className={styles.progress}
@@ -202,12 +222,10 @@ export function StatusBar({
           {pending.map((request) => request.title).join(', ')}
         </span>
       ) : null}
-      {viewOnly ? null : (
-        <span className={styles.statusItem} title="Illustrative, not measured">
-          <Cpu size={14} aria-hidden="true" /> 4 workers{' '}
-          <StatusTag status="simulated" />
-        </span>
-      )}
+      <span className={styles.statusItem} title="Illustrative, not measured">
+        <Cpu size={14} aria-hidden="true" /> 4 workers{' '}
+        <StatusTag status="simulated" />
+      </span>
       <span
         className={cx(styles.notice, rejected && styles.noticeRejected)}
         role="status"

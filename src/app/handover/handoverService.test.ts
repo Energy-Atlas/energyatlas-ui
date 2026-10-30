@@ -26,7 +26,7 @@ describe('the hand over service', () => {
     for (let round = 0; round < 2; round += 1) {
       const running = handover.handOver()
       expect(handover.store.getState().busy).toBe(true)
-      expect(handover.blocker()).toBe('A handover is already being prepared.')
+      expect(handover.blocker()).toBe('A view is already being saved.')
       await manual.settle()
       const result = await running
       expect(result.busy).toBe(false)

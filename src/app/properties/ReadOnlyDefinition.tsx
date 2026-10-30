@@ -245,7 +245,7 @@ export function ReadOnlyDefinition({
     <DefinitionCard
       eyebrow={KIND_LABELS[entityType]}
       title={described.name}
-      note="As handed over. Definitions are edited in the modeller."
+      note="As saved in the view. Definitions are edited in the modeller."
       facts={described.facts}
     />
   )

@@ -20,10 +20,10 @@ export type HandoverCatalog = {
 }
 
 export const CATALOG_UNAVAILABLE =
-  'Browser storage is unavailable, so handover packages cannot be kept in this browser. Download the package as a file instead.'
+  'Browser storage is unavailable, so views cannot be kept in this browser. Download the view as a file instead.'
 
 export const CATALOG_UNREADABLE =
-  'The handover catalog stored in this browser could not be read. It has not been changed; packages can still be opened from a file.'
+  'The list of views stored in this browser could not be read. It has not been changed; views can still be opened from a file.'
 
 export function readHandoverCatalog(storage: Storage | null): {
   catalog: HandoverCatalog
@@ -73,13 +73,13 @@ export function writeHandoverCatalog(
         ok: false,
         full: true,
         message:
-          'Browser storage is full, so the package was not kept in the handover catalog. Download it as a file instead, or remove older packages from File > Hand over… or the viewer page.',
+          'Browser storage is full, so the view was not kept in this browser. Download it as a file instead, or remove older views from File > Save as… or the viewer page.',
       }
     }
     return {
       ok: false,
       full: false,
-      message: `The handover catalog could not be stored: ${error instanceof Error ? error.message : String(error)}`,
+      message: `The list of views could not be stored: ${error instanceof Error ? error.message : String(error)}`,
     }
   }
 }

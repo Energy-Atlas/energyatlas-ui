@@ -8,6 +8,7 @@ import {
 import { WorkbenchShell } from './app/shell/WorkbenchShell.tsx'
 import { ProjectStart } from './app/project/ProjectStart.tsx'
 import { ProjectDialogs } from './app/project/ProjectDialogs.tsx'
+import { ProjectFileInput } from './app/project/ProjectFileInput.tsx'
 import { DemoSwitch } from './app/shell/DemoSwitch.tsx'
 
 function ProjectSession() {
@@ -43,6 +44,7 @@ function ProjectSession() {
         <ProjectStart />
       )}
       <ProjectDialogs />
+      <ProjectFileInput />
       {/* Floats over the workbench and the start screen alike (decision 0028). */}
       <DemoSwitch />
     </>

@@ -10,9 +10,9 @@ import {
 } from 'react-aria-components'
 import type { AppAction } from '../actions.ts'
 import { CapabilityTable } from '../components/CapabilityTable.tsx'
+import { ConfirmDialog } from '../components/ConfirmDialog.tsx'
 import componentStyles from '../components/components.module.css'
 import menuStyles from '../components/menus.module.css'
-import { cx } from '../cx.ts'
 import styles from './shell.module.css'
 
 type DialogFrameProps = {
@@ -169,31 +169,17 @@ export function NewProjectDialog({
   onConfirm: () => void
 }) {
   return (
-    <DialogFrame
+    <ConfirmDialog
       title="Start a new empty project?"
-      role="alertdialog"
       isOpen={isOpen}
       onOpenChange={onOpenChange}
+      confirm={{ label: 'Start new project', onPress: onConfirm }}
     >
       <p>
         The current project in the workbench is replaced by an empty synthetic
         project, and undo history is cleared. The copy saved in this browser
         stays until you save again.
       </p>
-      <div className={styles.dialogActions}>
-        <Button slot="close" className={componentStyles.button}>
-          Cancel
-        </Button>
-        <Button
-          className={cx(componentStyles.button, componentStyles.primary)}
-          onPress={() => {
-            onConfirm()
-            onOpenChange(false)
-          }}
-        >
-          Start new project
-        </Button>
-      </div>
-    </DialogFrame>
+    </ConfirmDialog>
   )
 }

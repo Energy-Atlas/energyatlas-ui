@@ -49,12 +49,9 @@ export function Ribbon({
   actions,
   invoke,
   projectHeading = true,
-  badge,
 }: RibbonProps & {
   /** False on the start screen, whose own heading names it. */
   projectHeading?: boolean
-  /** Beside the mark, such as the viewer's View only badge. */
-  badge?: ReactNode
 }) {
   const projectName = useWorkbenchSnapshot(
     (snapshot) => snapshot.state.project.name,
@@ -69,7 +66,6 @@ export function Ribbon({
         {projectHeading ? (
           <h1 className="visually-hidden">{projectName}</h1>
         ) : null}
-        {badge}
       </div>
       <Toolbar aria-label="Workbench commands" className={styles.toolbar}>
         {ACTION_GROUPS.filter((group) =>

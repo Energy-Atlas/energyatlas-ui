@@ -33,8 +33,8 @@ export function EmptyState({ title, message, stageId }: EmptyStateProps) {
         <p className={styles.muted}>{message}</p>
         <p className={styles.muted}>
           {stage
-            ? `This handover package does not include it: "${stage.name}" had not published it when the project was handed over. Ask the modeller for a new handover.`
-            : 'This handover package does not include it.'}
+            ? `This view does not include it: "${stage.name}" had not published it when the view was saved. Ask the modeller for a new view.`
+            : 'This view does not include it.'}
         </p>
       </div>
     )
