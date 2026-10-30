@@ -26,6 +26,7 @@ dialog. Built on `claude/0036-views-dialogs` and fast-forwarded into `claude/nex
   Properties shares the right border with the Layouts panel, so showing a layout there would hide the panel the
   person is working in. A row is chosen by clicking it (the table's `selection`) or from the asset tree; otherwise the
   applied layout is shown. The viewer shows Default too, as a read-only checkbox ("The view opens with the layout …").
+  The owner accepted this placement on 2026-10-30 ([decision 0036](decisions/0036-owner-review-of-next-stages.md#the-owners-answers-on-the-built-work-2026-10-30)).
 - **Delete asks in the shared confirmation dialog** (`ConfirmDialog`): Enter deletes (the confirming button has focus),
   Esc and Cancel keep the layout, and focus returns to the row's actions menu, or to the table once the row is gone.
 - **Rename asks in a prompt** (a `DialogFrame` titled Rename layout, the same form) instead of a form above the table,

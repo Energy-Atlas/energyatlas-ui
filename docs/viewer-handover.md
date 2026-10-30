@@ -24,7 +24,7 @@ one describe stage 5 as first built; where they disagree, this section wins.
   the original asks first). **Open project file…** (File menu and the start screen; `ProjectFileInput`,
   `lifecycle.request({ type: 'openFile' })`, server request `project.openFile`) opens a project file, keeping it in
   this browser; a file of a project this browser already keeps opens as a copy beside it, and a view file, a newer
-  format, or a damaged file is refused with a reason.
+  format, or a damaged file is refused with a reason. The owner accepted Open project file… on 2026-10-30 ([decision 0036](decisions/0036-owner-review-of-next-stages.md#the-owners-answers-on-the-built-work-2026-10-30)).
 - **View**: the former handover. It still packages **the copy saved in this browser**, and says so ("Unsaved changes
   stay out"), keeping the owner's answer to decision 2 below. Choice: a view is published, frozen state for others;
   packaging unsaved work would hand over results nobody saved, while the Project choice already covers "save what I

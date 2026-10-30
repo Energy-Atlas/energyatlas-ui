@@ -555,6 +555,8 @@ otherwise it is framed as before.
 
 ### Decisions taken for review
 
+The owner accepted 1, 3, and 4 on 2026-10-30 ([decision 0036](decisions/0036-owner-review-of-next-stages.md#the-owners-answers-on-the-built-work-2026-10-30)).
+
 1. **The project zoning setting and `zoning.set` are removed too**, not only the per-building control: decision 0036
    says "no zoning setting", and with zones as the backend's there is nothing left for them to set.
 2. **The Properties tables' Baseline share column is removed with the Results split** (M8), since it was the same

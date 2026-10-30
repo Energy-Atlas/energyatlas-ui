@@ -86,6 +86,20 @@ D1–D2 (schema matching and Data intake), and V1–V3 (hand over and the viewer
 7. The viewer's view changes, unreadable packages, and resets: **superseded** by the viewer decisions above.
 8. Losing Shift-drag box zoom: **accepted**; it was redundant.
 
+## The owner's answers on the built work (2026-10-30)
+
+After reviewing the built work (round 2 of the review guide), the owner accepted the points left open:
+
+- **Layout details stay under the Layouts table**, not in Properties, which shares the right border with the Layouts
+  panel and would hide it. This replaces the interpretation "in the layout's Properties" above.
+- **File > Open project file…** (and the start screen's button), added so a downloaded project copy can be opened,
+  stays.
+- **The project zoning setting and `zoning.set` are removed** along with the per-building control; drawn outlines in
+  saves from the unmerged branch are dropped, and geometry that no longer covers a building's floors shows as one zone
+  with a note.
+- **The viewer keeps its pages** Map, Table, Dashboard, and Results; "everything blocked" applies to the shell.
+- **Unavailable toolbar buttons in the muted text colour** are enough for now.
+
 ## Consequences
 
 - `state.zoning.overrides`, `zoning.setBuilding`, the project zoning setting, the perimeter depth, the fallback codes,
