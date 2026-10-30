@@ -335,7 +335,8 @@ export function baselineChangeNote(
   const compared = scenarioBaseline(state, scenarioId)
   const current = state.results.baseline
   if (!compared?.changed || !current) return null
-  return `Modeled against baseline run ${compared.result.runId}; the working baseline is now run ${current.runId}. Savings compare with run ${compared.result.runId} until Scenario modeling runs again.`
+  // Run ids read "run-40", so the word "run" is not repeated before them.
+  return `Modeled against the baseline ${compared.result.runId}; the working baseline is now ${current.runId}. Savings compare with ${compared.result.runId} until Scenario modeling runs again.`
 }
 
 export type ScenarioRulePreview = {

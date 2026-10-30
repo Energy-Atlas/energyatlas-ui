@@ -141,6 +141,6 @@ describe('a scenario modeled against an earlier baseline', () => {
     expect(before.baselineNote).toBeNull()
     const moved = buildDashboardData(withMovedBaseline(state), {}).scenarios[0]!
     expect(moved.reductionPercent).toBe(before.reductionPercent)
-    expect(moved.baselineNote).toMatch(/Savings compare with run/)
+    expect(moved.baselineNote).toMatch(/Savings compare with run-/)
   })
 })
