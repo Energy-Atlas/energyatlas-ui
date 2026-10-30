@@ -542,7 +542,7 @@ compulsory field, and an unrecognised value; waiting for the server; and no sour
 
 ## Confirmation dialog and start screen (decision 0036, 2026-10-29)
 
-Built on `claude/0036-views-dialogs`, not merged, not pushed.
+Built on `claude/0036-views-dialogs` and fast-forwarded into `claude/next-stages` on 2026-10-30; not merged into `master`, not pushed.
 
 - **`ConfirmDialog`** (`src/app/components/ConfirmDialog.tsx`) is the app's only confirmation: a React Aria modal
   `alertdialog` on the shell's dialog styles and the appearance tokens. The confirming button has focus when it opens,

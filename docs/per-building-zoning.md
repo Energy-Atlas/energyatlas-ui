@@ -444,7 +444,7 @@ Built in `0b8e061`. Before it, on the final code:
 
 Date: 2026-10-29. [Decision 0036](decisions/0036-owner-review-of-next-stages.md), the owner's review of the next
 stages, items M1 to M8 and the camera of L1. Built on `claude/0036-map-zones` (from `claude/next-stages` at
-`061cb41`); not merged, not pushed. It supersedes most of this record above: per-building zoning, drawn-zone checks,
+`061cb41`), fast-forwarded into `claude/next-stages` on 2026-10-30; not merged into `master`, not pushed. It supersedes most of this record above: per-building zoning, drawn-zone checks,
 the project zoning setting, floor slabs, and per-zone results are gone. Nested selection and hollow floors
 (decision 0035) stay.
 

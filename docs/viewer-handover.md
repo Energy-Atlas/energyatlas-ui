@@ -6,7 +6,7 @@ Date: 2026-10-28. Stage 5 of 6 of [decision 0032](decisions/0032-next-stages-dir
 ## Views, Save as, and the viewer shell (2026-10-29): decision 0036
 
 [Decision 0036](decisions/0036-owner-review-of-next-stages.md) renames the handover package to a **view** in the
-interface and reworks the viewer. Built on `claude/0036-views-dialogs`, not merged, not pushed. Sections below this
+interface and reworks the viewer. Built on `claude/0036-views-dialogs` and fast-forwarded into `claude/next-stages` on 2026-10-30; not merged into `master`, not pushed. Sections below this
 one describe stage 5 as first built; where they disagree, this section wins.
 
 ### File > Save as… (replaced File > Hand over…)

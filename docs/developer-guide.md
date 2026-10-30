@@ -16,13 +16,13 @@ Updated 2026-10-28 for schema matching as a mapping review shared with Data inta
 
 Updated 2026-10-28 for the viewer page and handover package, next stage 5 of decision 0032, built on `claude/next-stages` and not merged ([plan and status](viewer-handover.md)).
 
-Updated 2026-10-29 for decision 0036's views and dialogs, built on `claude/0036-views-dialogs` and not merged: the shared `ConfirmDialog`, the slimmer Layouts table, File > Save as… (project or view) with project files, the viewer start page, the viewer's editor shell, and warnings as messages ([views and the viewer](viewer-handover.md#views-save-as-and-the-viewer-shell-2026-10-29-decision-0036), [components](ui-component-system.md#confirmation-dialog-and-start-screen-decision-0036-2026-10-29)).
+Updated 2026-10-29 for decision 0036's views and dialogs, built on `claude/0036-views-dialogs` and fast-forwarded into `claude/next-stages` on 2026-10-30, not merged into `master`: the shared `ConfirmDialog`, the slimmer Layouts table, File > Save as… (project or view) with project files, the viewer start page, the viewer's editor shell, and warnings as messages ([views and the viewer](viewer-handover.md#views-save-as-and-the-viewer-shell-2026-10-29-decision-0036), [components](ui-component-system.md#confirmation-dialog-and-start-screen-decision-0036-2026-10-29)).
 
 Updated 2026-10-28 for floors and zones, next stage 6 of decision 0032, built on `claude/next-stages` and not merged ([plan and status](floors-zones.md)).
 
 Updated 2026-10-29 for per-building zoning, drawn zones, and 3D zones ([decision 0034](decisions/0034-per-building-zoning-and-3d-zones.md)), built on `claude/next-stages` and not merged ([plan and status](per-building-zoning.md)).
 
-Updated 2026-10-29 for the owner's review of the map, floors, and zones ([decision 0036](decisions/0036-owner-review-of-next-stages.md)): zones are the backend's geometry, displayed only; no floor slabs or per-zone results; picking in 3D; the map camera as view state. Built on `claude/0036-map-zones` and not merged ([status](per-building-zoning.md#since-decision-0036)).
+Updated 2026-10-29 for the owner's review of the map, floors, and zones ([decision 0036](decisions/0036-owner-review-of-next-stages.md)): zones are the backend's geometry, displayed only; no floor slabs or per-zone results; picking in 3D; the map camera as view state. Built on `claude/0036-map-zones` and fast-forwarded into `claude/next-stages` on 2026-10-30, not merged into `master` ([status](per-building-zoning.md#since-decision-0036)).
 
 This guide is for a developer or agent taking over without the original conversation. It describes the code as built, how to extend it without breaking the accepted rules, how it is tested, and what is still missing. Product intent and accepted choices live in the [decision records](decisions/README.md); evidence lives in the [first-slice implementation status](first-slice-proposal.md#implementation-status) and the [design alignment record](design-alignment.md#implementation-status).
 

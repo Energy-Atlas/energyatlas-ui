@@ -18,7 +18,7 @@ Copy to personal, or unreadable personal storage describes the stage as first bu
 ## Owner's review (2026-10-29): decision 0036
 
 [Decision 0036](decisions/0036-owner-review-of-next-stages.md) slims the Layouts table and makes every confirmation a
-dialog. Built on `claude/0036-views-dialogs`, not merged, not pushed.
+dialog. Built on `claude/0036-views-dialogs` and fast-forwarded into `claude/next-stages` on 2026-10-30; not merged into `master`, not pushed.
 
 - **The table keeps Name, its actions (Apply and the row menu), and Default.** State, Saved by, Created, and Updated
   left the table. They show in a **details section under the table** for the chosen layout (`LayoutDetails` in
