@@ -36,5 +36,6 @@ Keep short dated records of accepted decisions: status, context, decision, ratio
 - [0033: Layouts kept with the project in a Layouts panel, and the Scenarios page](0033-project-layouts-panel-and-scenarios-page.md)
 - [0034: Per-building zoning, drawn zones, and 3D zones for selected buildings](0034-per-building-zoning-and-3d-zones.md)
 - [0035: Hollow floors and nested selection instead of exploded floors](0035-hollow-floors-and-nested-selection.md)
+- [0036: The owner's review of the next stages: backend zones, slimmer layouts, dialog confirmations, Save as views](0036-owner-review-of-next-stages.md)
 
 Number 0020 is used on the unmerged `feature/agentic` branch.
