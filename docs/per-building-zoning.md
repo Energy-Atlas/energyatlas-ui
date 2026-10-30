@@ -584,3 +584,25 @@ otherwise it is framed as before.
 - Edges lying on a face seen nearly edge-on can lose half their width where the face slopes towards the camera.
 - On steep terrain, edges and picks are lifted by the terrain at one point per building.
 - A camera applied before the map has loaded (the Map tab never opened) moves the map once it loads.
+
+### Verification (decision 0036)
+
+On `claude/0036-map-zones` after merging `claude/next-stages` at `d9bf958` (the views and dialogs work):
+
+- `npm run typecheck`, `npm run lint`, `npm run format:check`, `git diff --check`: clean.
+- `npm test`: 585 passed in 56 files (578 in 54 before the merge). New or rewritten: `src/domain/zoning/zoning.test.ts`
+  (the fixture geometry tiling every floor exactly, zones from geometry, colour slots by shared walls, one zone without
+  geometry, geometry that misses a floor, the 510-zone fixture total, no zoning command, saves with the removed fields),
+  `src/app/pages/zoneFeatures.test.ts` (storeys spanning their floors, neighbours keeping colours, edges drawn once by
+  role and style, the camera pull, stacks saved with `floorSlabs`), `src/app/pages/mapPicking.test.ts` (ray and prism,
+  the front building first, the top storey first, the camera position, and a click on a selected floor selecting the
+  zone under the pointer), `src/app/view/mapCamera.test.ts` (sync, set, project open, a layout restoring the camera),
+  the appearance test for the `zoneEdges` tokens, and the agent sessions.
+- Dev e2e on port 5181 (`npx playwright test -c tmp/playwright.5181.config.ts`, 4 workers): 142 of 143 passed; the
+  failure was `viewer.spec.ts` "removes a view from the start page after confirming" (`toBeFocused`), which passed when
+  `viewer.spec.ts` was rerun once on its own (7 passed). New: `e2e/map-zones.spec.ts` (6 tests, replacing
+  `per-building-zoning.spec.ts`), rewritten `e2e/floors-zones.spec.ts` (3).
+- `npm run test:e2e:preview`: 4 passed.
+- Review screenshots at 1440x900 in the light appearance: B0439's zones in 3D, floor 2 among hollow floors, the floor
+  2 corridor selected among neighbours keeping their colours, the boundary lines close up, and B0452 picked in front of
+  B0439 at a low angle (where MapLibre's own hits listed only B0439's core cells).
