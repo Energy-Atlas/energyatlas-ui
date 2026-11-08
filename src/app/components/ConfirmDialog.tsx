@@ -59,6 +59,9 @@ type ConfirmDialogProps = {
   onBlocked?: (label: string, reason: string) => void
 }
 
+/** About a second at 60 frames a second; a dialog still mounted after that is left alone. */
+const MAX_CLOSE_FRAMES = 60
+
 function isOtherControl(target: EventTarget | null, confirm: Element | null) {
   if (!(target instanceof Element) || target === confirm) return false
   return Boolean(
@@ -91,33 +94,43 @@ export function ConfirmDialog({
   const [running, setRunning] = useState<string | null>(null)
   const [failure, setFailure] = useState<string | null>(null)
   const confirmRef = useRef<HTMLButtonElement>(null)
+  const dialogRef = useRef<HTMLElement>(null)
   const busy = isBusy || running !== null
 
   // A fresh question each time it opens.
   const [wasOpen, setWasOpen] = useState(isOpen)
-  // The control that opened the dialog, which focus goes back to.
-  const [opener, setOpener] = useState<Element | null>(null)
   if (wasOpen !== isOpen) {
     setWasOpen(isOpen)
     if (isOpen) {
       setFailure(null)
       setRunning(null)
-      setOpener(typeof document === 'undefined' ? null : document.activeElement)
     }
   }
 
   const close = () => {
     onOpenChange(false)
-    // React Aria returns focus to the opener. When the opener is gone, such
-    // as a menu item or a deleted row's menu, focus would drop to the page,
-    // so it goes where the caller says instead.
-    if (!returnFocus || opener?.isConnected) return
-    window.requestAnimationFrame(() => {
-      const active = document.activeElement
-      if (!active || active === document.body || !active.isConnected) {
-        returnFocus()?.focus()
+    // React Aria returns focus to the opener once the dialog has unmounted.
+    // When the opener is gone by then, such as a menu item or a deleted
+    // row's menu, focus would drop to the page, so it goes where the caller
+    // says instead. The dialog and the opener can take several frames to
+    // leave on a slow machine, so this waits for the dialog to unmount, then
+    // one more frame for React Aria's own restore, before deciding.
+    if (!returnFocus) return
+    let frames = 0
+    const settle = () => {
+      if (dialogRef.current?.isConnected && frames < MAX_CLOSE_FRAMES) {
+        frames += 1
+        window.requestAnimationFrame(settle)
+        return
       }
-    })
+      window.requestAnimationFrame(() => {
+        const active = document.activeElement
+        if (!active || active === document.body || !active.isConnected) {
+          returnFocus()?.focus()
+        }
+      })
+    }
+    window.requestAnimationFrame(settle)
   }
 
   const choose = async (choice: ConfirmChoice) => {
@@ -169,7 +182,11 @@ export function ConfirmDialog({
       className={shellStyles.overlay}
     >
       <Modal className={cx(shellStyles.dialogModal, styles.confirmModal)}>
-        <Dialog role="alertdialog" className={shellStyles.dialog}>
+        <Dialog
+          ref={dialogRef}
+          role="alertdialog"
+          className={shellStyles.dialog}
+        >
           {/* Enter anywhere but on another button presses the confirming one. */}
           <div
             onKeyDown={(event) => {

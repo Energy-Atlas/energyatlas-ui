@@ -265,6 +265,9 @@ test('map switches buildings between 2D and 3D and explains missing heights', as
 test('map shows terrain at true scale and sets exaggeration from the keyboard', async ({
   page,
 }) => {
+  // The 3D scene with terrain renders in software on CI runners, where each
+  // key press took about 3 s and the test passed its default 30 s.
+  test.setTimeout(60_000)
   await runStages(page, ['Location setup / footprint capturing'])
   const panel = await openMapProperties(page)
 

@@ -72,5 +72,8 @@ number is 0037), and keep the alternatives they did not choose in the directions
   description).
 - The lint and format scripts scan `.claude/worktrees/`; the four worktrees there hold merged branches.
 - The Pages workflow run for decision 0029 (2026-10-27) failed in the browser tests (gallery axe check, two map
-  tests, a lifecycle layout test timing out), so the published site was last updated on 2026-10-20. The run for the
-  2026-11-08 push was in progress when this handoff was written; check `gh run list --branch master`.
+  tests, a lifecycle layout test timing out), so the published site was last updated on 2026-10-20. Both runs for the
+  2026-11-08 pushes failed the same way (the terrain test and the lifecycle test timing out on the slower runner, and
+  focus lost after removing the last view). The fix followed the same day (`ConfirmDialog` waits for the dialog to
+  unmount before placing focus; longer or split browser tests; see the developer guide's testing pitfalls); check
+  `gh run list --branch master` for whether it deployed.

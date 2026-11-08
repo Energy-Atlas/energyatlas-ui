@@ -253,28 +253,29 @@ test('held creation and closing can recover through Demo conditions', async ({
   await expect(page.getByRole('main', { name: 'Projects' })).toBeVisible()
 })
 
-// One test per width, so each stays well inside its timeout when the suite
-// runs on 4 workers.
+// One test per width and appearance, so each stays well inside its timeout
+// when the suite runs on 4 workers; on CI runners one pass took about 20 s,
+// and six in one test passed a 120 s limit.
 for (const width of [1280, 1600, 900]) {
-  test(`start and creation render in every appearance at ${width} px`, async ({
-    page,
-  }) => {
-    test.setTimeout(120_000)
-    await page.goto('/')
-    await page.setViewportSize({
-      width,
-      height: width === 900 ? 700 : width === 1600 ? 1000 : 800,
-    })
-    for (const appearance of [
-      'light',
-      'dark',
-      'monochrome',
-      'lieflat',
-      'cleanLight',
-      'darkEngineering',
-    ]) {
+  for (const appearance of [
+    'light',
+    'dark',
+    'monochrome',
+    'lieflat',
+    'cleanLight',
+    'darkEngineering',
+  ]) {
+    test(`start and creation render in ${appearance} at ${width} px`, async ({
+      page,
+    }) => {
+      test.setTimeout(60_000)
+      await page.goto('/')
+      await page.setViewportSize({
+        width,
+        height: width === 900 ? 700 : width === 1600 ? 1000 : 800,
+      })
       // The start screen has the menu bar's View > Appearance; the stored
-      // choice is set directly here to keep the loop short.
+      // choice is set directly here to keep the test short.
       await page.evaluate((value) => {
         localStorage.setItem('eaui.theme', value)
       }, appearance)
@@ -331,6 +332,6 @@ for (const width of [1280, 1600, 900]) {
         .getByRole('button', { name: 'Discard and leave', exact: true })
         .click()
       await expect(page.getByRole('main', { name: 'Projects' })).toBeVisible()
-    }
-  })
+    })
+  }
 }
