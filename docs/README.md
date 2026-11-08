@@ -1,5 +1,6 @@
 # Documentation index
 
+- [Backend connection evidence index, 2026-11-08](backend-connection/README.md): start here for connecting to RC's `EnergyAtlasWeb`: repository and remote status, the UI's mock-server seam, RC's API, runtime, hosting, and clients, a concept mapping with gaps, open decisions, and documentation drift. Evidence only; no decision.
 - [Autonomous implementation handoff, 2026-10-26](20261026_autonomous-roadmap-handoff.md): next agent starts here; approved scope through Results, local-merge authority, kickoff message, repository/worktree locations, and verification baseline.
 - [Roadmap slices 3–8 completion report, 2026-10-26](20261026_roadmap-completion.md): start here after the autonomous run: what merged where, the shared job contract, verification, limits, next steps.
 - [Unified panel components](ui-component-system.md): proposal after the owner's 2026-10-26 review, the status and verification of each of its five steps and of the decision 0028 review fixes, and their integration into local `master` on 2026-10-27.
