@@ -27,7 +27,11 @@ Observed after `git fetch --all --prune`:
 - `master` at `c49dcff` (2026-10-30) is **66 commits ahead of `origin/master` and 0 behind**. `origin/master` is
   `710880b` ("docs: record the decision 0029 integration"). Decisions 0030 to 0036 and all six next stages exist only
   locally. The working tree is clean.
-- GitHub Pages publishes `master` (decision 0017), so the published demo stops at decision 0029.
+- GitHub Pages publishes `master` (decision 0017). The run for decision 0029 (2026-10-27, run `40603276661`) failed
+  in its browser tests, so the published demo was last deployed on 2026-10-20.
+- **Update, same day:** at the owner's request `master` was pushed to `origin/master` (`710880b..9b75c0d`), which
+  started a new Pages run. The planning agent starts from the
+  [planning handoff](../20261108_backend-connection-planning-handoff.md).
 - Every local branch is contained in `master` except `feature/agentic` (5 commits: the language-model agent, four
   fictional districts, reload survival, decision 0020), which decision 0022 keeps unmerged.
 - Remote branches: `master`, `feature/agentic`, `feature/basemap`, `feature/mock-services`, `feature/ui-alignment`,
