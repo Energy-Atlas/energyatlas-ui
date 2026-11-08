@@ -74,6 +74,7 @@ number is 0037), and keep the alternatives they did not choose in the directions
 - The Pages workflow run for decision 0029 (2026-10-27) failed in the browser tests (gallery axe check, two map
   tests, a lifecycle layout test timing out), so the published site was last updated on 2026-10-20. Both runs for the
   2026-11-08 pushes failed the same way (the terrain test and the lifecycle test timing out on the slower runner, and
-  focus lost after removing the last view). The fix followed the same day (`ConfirmDialog` waits for the dialog to
-  unmount before placing focus; longer or split browser tests; see the developer guide's testing pitfalls); check
-  `gh run list --branch master` for whether it deployed.
+  focus lost after removing the last view). Fixes followed the same day (`ConfirmDialog` waits for the dialog to
+  unmount before placing focus; the lifecycle check split per appearance; every browser-test timeout three times
+  longer on CI through `e2e/timeoutScale.ts`; see the developer guide's testing pitfalls); check
+  `gh run list --branch master` for whether they deployed.

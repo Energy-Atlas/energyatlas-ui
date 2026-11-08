@@ -1,4 +1,5 @@
 import { defineConfig, devices } from '@playwright/test'
+import { TIMEOUT_SCALE } from './e2e/timeoutScale.ts'
 
 // Defaults to the locally installed Microsoft Edge so no browser download is needed.
 // To use Playwright's bundled browser instead, run `npx playwright install chromium`
@@ -15,6 +16,9 @@ export default defineConfig({
   // count starved the dev server and timed out tests on a 32-core machine.
   workers: process.env.CI ? undefined : 4,
   forbidOnly: !!process.env.CI,
+  // Longer on the slower CI runner; see e2e/timeoutScale.ts.
+  timeout: 30_000 * TIMEOUT_SCALE,
+  expect: { timeout: 5_000 * TIMEOUT_SCALE },
   reporter: 'list',
   use: {
     baseURL,

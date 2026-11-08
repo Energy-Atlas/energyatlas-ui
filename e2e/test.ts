@@ -1,4 +1,5 @@
 import { expect, test as base, type Locator, type Page } from '@playwright/test'
+import { TIMEOUT_SCALE } from './timeoutScale.ts'
 
 // Product specs import `test` and `expect` from here. Every page serves a small
 // stand-in for the OpenFreeMap style, TileJSON, and tiles, so tests stay
@@ -180,7 +181,7 @@ export async function saveAndReopen(page: Page) {
   await expect(page.getByRole('main', { name: 'Workspace' })).toBeVisible()
 }
 
-export const test = base.extend<{ basemapStub: undefined }>({
+const stubbed = base.extend<{ basemapStub: undefined }>({
   basemapStub: [
     async ({ page }, use) => {
       page.on('dialog', async (dialog) => {
@@ -204,3 +205,10 @@ export const test = base.extend<{ basemapStub: undefined }>({
     { auto: true },
   ],
 })
+
+// A spec's own `test.setTimeout` is scaled like the default (`timeoutScale.ts`).
+const setTimeoutUnscaled = stubbed.setTimeout.bind(stubbed)
+stubbed.setTimeout = (timeout: number) =>
+  setTimeoutUnscaled(timeout * TIMEOUT_SCALE)
+
+export const test = stubbed

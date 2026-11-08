@@ -1,5 +1,6 @@
 import { defineConfig, devices } from '@playwright/test'
 import { BASE_PATH } from './basePath.ts'
+import { TIMEOUT_SCALE } from './e2e/timeoutScale.ts'
 
 // Checks the production bundle, which the dev-server specs cannot: the base
 // path, and files that only a build emits, such as MapLibre's worker
@@ -13,6 +14,9 @@ export default defineConfig({
   testMatch: /production\.spec\.ts/,
   reporter: 'list',
   forbidOnly: !!process.env.CI,
+  // Longer on the slower CI runner; see e2e/timeoutScale.ts.
+  timeout: 30_000 * TIMEOUT_SCALE,
+  expect: { timeout: 5_000 * TIMEOUT_SCALE },
   use: {
     baseURL,
     trace: 'retain-on-failure',
